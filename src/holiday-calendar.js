@@ -30,6 +30,27 @@ export function taipeiWeekDateKeys(now = new Date()) {
   });
 }
 
+// On weekends, weekday-only timetables should show the next school week.
+// Keep the current week while a Saturday/Sunday class is still ahead.
+export function scheduleDisplayWeekDateKeys(now = new Date(), periods = []) {
+  const currentWeek = taipeiWeekDateKeys(now);
+  const todayIndex = currentWeek.indexOf(taipeiDateKey(now));
+  if (todayIndex < 5) return currentWeek;
+
+  const hasRemainingClass = periods.some((period) =>
+    period?.days?.some(
+      (course, index) =>
+        index >= todayIndex &&
+        Boolean(course?.name || course?.teacher || course?.room),
+    ),
+  );
+  if (hasRemainingClass) return currentWeek;
+
+  const nextMonday = new Date(`${currentWeek[0]}T12:00:00Z`);
+  nextMonday.setUTCDate(nextMonday.getUTCDate() + 7);
+  return taipeiWeekDateKeys(nextMonday);
+}
+
 export function parseNationalCalendarYear(entries, year) {
   if (!Array.isArray(entries) || entries.length < 300) {
     throw new Error(`Incomplete Taiwan government calendar for ${year}.`);
