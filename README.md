@@ -39,7 +39,7 @@
 
 ```bash
 git clone https://github.com/Rynowastaken/Personal-NUTC-Eportal.git
-cd eportal-bot
+cd Personal-NUTC-Eportal
 
 npm install
 npm run install-browser
@@ -81,13 +81,17 @@ server 不需要圖形桌面環境，你可以用手機或另一台電腦完成�
 4. **Login Bridge** — 登入時的表單是即時從 ePortal 頁面擷取的（含驗證碼圖片），你在網頁上填什麼 server 就打什麼進 Chromium，密碼跟 MFA 只存在記憶體，不會寫入任何檔案或 log
 5. **Keepalive** — 預設每 10 分鐘檢查一次 ePortal session 是否還有效
 
+## 從舊版遷移
+
+如果你已經從舊 repository 安裝過，請先閱讀 [遷移指南](docs/migration.md)。既有的 `.eportal-profile/` 和 `data/` 不應遺失，Linux systemd 服務名稱與設定檔位置也有調整。
+
 ## 部署到其他電腦
 
 放到家用 server、樹莓派、VPS 等長時間運作的機器上，步驟一樣：
 
 ```bash
-git clone https://github.com/Rynowastaken/eportal-bot.git
-cd eportal-bot
+git clone https://github.com/Rynowastaken/Personal-NUTC-Eportal.git
+cd Personal-NUTC-Eportal
 
 npm install
 npm run install-browser
@@ -133,7 +137,7 @@ npm run deploy:configure
 sudo npm run deploy:configure -- --install
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl daemon-reload
-sudo systemctl enable --now eportal-bot
+sudo systemctl enable --now personal-nutc-eportal
 sudo systemctl reload caddy
 ```
 
@@ -201,5 +205,6 @@ Login Bridge 處理的帳號密碼與 MFA 驗證碼只存在記憶體中，不�
 
 - [Cloudflare Access 部署](docs/cloudflare-access.md)
 - [Userscript / Client Browser 整合](docs/userscript.md)
+- [舊版安裝遷移指南 / Migration guide](docs/migration.md)
 
 大多數使用者只要完成**快速開始**跟**第一次登入**就能正常使用了。
