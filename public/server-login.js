@@ -146,7 +146,7 @@ function disposeImages() {
   imageList.replaceChildren();
 }
 
-async function loadImages(images) {
+async function loadImages(images, inline = false) {
   disposeImages();
 
   for (const item of images || []) {
@@ -167,8 +167,9 @@ async function loadImages(images) {
       objectUrls.add(url);
 
       const image = document.createElement("img");
-      image.className =
-        "max-h-40 max-w-full rounded-xl border border-white/[.12] bg-white p-1 object-contain shadow-sm";
+      image.className = inline
+        ? "h-10 w-auto max-w-[104px] rounded-lg border border-white/[.12] bg-white p-1 object-contain shadow-sm"
+        : "max-h-40 max-w-full rounded-xl border border-white/[.12] bg-white p-1 object-contain shadow-sm";
       image.src = url;
       image.alt = item.alt || "ePortal verification image";
       image.width = item.width || 0;
@@ -440,7 +441,9 @@ function render(state) {
     else fields.push(control);
   }
 
-  const verificationField = (state.page.images || []).length
+  // Single-image challenges can fit inside the right end of their input.
+  // Keep multi-image challenges below the fields so none are clipped.
+  const verificationField = (state.page.images || []).length === 1
     ? fields.find(isVerificationField)
     : null;
 
@@ -449,15 +452,20 @@ function render(state) {
     fieldList.append(row);
 
     if (control === verificationField) {
-      // Place CAPTCHA after its label and before the corresponding input.
-      imageList.classList.remove("mt-4");
-      row.insertBefore(imageList, row.lastElementChild);
+      const input = row.lastElementChild;
+      const inputWrapper = document.createElement("div");
+      inputWrapper.className = "relative min-w-0";
+      input.classList.add("pr-32");
+      imageList.className =
+        "pointer-events-none absolute inset-y-0 right-2 flex items-center empty:hidden";
+      inputWrapper.append(input, imageList);
+      row.append(inputWrapper);
     }
   }
 
   if (!verificationField) {
-    // Keep the image near the inputs if the upstream field is unrecognized.
-    imageList.classList.add("mt-4");
+    // Keep unmatched or multi-image challenges visible below the fields.
+    imageList.className = "mt-4 flex flex-wrap gap-3 empty:hidden";
     bridgeForm.insertBefore(imageList, actionList);
   }
 
@@ -487,7 +495,7 @@ function render(state) {
     );
   }
 
-  void loadImages(state.page.images || []);
+  void loadImages(state.page.images || [], Boolean(verificationField));
   setStatus("valid", "請完成登入");
 
   const firstEditable = fieldList.querySelector(
