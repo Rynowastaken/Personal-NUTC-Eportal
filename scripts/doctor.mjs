@@ -34,7 +34,7 @@ const required = [
   "public/userscript/nutc-portal.user.js",
   "deploy/no-tunnel/Caddyfile.example",
   "deploy/no-tunnel/eportal.env.example",
-  "deploy/no-tunnel/eportal-bot.service.example",
+  "deploy/no-tunnel/personal-nutc-eportal.service.example",
 ];
 
 const major = Number(process.versions.node.split(".")[0]);

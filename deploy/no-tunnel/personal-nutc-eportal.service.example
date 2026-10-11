@@ -1,4 +1,4 @@
-# Copy to /etc/systemd/system/eportal-bot.service and replace the placeholders.
+# Copy to /etc/systemd/system/personal-nutc-eportal.service and replace the placeholders.
 #
 # The service intentionally binds the Node process to 127.0.0.1 via the
 # EnvironmentFile. Caddy is the only Internet-facing listener.
@@ -12,9 +12,9 @@ Wants=network-online.target
 Type=simple
 User=REPLACE_WITH_LINUX_USER
 Group=REPLACE_WITH_LINUX_GROUP
-WorkingDirectory=/REPLACE/WITH/eportal-bot
-EnvironmentFile=/etc/eportal-bot/eportal.env
-ExecStart=/usr/bin/node /REPLACE/WITH/eportal-bot/server.js
+WorkingDirectory=/REPLACE/WITH/Personal-NUTC-Eportal
+EnvironmentFile=/etc/personal-nutc-eportal/eportal.env
+ExecStart=/usr/bin/node /REPLACE/WITH/Personal-NUTC-Eportal/server.js
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20

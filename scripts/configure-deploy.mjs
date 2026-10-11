@@ -183,7 +183,7 @@ async function installBundle(bundle) {
   const targets = [
     {
       source: bundle.envFile,
-      target: "/etc/eportal-bot/eportal.env",
+      target: "/etc/personal-nutc-eportal/eportal.env",
       mode: 0o600,
     },
     {
@@ -193,7 +193,7 @@ async function installBundle(bundle) {
     },
     {
       source: bundle.serviceFile,
-      target: "/etc/systemd/system/eportal-bot.service",
+      target: "/etc/systemd/system/personal-nutc-eportal.service",
       mode: 0o644,
     },
   ];
@@ -215,7 +215,7 @@ async function installBundle(bundle) {
   console.log("Files installed. Review them before restarting services:");
   console.log("  sudo caddy validate --config /etc/caddy/Caddyfile");
   console.log("  sudo systemctl daemon-reload");
-  console.log("  sudo systemctl enable --now eportal-bot");
+  console.log("  sudo systemctl enable --now personal-nutc-eportal");
   console.log("  sudo systemctl reload caddy");
 }
 
@@ -415,7 +415,7 @@ Type=simple
 User=${linuxUser}
 Group=${linuxGroup}
 WorkingDirectory=${systemdValue(repoPath)}
-EnvironmentFile=/etc/eportal-bot/eportal.env
+EnvironmentFile=/etc/personal-nutc-eportal/eportal.env
 ExecStart=${systemdValue(nodePath)} ${systemdValue(path.join(repoPath, "server.js"))}
 Restart=on-failure
 RestartSec=3
@@ -429,7 +429,7 @@ WantedBy=multi-user.target
 
   const envFile = path.join(outputDir, "eportal.env");
   const caddyFile = path.join(outputDir, "Caddyfile");
-  const serviceFile = path.join(outputDir, "eportal-bot.service");
+  const serviceFile = path.join(outputDir, "personal-nutc-eportal.service");
   const summaryFile = path.join(outputDir, "README.txt");
 
   await fs.mkdir(outputDir, { recursive: true, mode: 0o700 });
@@ -460,19 +460,19 @@ Cloudflare configuration still required:
        ${keyPath}
 
 Install generated files:
-  sudo cp ${envFile} /etc/eportal-bot/eportal.env
+  sudo cp ${envFile} /etc/personal-nutc-eportal/eportal.env
   sudo cp ${caddyFile} /etc/caddy/Caddyfile
-  sudo cp ${serviceFile} /etc/systemd/system/eportal-bot.service
+  sudo cp ${serviceFile} /etc/systemd/system/personal-nutc-eportal.service
 
 Then:
   sudo caddy validate --config /etc/caddy/Caddyfile
   sudo systemctl daemon-reload
-  sudo systemctl enable --now eportal-bot
+  sudo systemctl enable --now personal-nutc-eportal
   sudo systemctl reload caddy
 
 Verify app environment:
   set -a
-  source /etc/eportal-bot/eportal.env
+  source /etc/personal-nutc-eportal/eportal.env
   set +a
   npm run deploy:check
 `;

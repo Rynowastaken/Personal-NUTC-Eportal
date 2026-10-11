@@ -20,6 +20,14 @@ public/userscript/nutc-portal.user.js
 
 安裝到支援 userscript 的管理器。
 
+官方 GitHub 原始碼安裝網址：
+
+```text
+https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/nutc-portal.user.js
+```
+
+如果是舊 repository 安裝的 userscript，更新後請確認沒有同時啟用兩份腳本，詳見 [遷移指南](migration.md)。
+
 userscript metadata 已包含 `@updateURL` / `@downloadURL`，支援自動更新的 userscript manager 可自行檢查新版。
 
 ## Mobile flow
