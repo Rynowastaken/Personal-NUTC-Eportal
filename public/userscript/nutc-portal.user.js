@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         NUTC Portal Bridge
-// @namespace    https://github.com/Rynowastaken/eportal-bot
-// @version      0.4.0
+// @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
+// @version      0.4.1
 // @description  Detect official NUTC ePortal login and notify the NUTC Portal dashboard.
 // @author       Rynowastaken
 // @match        https://eportal.nutc.edu.tw/*
 // @run-at       document-idle
 // @grant        none
 // @noframes
-// @updateURL    https://raw.githubusercontent.com/Rynowastaken/eportal-bot/main/public/userscript/nutc-portal.user.js
-// @downloadURL  https://raw.githubusercontent.com/Rynowastaken/eportal-bot/main/public/userscript/nutc-portal.user.js
+// @updateURL    https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/nutc-portal.user.js
+// @downloadURL  https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/nutc-portal.user.js
 // ==/UserScript==
 
 (() => {
