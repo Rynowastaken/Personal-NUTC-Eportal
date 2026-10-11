@@ -38,7 +38,7 @@
 - 一台能上網的電腦（本機或 server 都行）
 
 ```bash
-git clone https://github.com/Rynowastaken/eportal-bot.git
+git clone https://github.com/Rynowastaken/Personal-NUTC-Eportal.git
 cd eportal-bot
 
 npm install
