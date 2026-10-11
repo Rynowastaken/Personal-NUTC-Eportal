@@ -5,6 +5,7 @@ import {
   getWeekCalendar,
   parseNationalCalendarYear,
   resolveCalendarDay,
+  scheduleDisplayWeekDateKeys,
   taipeiWeekDateKeys,
 } from "../src/holiday-calendar.js";
 import {
@@ -26,6 +27,38 @@ test("Taipei Monday-to-Sunday dates handle UTC offset and year rollover", () => 
     "2027-01-02",
     "2027-01-03",
   ]);
+});
+
+test("weekday-only schedule advances to next week on Taipei weekends", () => {
+  const weekdayClasses = [{
+    days: [{ name: "Math" }, {}, {}, {}, { name: "Friday" }, {}, {}],
+  }];
+  const friday = new Date("2026-10-09T12:00:00Z");
+  const saturday = new Date("2026-10-10T00:10:00Z");
+  const sunday = new Date("2026-10-11T12:00:00Z");
+
+  assert.equal(scheduleDisplayWeekDateKeys(friday, weekdayClasses)[0], "2026-10-05");
+  assert.equal(scheduleDisplayWeekDateKeys(saturday, weekdayClasses)[0], "2026-10-12");
+  assert.equal(scheduleDisplayWeekDateKeys(sunday, weekdayClasses)[0], "2026-10-12");
+  assert.equal(scheduleDisplayWeekDateKeys(new Date("2026-10-12T00:00:00Z"), weekdayClasses)[0], "2026-10-12");
+});
+
+test("weekend classes stay in the current school week until their last day", () => {
+  const sundayClasses = [{ days: [{ name: "Mon" }, {}, {}, {}, {}, {}, { name: "Sun" }] }];
+  const saturdayClasses = [{ days: [{ name: "Mon" }, {}, {}, {}, {}, { name: "Sat" }, {}] }];
+
+  assert.equal(scheduleDisplayWeekDateKeys(new Date("2026-10-10T12:00:00Z"), sundayClasses)[0], "2026-10-05");
+  assert.equal(scheduleDisplayWeekDateKeys(new Date("2026-10-11T12:00:00Z"), sundayClasses)[0], "2026-10-05");
+  assert.equal(scheduleDisplayWeekDateKeys(new Date("2026-10-11T12:00:00Z"), saturdayClasses)[0], "2026-10-12");
+});
+
+test("upcoming school week handles year rollover in Taipei", () => {
+  const weekdayClasses = [{ days: [{ name: "Mon" }] }];
+  assert.deepEqual(
+    scheduleDisplayWeekDateKeys(new Date("2027-01-02T04:00:00Z"), weekdayClasses),
+    ["2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07",
+      "2027-01-08", "2027-01-09", "2027-01-10"],
+  );
 });
 
 test("national calendar parses full-year JSON and rejects incomplete data", () => {
