@@ -58,7 +58,7 @@ It validates the answers and generates a private deployment bundle under:
 .deploy/
 ├── Caddyfile
 ├── eportal.env
-├── eportal-bot.service
+├── personal-nutc-eportal.service
 └── README.txt
 ```
 
@@ -75,9 +75,9 @@ sudo npm run deploy:configure -- --install
 The install mode backs up existing target files before writing:
 
 ```text
-/etc/eportal-bot/eportal.env
+/etc/personal-nutc-eportal/eportal.env
 /etc/caddy/Caddyfile
-/etc/systemd/system/eportal-bot.service
+/etc/systemd/system/personal-nutc-eportal.service
 ```
 
 It deliberately does not create Cloudflare DNS, Access policies, or Origin CA
@@ -89,7 +89,8 @@ the exact Cloudflare-side checklist for those remaining steps.
 Use the production environment template:
 
 ```bash
-cp deploy/no-tunnel/eportal.env.example /etc/eportal-bot/eportal.env
+sudo install -d -m 700 /etc/personal-nutc-eportal
+sudo install -m 600 deploy/no-tunnel/eportal.env.example /etc/personal-nutc-eportal/eportal.env
 ```
 
 Edit the Cloudflare values, but keep:
@@ -175,7 +176,7 @@ Copy:
 - the team domain, e.g. `https://my-team.cloudflareaccess.com`
 - the application's **Application Audience (AUD) Tag**
 
-into `/etc/eportal-bot/eportal.env`.
+into `/etc/personal-nutc-eportal/eportal.env`.
 
 ## 5. Leave only /login public
 
@@ -207,27 +208,27 @@ The Node application independently verifies the Access JWT on those protected ro
 A service template is included at:
 
 ```text
-deploy/no-tunnel/eportal-bot.service.example
+deploy/no-tunnel/personal-nutc-eportal.service.example
 ```
 
 Copy it to:
 
 ```text
-/etc/systemd/system/eportal-bot.service
+/etc/systemd/system/personal-nutc-eportal.service
 ```
 
 and replace:
 
 - `REPLACE_WITH_LINUX_USER`
 - `REPLACE_WITH_LINUX_GROUP`
-- `/REPLACE/WITH/eportal-bot`
+- `/REPLACE/WITH/Personal-NUTC-Eportal`
 
 Then:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now eportal-bot
-sudo systemctl status eportal-bot
+sudo systemctl enable --now personal-nutc-eportal
+sudo systemctl status personal-nutc-eportal
 ```
 
 Because the production environment sets `EPORTAL_RESTART_MODE=exit`, the Dashboard's
