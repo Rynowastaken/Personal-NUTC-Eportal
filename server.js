@@ -15,7 +15,10 @@ import {
   clearClassScheduleCache,
   getClassSchedule,
 } from "./src/class-schedule.js";
-import { getWeekCalendar } from "./src/holiday-calendar.js";
+import {
+  getWeekCalendar,
+  scheduleDisplayWeekDateKeys,
+} from "./src/holiday-calendar.js";
 import {
   clearAbsenceListCache,
   getAbsenceList,
@@ -755,10 +758,15 @@ const server = http.createServer(async (req, res) => {
         const force = /^(1|true|yes)$/i.test(
           String(url.searchParams.get("refresh") || ""),
         );
-        const [schedule, calendar] = await Promise.all([
-          getClassSchedule({ force }),
-          getWeekCalendar(new Date(), dashboardPreferenceStore.get().academicProgram),
-        ]);
+        const schedule = await getClassSchedule({ force });
+        const weekStart = scheduleDisplayWeekDateKeys(
+          new Date(),
+          schedule.periods,
+        )[0];
+        const calendar = await getWeekCalendar(
+          new Date(`${weekStart}T12:00:00Z`),
+          dashboardPreferenceStore.get().academicProgram,
+        );
         sendJson(res, 200, { ...schedule, calendar });
       } catch (error) {
         const status =
