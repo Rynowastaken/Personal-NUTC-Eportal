@@ -276,6 +276,23 @@ function makeField(control) {
   return row;
 }
 
+// The upstream ePortal form is dynamic, so locate the verification input by
+// its label/metadata instead of assuming it is always the last input.
+function isVerificationField(control) {
+  if (control.type === "checkbox" || control.type === "radio") return false;
+
+  const hint = [
+    control.label,
+    control.name,
+    control.placeholder,
+    control.autocomplete,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return /captcha|verification|verify|security[\s_-]*code|驗證碼|驗証碼|圖形碼|校驗碼/i.test(hint);
+}
+
 function makeAction(control, index) {
   const button = document.createElement("button");
   button.type = "button";
@@ -423,8 +440,25 @@ function render(state) {
     else fields.push(control);
   }
 
+  const verificationField = (state.page.images || []).length
+    ? fields.find(isVerificationField)
+    : null;
+
   for (const control of fields) {
-    fieldList.append(makeField(control));
+    const row = makeField(control);
+    fieldList.append(row);
+
+    if (control === verificationField) {
+      // Place CAPTCHA after its label and before the corresponding input.
+      imageList.classList.remove("mt-4");
+      row.insertBefore(imageList, row.lastElementChild);
+    }
+  }
+
+  if (!verificationField) {
+    // Keep the image near the inputs if the upstream field is unrecognized.
+    imageList.classList.add("mt-4");
+    bridgeForm.insertBefore(imageList, actionList);
   }
 
   actions.forEach((control, index) => {
