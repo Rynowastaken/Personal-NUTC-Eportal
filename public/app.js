@@ -831,6 +831,11 @@ function taipeiDayIndex() {
   }[taipeiNowParts().weekday] ?? 0;
 }
 
+function taipeiTodayKey() {
+  const parts = taipeiNowParts();
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function taipeiMinutesNow() {
   const parts = taipeiNowParts();
   return Number(parts.hour || 0) * 60 + Number(parts.minute || 0);
@@ -1027,17 +1032,27 @@ function renderScheduleGrid() {
     "週六",
     "週日",
   ];
-  const weekDates = taipeiWeekDates();
   const calendarDays = Array.isArray(classScheduleData.calendar?.days)
     ? classScheduleData.calendar.days
     : [];
-  const calendarForDay = (dayIndex) => {
-    const info = calendarDays[dayIndex];
-    return info?.date?.slice(5).replace("-", "/") === weekDates[dayIndex]
-      ? info
-      : null;
-  };
-  const today = taipeiDayIndex();
+  const hasCalendarWeek = calendarDays.length === 7 &&
+    calendarDays.every((day) => /^\d{4}-\d{2}-\d{2}$/.test(day?.date || ""));
+  const dateKeys = hasCalendarWeek
+    ? calendarDays.map((day) => day.date)
+    : [];
+  const weekDates = hasCalendarWeek
+    ? dateKeys.map((date) => date.slice(5).replace("-", "/"))
+    : taipeiWeekDates();
+  const calendarForDay = (dayIndex) =>
+    hasCalendarWeek ? calendarDays[dayIndex] : null;
+  const today = hasCalendarWeek
+    ? dateKeys.indexOf(taipeiTodayKey())
+    : taipeiDayIndex();
+  const scheduleHeading = document.querySelector("#scheduleHeading");
+  if (scheduleHeading) {
+    scheduleHeading.textContent =
+      weekDates[0] !== taipeiWeekDates()[0] ? "下週課表" : "本週課表";
+  }
   const nowMinutes = taipeiMinutesNow();
   const palette = window.NutcTheme?.palette?.() || ["#f0a8c8"];
   const rgba = window.NutcTheme?.rgba || ((color) => color);
@@ -1332,6 +1347,23 @@ function resetClassScheduleForLoggedOutState() {
 
 scheduleRefreshButton?.addEventListener("click", () => {
   void loadClassSchedule({ force: true });
+});
+
+// Date labels and holiday annotations must advance even in a tab left open
+// across midnight (including when the browser wakes from sleep).
+let lastScheduleTaipeiDate = taipeiTodayKey();
+function checkScheduleDateRollover() {
+  const currentDate = taipeiTodayKey();
+  if (currentDate === lastScheduleTaipeiDate || scheduleRefreshButton?.disabled) {
+    return;
+  }
+  lastScheduleTaipeiDate = currentDate;
+  if (classScheduleData) void loadClassSchedule();
+}
+
+window.setInterval(checkScheduleDateRollover, 60_000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) checkScheduleDateRollover();
 });
 
 function absenceItemAccent(item, index) {
@@ -1965,10 +1997,10 @@ themeApply.addEventListener("click", async () => {
       }
 
       currentAcademicProgram = data.academicProgram;
-      if (classScheduleData && data.calendar) {
-        classScheduleData.calendar = data.calendar;
-        renderScheduleGrid();
-        updateScheduleMeta(classScheduleData);
+      if (classScheduleData) {
+        // Re-fetch the calendar for the displayed school week, not the
+        // unshifted current week returned by the preference endpoint.
+        void loadClassSchedule();
       }
     }
 
