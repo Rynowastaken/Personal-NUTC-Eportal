@@ -1,5 +1,17 @@
 const motion = window.NutcMotion;
 const moduleGrid = document.querySelector("#moduleGrid");
+const customLinksGrid = document.querySelector("#customLinksGrid");
+const manageCustomLinks = document.querySelector("#manageCustomLinks");
+const customLinksDialog = document.querySelector("#customLinksDialog");
+const customLinksClose = document.querySelector("#customLinksClose");
+const customLinkForm = document.querySelector("#customLinkForm");
+const customLinkTitle = document.querySelector("#customLinkTitle");
+const customLinkUrl = document.querySelector("#customLinkUrl");
+const customLinkPinned = document.querySelector("#customLinkPinned");
+const customLinkStatus = document.querySelector("#customLinkStatus");
+const customLinkSave = document.querySelector("#customLinkSave");
+const customLinkCancelEdit = document.querySelector("#customLinkCancelEdit");
+const customLinksManager = document.querySelector("#customLinksManager");
 const moduleLoadingModules = document.querySelector("#moduleLoadingModules");
 const moduleLoadingPortal = document.querySelector("#moduleLoadingPortal");
 const moduleLoadingDetail = document.querySelector("#moduleLoadingDetail");
@@ -78,6 +90,9 @@ const debugUpdateStatus = document.querySelector("#debugUpdateStatus");
 const debugUpdateIcon = document.querySelector("#debugUpdateIcon");
 
 let modulesCache = [];
+let customLinksCache = [];
+let editingCustomLinkId = null;
+let customLinkBusy = false;
 let stagedThemeSettings = null;
 let pendingBackgroundFile = null;
 let lastStatusIconKind = "";
@@ -183,6 +198,9 @@ async function loadServerAccountProfile() {
     currentAcademicProgram = ["day", "evening", "weekend"].includes(
       preferences.academicProgram,
     ) ? preferences.academicProgram : "day";
+    customLinksCache = Array.isArray(preferences.customLinks)
+      ? preferences.customLinks
+      : [];
     let account = preferences.account || {
       initialized: false,
       username: "User",
@@ -223,6 +241,8 @@ async function loadServerAccountProfile() {
     };
   }
 
+  renderCustomLinks();
+  renderCustomLinksManager();
   return currentAccountProfile;
 }
 
@@ -1717,6 +1737,225 @@ function renderModules(modules, { animate = false } = {}) {
   }
 }
 
+// Shortcuts only navigate in the user's own browser; the server never fetches them.
+function safeCustomLinkUrl(raw) {
+  try {
+    const url = new URL(raw);
+    return ["https:", "http:"].includes(url.protocol) &&
+      url.hostname && !url.username && !url.password
+      ? url.href
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function renderCustomLinks() {
+  if (!customLinksGrid) return;
+  customLinksGrid.replaceChildren();
+  const pinned = customLinksCache.filter((link) =>
+    link.pinned && safeCustomLinkUrl(link.url),
+  );
+
+  if (!pinned.length) {
+    const empty = document.createElement("p");
+    empty.className = "rounded-2xl border border-dashed border-white/[.12] bg-white/[.025] p-4 text-sm text-[var(--muted)] sm:col-span-2";
+    empty.textContent = "尚未釘選捷徑。點選「新增 / 管理捷徑」加入常用網頁。";
+    customLinksGrid.append(empty);
+    return;
+  }
+
+  pinned.forEach((link, index) => {
+    const accent = moduleAccent(index + modulesCache.length);
+    const rgba = window.NutcTheme?.rgba || ((color) => color);
+    const card = document.createElement("a");
+    card.href = safeCustomLinkUrl(link.url);
+    card.target = "_blank";
+    card.rel = "noopener noreferrer";
+    card.referrerPolicy = "no-referrer";
+    card.className =
+      "group relative flex min-h-[108px] w-full items-center gap-4 overflow-hidden rounded-[20px] border p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 hover:-translate-y-px hover:bg-white/[.075] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
+    card.style.borderColor = rgba(accent, 0.18);
+    card.style.backgroundColor = "rgba(12,10,14,.34)";
+    card.setAttribute("aria-label", "開啟自訂捷徑：" + link.title + "（新分頁）");
+
+    const icon = document.createElement("span");
+    icon.className = "grid h-12 w-12 shrink-0 place-items-center rounded-[15px] border";
+    icon.style.color = accent;
+    icon.style.backgroundColor = rgba(accent, 0.1);
+    icon.style.borderColor = rgba(accent, 0.2);
+    icon.innerHTML = '<i data-lucide="link-2" class="h-6 w-6" aria-hidden="true"></i>';
+
+    const copy = document.createElement("div");
+    copy.className = "min-w-0 flex-1";
+    const title = document.createElement("strong");
+    title.className = "block truncate text-base font-semibold text-[var(--foreground)]";
+    title.textContent = link.title;
+    const description = document.createElement("p");
+    description.className = "mt-1 truncate text-xs font-medium text-[var(--muted)]";
+    description.textContent = new URL(link.url).hostname;
+    copy.append(title, description);
+
+    const arrow = document.createElement("span");
+    arrow.className = "shrink-0 text-[var(--muted)] transition group-hover:translate-x-0.5";
+    arrow.innerHTML = '<i data-lucide="external-link" class="h-5 w-5" aria-hidden="true"></i>';
+    card.append(icon, copy, arrow);
+    customLinksGrid.append(card);
+  });
+
+  renderIcons();
+}
+
+function setCustomLinkStatus(message = "", error = false) {
+  customLinkStatus.textContent = message;
+  customLinkStatus.classList.toggle("text-[#f4a0a5]", error);
+  customLinkStatus.classList.toggle("text-[var(--muted)]", !error);
+}
+
+function resetCustomLinkForm() {
+  editingCustomLinkId = null;
+  customLinkForm.reset();
+  customLinkPinned.checked = true;
+  customLinkSave.textContent = "新增捷徑";
+  customLinkCancelEdit.classList.add("hidden");
+}
+
+function customLinkAction(label, handler) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.disabled = customLinkBusy;
+  button.className =
+    "min-h-9 shrink-0 rounded-lg border border-white/[.12] bg-white/[.06] px-2.5 text-xs font-semibold text-[var(--muted)] transition hover:bg-white/[.12] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:opacity-50";
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function renderCustomLinksManager() {
+  if (!customLinksManager) return;
+  customLinksManager.replaceChildren();
+  if (!customLinksCache.length) {
+    const empty = document.createElement("p");
+    empty.className = "rounded-xl bg-white/[.035] p-3 text-sm text-[var(--muted)]";
+    empty.textContent = "尚無自訂捷徑（最多 30 個）。";
+    customLinksManager.append(empty);
+    return;
+  }
+
+  for (const link of customLinksCache) {
+    const row = document.createElement("div");
+    row.className = "flex flex-wrap items-center gap-2 rounded-xl border border-white/[.10] bg-white/[.04] p-3";
+
+    const details = document.createElement("div");
+    details.className = "min-w-0 flex-[1_1_180px]";
+    const name = document.createElement("strong");
+    name.className = "block truncate text-sm font-semibold";
+    name.textContent = link.title;
+    const url = document.createElement("p");
+    url.className = "mt-1 truncate text-xs text-[var(--muted)]";
+    url.textContent = link.url;
+    url.title = link.url;
+    details.append(name, url);
+
+    const actions = document.createElement("div");
+    actions.className = "flex flex-wrap items-center gap-1.5";
+    actions.append(
+      customLinkAction(link.pinned ? "取消釘選" : "釘選", () => {
+        void mutateCustomLink("PATCH", link.id, { pinned: !link.pinned });
+      }),
+      customLinkAction("編輯", () => {
+        editingCustomLinkId = link.id;
+        customLinkTitle.value = link.title;
+        customLinkUrl.value = link.url;
+        customLinkPinned.checked = link.pinned;
+        customLinkSave.textContent = "儲存修改";
+        customLinkCancelEdit.classList.remove("hidden");
+        setCustomLinkStatus("");
+        customLinkTitle.focus();
+      }),
+      customLinkAction("刪除", () => {
+        if (window.confirm("確定刪除「" + link.title + "」嗎？")) {
+          void mutateCustomLink("DELETE", link.id);
+        }
+      }),
+    );
+    row.append(details, actions);
+    customLinksManager.append(row);
+  }
+}
+
+async function mutateCustomLink(method, id = "", body = null) {
+  if (customLinkBusy) return false;
+  customLinkBusy = true;
+  customLinkSave.disabled = true;
+  renderCustomLinksManager();
+  setCustomLinkStatus("正在儲存…");
+
+  try {
+    const urlPath = "/api/preferences/custom-links" +
+      (id ? "/" + encodeURIComponent(id) : "");
+    const response = await fetch(urlPath, {
+      method,
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        ...(body === null ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === null ? {} : { body: JSON.stringify(body) }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "儲存失敗（" + response.status + "）");
+    }
+    customLinksCache = Array.isArray(data.customLinks) ? data.customLinks : [];
+    renderCustomLinks();
+    resetCustomLinkForm();
+    setCustomLinkStatus("已儲存，釘選的捷徑會顯示在首頁。");
+    return true;
+  } catch (error) {
+    setCustomLinkStatus(error?.message || "無法儲存捷徑。", true);
+    return false;
+  } finally {
+    customLinkBusy = false;
+    customLinkSave.disabled = false;
+    renderCustomLinksManager();
+  }
+}
+
+manageCustomLinks?.addEventListener("click", () => {
+  setCustomLinkStatus("");
+  resetCustomLinkForm();
+  renderCustomLinksManager();
+  customLinksDialog.showModal();
+  customLinkTitle.focus();
+});
+customLinksClose?.addEventListener("click", () => customLinksDialog.close());
+customLinksDialog?.addEventListener("click", (event) => {
+  if (event.target === customLinksDialog) customLinksDialog.close();
+});
+customLinksDialog?.addEventListener("close", () => resetCustomLinkForm());
+customLinkCancelEdit?.addEventListener("click", () => {
+  resetCustomLinkForm();
+  setCustomLinkStatus("");
+});
+
+customLinkForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const url = customLinkUrl.value.trim();
+  if (!safeCustomLinkUrl(url)) {
+    setCustomLinkStatus("請輸入有效的 http:// 或 https:// 網址（不可包含帳密）。", true);
+    customLinkUrl.focus();
+    return;
+  }
+  const body = {
+    title: customLinkTitle.value.trim(),
+    url,
+    pinned: customLinkPinned.checked,
+  };
+  void mutateCustomLink(editingCustomLinkId ? "PATCH" : "POST", editingCustomLinkId || "", body);
+});
+
 function showLoadError(message) {
   moduleGrid.replaceChildren();
 
@@ -2349,6 +2588,7 @@ window.addEventListener("nutc-theme-change", () => {
   if (modulesCache.length) renderModules(modulesCache, { animate: false });
   if (classScheduleData) renderScheduleGrid();
   if (absenceListData) renderAbsenceList();
+  renderCustomLinks();
 });
 
 if (typeof ResizeObserver !== "undefined") {
