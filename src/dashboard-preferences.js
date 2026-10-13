@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +35,69 @@ function cleanUsername(value) {
     );
   }
   return username;
+}
+
+const MAX_CUSTOM_LINKS = 30;
+const CUSTOM_LINK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function linkError(message, statusCode = 400) {
+  return Object.assign(new Error(message), { statusCode });
+}
+
+export function validateCustomLink(payload, previous = null) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw linkError("Custom link details must be an object.");
+  }
+
+  const titleValue = Object.hasOwn(payload, "title") ? payload.title : previous?.title;
+  if (typeof titleValue !== "string" || !titleValue.trim() ||
+      titleValue.trim().length > 60 || /[\u0000-\u001f\u007f]/.test(titleValue)) {
+    throw linkError("Link name must contain 1 to 60 characters.");
+  }
+
+  const raw = Object.hasOwn(payload, "url") ? payload.url : previous?.url;
+  if (typeof raw !== "string" || !raw.trim() || raw.length > 2048 ||
+      /[\u0000-\u0020\u007f]/.test(raw)) {
+    throw linkError("Enter a valid HTTP or HTTPS link (up to 2048 characters).");
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw linkError("Enter a complete HTTP or HTTPS URL.");
+  }
+  if (!["https:", "http:"].includes(parsed.protocol) ||
+      !parsed.hostname || parsed.username || parsed.password) {
+    throw linkError("Only HTTP and HTTPS links without embedded credentials are supported.");
+  }
+
+  const pinned = Object.hasOwn(payload, "pinned")
+    ? payload.pinned
+    : previous?.pinned ?? true;
+  if (typeof pinned !== "boolean") {
+    throw linkError("Pinned must be true or false.");
+  }
+
+  return { title: titleValue.trim(), url: parsed.href, pinned };
+}
+
+function loadCustomLinks(links) {
+  if (!Array.isArray(links)) return [];
+  const seen = new Set();
+  const validated = [];
+  for (const item of links) {
+    if (validated.length >= MAX_CUSTOM_LINKS) break;
+    if (!CUSTOM_LINK_ID.test(item?.id || "") || seen.has(item.id)) continue;
+    try {
+      const values = validateCustomLink(item);
+      validated.push({ id: item.id, ...values });
+      seen.add(item.id);
+    } catch {
+      // Ignore malformed records without discarding the other preferences.
+    }
+  }
+  return validated;
 }
 
 function decodeImageDataUrl(value, kind) {
@@ -96,6 +160,7 @@ export class DashboardPreferenceStore {
         initialized: false,
         background: null,
       },
+      customLinks: [],
       updatedAt: null,
     };
     this.writeQueue = Promise.resolve();
@@ -144,6 +209,7 @@ export class DashboardPreferenceStore {
                 }
               : null,
         },
+        customLinks: loadCustomLinks(parsed?.customLinks),
         updatedAt:
           typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null,
       };
@@ -187,6 +253,7 @@ export class DashboardPreferenceStore {
           ? `/api/preferences/background?v=${encodeURIComponent(background.updatedAt)}`
           : "",
       },
+      customLinks: this.value.customLinks.map((link) => ({ ...link })),
       updatedAt: this.value.updatedAt,
     };
   }
@@ -213,6 +280,43 @@ export class DashboardPreferenceStore {
     return this.enqueue(async () => {
       if (this.value.academicProgram === validated) return this.get();
       this.value.academicProgram = validated;
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return this.get();
+    });
+  }
+
+  async addCustomLink(payload) {
+    return this.enqueue(async () => {
+      const values = validateCustomLink(payload);
+      if (this.value.customLinks.length >= MAX_CUSTOM_LINKS) {
+        throw linkError("You can save up to 30 custom links.");
+      }
+      this.value.customLinks.push({ id: randomUUID(), ...values });
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return this.get();
+    });
+  }
+
+  async updateCustomLink(id, payload) {
+    return this.enqueue(async () => {
+      const index = this.value.customLinks.findIndex((link) => link.id === id);
+      if (index < 0) throw linkError("Custom link not found.", 404);
+      const previous = this.value.customLinks[index];
+      const values = validateCustomLink(payload, previous);
+      this.value.customLinks[index] = { id, ...values };
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return this.get();
+    });
+  }
+
+  async removeCustomLink(id) {
+    return this.enqueue(async () => {
+      const index = this.value.customLinks.findIndex((link) => link.id === id);
+      if (index < 0) throw linkError("Custom link not found.", 404);
+      this.value.customLinks.splice(index, 1);
       this.value.updatedAt = new Date().toISOString();
       await this.persist();
       return this.get();
