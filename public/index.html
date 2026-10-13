@@ -10,6 +10,41 @@
     <script src="/vendor/lucide-1.24.0.min.js"></script>
 
     <style>
+      /*
+       * Dashboard utility controls match the connected-status pill: a
+       * readable neutral glass surface, inset accent icon, and rounded frame.
+       * Keep this style separate from modal actions and destructive buttons.
+       */
+      .dashboard-utility-button {
+        border: 1px solid rgba(255,255,255,.20);
+        background: rgba(68,65,68,.82);
+        color: var(--foreground);
+        box-shadow: 0 2px 10px rgba(0,0,0,.15);
+        backdrop-filter: blur(18px) saturate(170%);
+        -webkit-backdrop-filter: blur(18px) saturate(170%);
+        transition: transform 150ms ease, background-color 150ms ease,
+          border-color 150ms ease;
+      }
+      .dashboard-utility-button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        background: rgba(83,79,84,.91);
+        border-color: var(--primary-ring);
+      }
+      .dashboard-utility-button:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+      }
+      .dashboard-utility-button:disabled {
+        cursor: not-allowed;
+        opacity: .5;
+      }
+      .dashboard-utility-icon {
+        border: 1px solid var(--primary-ring);
+        background: var(--primary-soft);
+        color: var(--primary);
+      }
+    </style>
+    <style>
       /* Custom shortcuts use filled, theme-aware controls instead of near-invisible overlays. */
       .custom-link-control {
         background: #382d3b;
@@ -418,9 +453,11 @@
             <p class="mt-1 text-xs text-[var(--faint)]">釘選常用網頁，所有裝置共用。</p>
           </div>
           <button id="manageCustomLinks"
-            class="custom-link-control custom-link-control--accent inline-flex min-h-[42px] items-center gap-2 rounded-xl px-3.5 text-xs font-semibold"
+            class="dashboard-utility-button inline-flex min-h-[46px] shrink-0 items-center justify-center gap-2.5 rounded-[18px] px-2.5 pr-3.5 text-sm font-semibold tracking-[-0.015em]"
             type="button">
-            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+            <span class="dashboard-utility-icon grid h-8 w-8 shrink-0 place-items-center rounded-[11px]" aria-hidden="true">
+              <i data-lucide="plus" class="h-4 w-4"></i>
+            </span>
             <span>新增 / 管理捷徑</span>
           </button>
         </div>
@@ -448,12 +485,14 @@
 
             <button
               id="scheduleRefreshButton"
-              class="inline-flex min-h-[36px] shrink-0 items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.06] px-3 text-xs font-semibold text-[var(--muted)] transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-not-allowed disabled:opacity-45"
+              class="dashboard-utility-button inline-flex min-h-[46px] shrink-0 items-center justify-center gap-2.5 rounded-[18px] px-2.5 pr-3 text-sm font-semibold tracking-[-0.015em]"
               type="button"
               aria-label="重新整理課表"
               title="重新整理課表"
             >
-              <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              <span class="dashboard-utility-icon grid h-8 w-8 shrink-0 place-items-center rounded-[11px]" aria-hidden="true">
+                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              </span>
               <span class="hidden sm:inline">更新</span>
             </button>
           </div>
@@ -503,12 +542,14 @@
 
             <button
               id="absenceRefreshButton"
-              class="inline-flex min-h-[36px] shrink-0 items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.06] px-3 text-xs font-semibold text-[var(--muted)] transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-not-allowed disabled:opacity-45"
+              class="dashboard-utility-button inline-flex min-h-[46px] shrink-0 items-center justify-center gap-2.5 rounded-[18px] px-2.5 pr-3 text-sm font-semibold tracking-[-0.015em]"
               type="button"
               aria-label="重新整理缺曠紀錄"
               title="重新整理缺曠紀錄"
             >
-              <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              <span class="dashboard-utility-icon grid h-8 w-8 shrink-0 place-items-center rounded-[11px]" aria-hidden="true">
+                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              </span>
               <span class="hidden sm:inline">更新</span>
             </button>
           </div>
