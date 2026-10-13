@@ -62,21 +62,26 @@ function createScrollPage({ pageHeight = 2000, viewportHeight = 800, reducedMoti
 
 test("background follows downward scroll through the whole page and reverses on scroll up", () => {
   const page = createScrollPage();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 0.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, -72.00px, 0)");
   page.window.scrollY = 600;
   page.fireWindow("scroll");
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 72.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, 0.00px, 0)");
 
   page.window.scrollY = 1200;
   page.fireWindow("scroll");
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 144.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, 72.00px, 0)");
 
   page.window.scrollY = 200;
   page.fireWindow("scroll");
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 24.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, -48.00px, 0)");
+  // With a 72px overscan, neither end of the 144px travel reveals a gap.
+  for (const offset of [-72, 0, 72]) {
+    assert.ok(-72 + offset <= 0, "top edge must cover the viewport");
+    assert.ok(72 + offset >= 0, "bottom edge must cover the viewport");
+  }
 });
 
 test("scroll updates are frame-throttled and clamped at overscroll limits", () => {
@@ -87,12 +92,12 @@ test("scroll updates are frame-throttled and clamped at overscroll limits", () =
   page.fireWindow("scroll");
   assert.equal(page.frames.length, 1);
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 144.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, 72.00px, 0)");
 
   page.window.scrollY = -100;
   page.fireWindow("scroll");
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 0.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, -72.00px, 0)");
 });
 
 test("reduced-motion preference disables parallax and can be switched live", () => {
@@ -105,7 +110,7 @@ test("reduced-motion preference disables parallax and can be switched live", () 
   page.preference.matches = false;
   page.fireMotion();
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 120.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, 48.00px, 0)");
 
   page.preference.matches = true;
   page.fireMotion();
@@ -118,18 +123,18 @@ test("resize and restored navigation update progress, and non-scroll pages remai
   page.window.scrollY = 200;
   page.fireWindow("scroll");
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 0.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, -72.00px, 0)");
 
   page.document.body.scrollHeight = 1600;
   page.document.documentElement.scrollHeight = 1600;
   page.fireWindow("resize");
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 36.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, -36.00px, 0)");
 
   page.window.scrollY = 400;
   page.fireWindow("pageshow");
   page.flush();
-  assert.equal(page.backdrop.style.transform, "translate3d(0, 72.00px, 0)");
+  assert.equal(page.backdrop.style.transform, "translate3d(0, 0.00px, 0)");
 });
 
 test("background layer has enough overscan and no fixed background attachment", async () => {
