@@ -25,7 +25,7 @@
 - 自動 keepalive，定時檢查並延續 ePortal session
 - 自訂頭像、顯示名稱、背景圖片
 - 自訂主題配色（深淺色、色彩飽和度、亮度）
-- 自訂常用網頁捷徑：新增、編輯、釘選／取消釘選、刪除（支援 Google Apps Script 網頁）
+- 自訂常用網頁捷徑：新增、編輯、釘選／取消釘選、刪除（支援 HTTP(S) 網頁）
 - 桌面與手機 RWD
 - 可選擇用 Cloudflare Access 保護公開部署
 
@@ -61,7 +61,7 @@ npm start
 
 ## 自訂網頁捷徑
 
-Dashboard 的「自訂捷徑」區塊按 **新增 / 管理捷徑**，填寫網頁名稱及完整的 `https://` 或 `http://` URL，例如 Google Apps Script 的 `https://script.google.com/macros/s/.../exec`。
+Dashboard 的「自訂捷徑」區塊按 **新增 / 管理捷徑**，填寫網頁名稱及完整的 `https://` 或 `http://` URL，例如 `https://example.com/`。
 
 - 勾選「釘選到首頁」時，會在 Dashboard 顯示可點擊的捷徑卡片。外部網站會以新分頁開啟，不經過 ePortal SSO 代理。
 - 在管理視窗可編輯名稱／網址、釘選／取消釘選，或刪除捷徑。未釘選的網址仍會保留在管理清單。
