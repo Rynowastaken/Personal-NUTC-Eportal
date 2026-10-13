@@ -4,8 +4,8 @@
   const backdrop = document.getElementById("portalBackdrop");
   if (!backdrop) return;
 
-  // The element overflows the viewport by 72px at both ends. Moving it by
-  // 0–144px follows downward scrolling without showing uncovered edges.
+  // The element overflows the viewport by 72px at both ends. Its motion
+  // stays between -72px and +72px so the screen is covered at every scroll.
   const TRAVEL_PX = 144;
   const motionPreference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   let scheduled = false;
@@ -30,7 +30,7 @@
       : 0;
 
     backdrop.style.transform =
-      "translate3d(0, " + (TRAVEL_PX * progress).toFixed(2) + "px, 0)";
+      "translate3d(0, " + (TRAVEL_PX * (progress - 0.5)).toFixed(2) + "px, 0)";
   }
 
   function schedulePosition() {
