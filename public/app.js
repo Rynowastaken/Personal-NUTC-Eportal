@@ -1664,62 +1664,83 @@ function moduleAccent(index) {
   return palette[order[index % order.length]] || palette[0] || "#f0a8c8";
 }
 
+// Built-in modules and pinned external links use the exact same visual system.
+// Their interaction differs (button vs external anchor), not their card chrome.
+function createDashboardModuleCard({
+  tag = "button",
+  accent,
+  iconName,
+  titleText,
+  descriptionText,
+  trailingIcon = "arrow-right",
+}) {
+  const rgba = window.NutcTheme?.rgba || ((color) => color);
+  const card = document.createElement(tag);
+  if (tag === "button") card.type = "button";
+  card.className =
+    "group relative flex min-h-[108px] w-full items-center gap-4 overflow-hidden rounded-[20px] border p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 ease-soft-out hover:-translate-y-px hover:bg-white/[.075] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:p-5";
+  card.style.borderColor = rgba(accent, 0.18);
+  card.style.background =
+    "linear-gradient(110deg, " + rgba(accent, 0.06) +
+    " 0%, rgba(22,16,28,.08) 42%, rgba(12,10,14,.34) 100%)";
+
+  const icon = document.createElement("span");
+  icon.className =
+    "relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[11px] border transition duration-150 group-hover:-translate-y-px";
+  icon.style.color = accent;
+  icon.style.backgroundColor = rgba(accent, 0.12);
+  icon.style.borderColor = rgba(accent, 0.3);
+  const iconGlyph = document.createElement("i");
+  iconGlyph.setAttribute("data-lucide", iconName);
+  iconGlyph.className = "h-[20px] w-[20px]";
+  icon.append(iconGlyph);
+
+  const copy = document.createElement("span");
+  copy.className = "relative z-10 min-w-0 flex-1";
+  const title = document.createElement("h3");
+  title.className =
+    "truncate text-base font-semibold tracking-[-0.02em] text-[var(--foreground)] sm:text-[17px]";
+  title.textContent = titleText;
+  const description = document.createElement("p");
+  description.className =
+    "mt-1 line-clamp-2 text-[13px] font-medium leading-5 text-[var(--muted)]";
+  description.textContent = descriptionText;
+  copy.append(title, description);
+
+  const arrow = document.createElement("span");
+  arrow.className =
+    "relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition duration-150 group-hover:translate-x-0.5";
+  arrow.style.color = accent;
+  arrow.style.backgroundColor = rgba(accent, 0.07);
+  arrow.style.borderColor = rgba(accent, 0.18);
+  const arrowGlyph = document.createElement("i");
+  arrowGlyph.setAttribute("data-lucide", trailingIcon);
+  arrowGlyph.setAttribute("aria-hidden", "true");
+  arrowGlyph.className = "h-[18px] w-[18px]";
+  arrow.append(arrowGlyph);
+
+  card.append(icon, copy, arrow);
+  card.addEventListener("mouseenter", () => {
+    card.style.borderColor = rgba(accent, 0.3);
+  });
+  card.addEventListener("mouseleave", () => {
+    card.style.borderColor = rgba(accent, 0.18);
+  });
+  return card;
+}
+
 function renderModules(modules, { animate = false } = {}) {
   modulesCache = modules;
   moduleGrid.replaceChildren();
 
   modules.forEach((module, index) => {
-    const accent = moduleAccent(index);
-    const rgba = window.NutcTheme?.rgba || ((color) => color);
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className =
-      "group relative flex min-h-[108px] w-full items-center gap-4 overflow-hidden rounded-[20px] border p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 ease-soft-out hover:-translate-y-px hover:bg-white/[.075] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:p-5";
-    button.style.borderColor = rgba(accent, 0.18);
-    button.style.background =
-      `linear-gradient(110deg, ${rgba(accent, 0.06)} 0%, rgba(22,16,28,.08) 42%, rgba(12,10,14,.34) 100%)`;
-    button.setAttribute("aria-label", `開啟 ${module.name}`);
-
-    const icon = document.createElement("span");
-    icon.className =
-      "relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[11px] border transition duration-150 group-hover:-translate-y-px";
-    icon.style.color = accent;
-    icon.style.backgroundColor = rgba(accent, 0.12);
-    icon.style.borderColor = rgba(accent, 0.3);
-    icon.innerHTML =
-      `<i data-lucide="${module.icon || "route"}" class="h-[20px] w-[20px]"></i>`;
-
-    const copy = document.createElement("span");
-    copy.className = "relative z-10 min-w-0 flex-1";
-
-    const title = document.createElement("h3");
-    title.className =
-      "truncate text-base font-semibold tracking-[-0.02em] text-[var(--foreground)] sm:text-[17px]";
-    title.textContent = module.shortName;
-
-    const description = document.createElement("p");
-    description.className =
-      "mt-1 line-clamp-2 text-[13px] font-medium leading-5 text-[var(--muted)]";
-    description.textContent = module.description;
-
-    const arrow = document.createElement("span");
-    arrow.className =
-      "relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition duration-150 group-hover:translate-x-0.5";
-    arrow.style.color = accent;
-    arrow.style.backgroundColor = rgba(accent, 0.07);
-    arrow.style.borderColor = rgba(accent, 0.18);
-    arrow.innerHTML =
-      '<i data-lucide="arrow-right" class="h-[18px] w-[18px]" aria-hidden="true"></i>';
-
-    copy.append(title, description);
-    button.append(icon, copy, arrow);
-    button.addEventListener("mouseenter", () => {
-      button.style.borderColor = rgba(accent, 0.3);
+    const button = createDashboardModuleCard({
+      accent: moduleAccent(index),
+      iconName: module.icon || "route",
+      titleText: module.shortName,
+      descriptionText: module.description,
     });
-    button.addEventListener("mouseleave", () => {
-      button.style.borderColor = rgba(accent, 0.18);
-    });
+    button.setAttribute("aria-label", "開啟 " + module.name);
     button.addEventListener("click", () => openModule(module));
     moduleGrid.append(button);
   });
@@ -1766,40 +1787,20 @@ function renderCustomLinks() {
   }
 
   pinned.forEach((link, index) => {
-    const accent = moduleAccent(index + modulesCache.length);
-    const rgba = window.NutcTheme?.rgba || ((color) => color);
-    const card = document.createElement("a");
-    card.href = safeCustomLinkUrl(link.url);
+    const href = safeCustomLinkUrl(link.url);
+    const card = createDashboardModuleCard({
+      tag: "a",
+      accent: moduleAccent(index + modulesCache.length),
+      iconName: "link-2",
+      titleText: link.title,
+      descriptionText: new URL(href).hostname,
+      trailingIcon: "external-link",
+    });
+    card.href = href;
     card.target = "_blank";
     card.rel = "noopener noreferrer";
     card.referrerPolicy = "no-referrer";
-    card.className =
-      "group relative flex min-h-[108px] w-full items-center gap-4 overflow-hidden rounded-[20px] border p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 hover:-translate-y-px hover:bg-white/[.075] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
-    card.style.borderColor = rgba(accent, 0.18);
-    card.style.backgroundColor = "rgba(12,10,14,.34)";
     card.setAttribute("aria-label", "開啟自訂捷徑：" + link.title + "（新分頁）");
-
-    const icon = document.createElement("span");
-    icon.className = "grid h-12 w-12 shrink-0 place-items-center rounded-[15px] border";
-    icon.style.color = accent;
-    icon.style.backgroundColor = rgba(accent, 0.1);
-    icon.style.borderColor = rgba(accent, 0.2);
-    icon.innerHTML = '<i data-lucide="link-2" class="h-6 w-6" aria-hidden="true"></i>';
-
-    const copy = document.createElement("div");
-    copy.className = "min-w-0 flex-1";
-    const title = document.createElement("strong");
-    title.className = "block truncate text-base font-semibold text-[var(--foreground)]";
-    title.textContent = link.title;
-    const description = document.createElement("p");
-    description.className = "mt-1 truncate text-xs font-medium text-[var(--muted)]";
-    description.textContent = new URL(link.url).hostname;
-    copy.append(title, description);
-
-    const arrow = document.createElement("span");
-    arrow.className = "shrink-0 text-[var(--muted)] transition group-hover:translate-x-0.5";
-    arrow.innerHTML = '<i data-lucide="external-link" class="h-5 w-5" aria-hidden="true"></i>';
-    card.append(icon, copy, arrow);
     customLinksGrid.append(card);
   });
 
