@@ -839,6 +839,33 @@
               <span>移除背景</span>
             </button>
           </div>
+
+          <label class="mt-5 grid gap-2">
+            <span class="flex items-center justify-between gap-3 text-sm font-semibold">
+              <span>背景亮度 (Background brightness)</span>
+              <output
+                id="backgroundBrightnessValue"
+                class="text-xs font-semibold tabular-nums text-[var(--muted)]"
+                for="backgroundBrightness"
+              >100%</output>
+            </span>
+            <input
+              id="backgroundBrightness"
+              class="h-2 w-full cursor-pointer accent-[var(--primary)]"
+              type="range"
+              min="0"
+              max="200"
+              step="5"
+              value="100"
+              aria-describedby="backgroundBrightnessHelp"
+            />
+            <span
+              id="backgroundBrightnessHelp"
+              class="text-xs font-medium leading-5 text-[var(--muted)]"
+            >
+              0% 最暗、100% 原始設定、200% 最亮。調整時可即時預覽，按 Apply 儲存到此瀏覽器。
+            </span>
+          </label>
         </div>
 
         <div class="mt-6 border-t border-white/[.10] pt-5">
@@ -1108,8 +1135,8 @@
       </section>
     </dialog>
 
-    <script src="/theme.js?v=4"></script>
+    <script src="/theme.js?v=5"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=56" type="module"></script>
+    <script src="/app.js?v=57" type="module"></script>
   </body>
 </html>
