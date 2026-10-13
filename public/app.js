@@ -63,6 +63,8 @@ const themeColorfulness = document.querySelector("#themeColorfulness");
 const themeColorfulnessValue = document.querySelector("#themeColorfulnessValue");
 const themeBrightness = document.querySelector("#themeBrightness");
 const themeBrightnessValue = document.querySelector("#themeBrightnessValue");
+const backgroundBrightness = document.querySelector("#backgroundBrightness");
+const backgroundBrightnessValue = document.querySelector("#backgroundBrightnessValue");
 const themeReset = document.querySelector("#themeReset");
 const themeApply = document.querySelector("#themeApply");
 const academicProgramSelect = document.querySelector("#academicProgramSelect");
@@ -445,6 +447,9 @@ function renderThemePreview({ animate = false } = {}) {
   themeBrightnessValue.value = formatThemeFactor(
     stagedThemeSettings.brightness,
   );
+  backgroundBrightness.value = stagedThemeSettings.backgroundBrightness;
+  backgroundBrightnessValue.value =
+    stagedThemeSettings.backgroundBrightness + "%";
 
   for (const button of themeSchemeOptions.querySelectorAll(
     "[data-theme-scheme]",
@@ -586,6 +591,9 @@ document.addEventListener("pointerdown", (event) => {
 
 themeDialog.addEventListener("close", () => {
   setAcademicProgramMenuOpen(false);
+  window.NutcTheme.previewBackgroundBrightness(
+    window.NutcTheme.settings().backgroundBrightness,
+  );
 });
 
 async function openThemeDialog() {
@@ -616,6 +624,10 @@ async function openThemeDialog() {
 }
 
 async function closeThemeDialog() {
+  // Live background previews are temporary until Apply is selected.
+  window.NutcTheme.previewBackgroundBrightness(
+    window.NutcTheme.settings().backgroundBrightness,
+  );
   if (!themeDialog.open) {
     stagedThemeSettings = null;
     return;
@@ -2230,11 +2242,23 @@ themeBrightness.addEventListener("input", () => {
   renderThemePreview();
 });
 
+backgroundBrightness.addEventListener("input", () => {
+  if (!stagedThemeSettings) return;
+  stagedThemeSettings.backgroundBrightness = Number(backgroundBrightness.value);
+  backgroundBrightnessValue.value = backgroundBrightness.value + "%";
+  window.NutcTheme.previewBackgroundBrightness(
+    stagedThemeSettings.backgroundBrightness,
+  );
+});
+
 themeReset.addEventListener("click", () => {
   stagedThemeSettings = {
     ...window.NutcTheme.defaultSettings(),
   };
   renderThemePreview({ animate: true });
+  window.NutcTheme.previewBackgroundBrightness(
+    stagedThemeSettings.backgroundBrightness,
+  );
 });
 
 themeApply.addEventListener("click", async () => {
