@@ -1910,7 +1910,14 @@ async function mutateCustomLink(method, id = "", body = null) {
     }
     customLinksCache = Array.isArray(data.customLinks) ? data.customLinks : [];
     renderCustomLinks();
-    resetCustomLinkForm();
+    if (method === "POST" ||
+        (method === "PATCH" && body && Object.hasOwn(body, "title")) ||
+        (method === "DELETE" && id === editingCustomLinkId)) {
+      resetCustomLinkForm();
+    } else if (method === "PATCH" && id === editingCustomLinkId &&
+               body && Object.hasOwn(body, "pinned")) {
+      customLinkPinned.checked = body.pinned;
+    }
     setCustomLinkStatus("已儲存，釘選的捷徑會顯示在首頁。");
     return true;
   } catch (error) {
