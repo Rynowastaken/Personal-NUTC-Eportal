@@ -1857,10 +1857,10 @@ function renderCustomLinksManager() {
 
   for (const link of customLinksCache) {
     const row = document.createElement("div");
-    row.className = "flex flex-wrap items-center gap-2 rounded-xl border border-white/[.10] bg-white/[.04] p-3";
+    row.className = "custom-link-item rounded-xl border border-white/[.12] bg-white/[.055] p-3";
 
     const details = document.createElement("div");
-    details.className = "min-w-0 flex-[1_1_180px]";
+    details.className = "custom-link-details";
     const name = document.createElement("strong");
     name.className = "block truncate text-sm font-semibold";
     name.textContent = link.title;
@@ -1871,7 +1871,7 @@ function renderCustomLinksManager() {
     details.append(name, url);
 
     const actions = document.createElement("div");
-    actions.className = "flex flex-wrap items-center gap-1.5";
+    actions.className = "custom-link-actions";
     actions.append(
       customLinkAction(link.pinned ? "取消釘選" : "釘選", () => {
         void mutateCustomLink("PATCH", link.id, { pinned: !link.pinned });
@@ -1949,7 +1949,8 @@ manageCustomLinks?.addEventListener("click", () => {
   resetCustomLinkForm();
   renderCustomLinksManager();
   customLinksDialog.showModal();
-  customLinkTitle.focus();
+  customLinksDialog.scrollLeft = 0;
+  customLinkTitle.focus({ preventScroll: true });
 });
 customLinksClose?.addEventListener("click", () => customLinksDialog.close());
 customLinksDialog?.addEventListener("click", (event) => {
