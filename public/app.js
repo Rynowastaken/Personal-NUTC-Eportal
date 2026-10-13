@@ -1820,13 +1820,26 @@ function resetCustomLinkForm() {
   customLinkCancelEdit.classList.add("hidden");
 }
 
-function customLinkAction(label, handler) {
+function customLinkAction(label, handler, { tone = "neutral", icon = "" } = {}) {
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = label;
   button.disabled = customLinkBusy;
   button.className =
-    "min-h-9 shrink-0 rounded-lg border border-white/[.12] bg-white/[.06] px-2.5 text-xs font-semibold text-[var(--muted)] transition hover:bg-white/[.12] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:opacity-50";
+    "custom-link-control inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold" +
+    (tone === "accent" ? " custom-link-control--accent" : "") +
+    (tone === "danger" ? " custom-link-control--danger" : "");
+
+  if (icon) {
+    const pictogram = document.createElement("i");
+    pictogram.setAttribute("data-lucide", icon);
+    pictogram.className = "h-3.5 w-3.5 shrink-0";
+    pictogram.setAttribute("aria-hidden", "true");
+    button.append(pictogram);
+  }
+
+  const text = document.createElement("span");
+  text.textContent = label;
+  button.append(text);
   button.addEventListener("click", handler);
   return button;
 }
@@ -1862,7 +1875,7 @@ function renderCustomLinksManager() {
     actions.append(
       customLinkAction(link.pinned ? "取消釘選" : "釘選", () => {
         void mutateCustomLink("PATCH", link.id, { pinned: !link.pinned });
-      }),
+      }, { tone: "accent", icon: link.pinned ? "pin-off" : "pin" }),
       customLinkAction("編輯", () => {
         editingCustomLinkId = link.id;
         customLinkTitle.value = link.title;
@@ -1872,16 +1885,17 @@ function renderCustomLinksManager() {
         customLinkCancelEdit.classList.remove("hidden");
         setCustomLinkStatus("");
         customLinkTitle.focus();
-      }),
+      }, { icon: "pencil" }),
       customLinkAction("刪除", () => {
         if (window.confirm("確定刪除「" + link.title + "」嗎？")) {
           void mutateCustomLink("DELETE", link.id);
         }
-      }),
+      }, { tone: "danger", icon: "trash-2" }),
     );
     row.append(details, actions);
     customLinksManager.append(row);
   }
+  renderIcons();
 }
 
 async function mutateCustomLink(method, id = "", body = null) {
