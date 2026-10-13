@@ -64,6 +64,79 @@
         background: #803846;
         border-color: #f07178;
       }
+
+      /*
+       * URLs and button groups have large intrinsic widths. Constrain the
+       * entire modal layout so zoomed/mobile viewports cannot scroll sideways.
+       */
+      #customLinksDialog {
+        box-sizing: border-box;
+        width: min(36rem, calc(100vw - 1.5rem));
+        max-width: calc(100vw - 1.5rem);
+        min-width: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+      #customLinksDialog > section,
+      #customLinkForm,
+      #customLinkForm > label,
+      #customLinksManager {
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
+      }
+      #customLinkForm,
+      #customLinksManager {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #customLinkTitle,
+      #customLinkUrl {
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
+      }
+      .custom-link-item {
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: .75rem;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+      }
+      .custom-link-details {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .custom-link-details > * {
+        display: block;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .custom-link-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: .5rem;
+        min-width: 0;
+        width: 100%;
+      }
+      .custom-link-actions .custom-link-control {
+        min-width: 0;
+        width: 100%;
+        padding-inline: .5rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+      @media (max-width: 380px) {
+        .custom-link-actions .custom-link-control {
+          gap: .25rem;
+          padding-inline: .25rem;
+          font-size: .7rem;
+        }
+      }
     </style>
     <style>
       /*
@@ -523,7 +596,7 @@
 
         <div class="mt-5 border-t border-white/[.12] pt-4">
           <h3 class="mb-2 text-sm font-semibold">已儲存捷徑</h3>
-          <div id="customLinksManager" class="grid gap-2"></div>
+          <div id="customLinksManager" class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2"></div>
         </div>
       </section>
     </dialog>
@@ -1037,6 +1110,6 @@
 
     <script src="/theme.js?v=4"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=54" type="module"></script>
+    <script src="/app.js?v=55" type="module"></script>
   </body>
 </html>
