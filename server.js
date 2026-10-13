@@ -925,6 +925,35 @@ const server = http.createServer(async (req, res) => {
 
     if (
       req.method === "POST" &&
+      url.pathname === "/api/preferences/custom-links"
+    ) {
+      const body = await readJsonBody(req);
+      const saved = await dashboardPreferenceStore.addCustomLink(body);
+      sendJson(res, 200, { ok: true, ...saved });
+      return;
+    }
+
+    const customLinkMatch = url.pathname.match(
+      /^\/api\/preferences\/custom-links\/([0-9a-f-]{36})$/i,
+    );
+    if (customLinkMatch && req.method === "PATCH") {
+      const body = await readJsonBody(req);
+      const saved = await dashboardPreferenceStore.updateCustomLink(
+        customLinkMatch[1], body,
+      );
+      sendJson(res, 200, { ok: true, ...saved });
+      return;
+    }
+    if (customLinkMatch && req.method === "DELETE") {
+      const saved = await dashboardPreferenceStore.removeCustomLink(
+        customLinkMatch[1],
+      );
+      sendJson(res, 200, { ok: true, ...saved });
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
       url.pathname === "/api/preferences/academic-program"
     ) {
       const body = await readJsonBody(req);
