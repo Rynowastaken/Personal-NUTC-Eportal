@@ -5,13 +5,12 @@ import {
   validateCustomLink,
 } from "../src/dashboard-preferences.js";
 
-const GOOGLE_SCRIPT =
-  "https://script.google.com/macros/s/AKfycbw935_0y_iKPCBvL0ri9cwq4iUIJjZnM78PhzpFpwvSbjVp6jY3arwhl5qGFfacMVGl6g/exec";
+const EXAMPLE_LINK = "https://example.com/";
 
-test("custom links accept full Google Apps Script and standard HTTP(S) URLs", () => {
-  assert.deepEqual(validateCustomLink({ title: "  Forms  ", url: GOOGLE_SCRIPT }), {
+test("custom links accept full HTTPS and HTTP URLs", () => {
+  assert.deepEqual(validateCustomLink({ title: "  Forms  ", url: EXAMPLE_LINK }), {
     title: "Forms",
-    url: GOOGLE_SCRIPT,
+    url: EXAMPLE_LINK,
     pinned: true,
   });
   assert.equal(
@@ -44,18 +43,18 @@ test("links can be added, edited, pinned, unpinned and removed without losing ot
 
   await store.setAcademicProgram("weekend");
   const added = await store.addCustomLink({
-    title: "Google Form",
-    url: GOOGLE_SCRIPT,
+    title: "Example page",
+    url: EXAMPLE_LINK,
     pinned: true,
   });
   assert.equal(added.customLinks.length, 1);
   const id = added.customLinks[0].id;
   assert.match(id, /^[0-9a-f-]{36}$/);
-  assert.equal(added.customLinks[0].url, GOOGLE_SCRIPT);
+  assert.equal(added.customLinks[0].url, EXAMPLE_LINK);
   assert.equal(added.academicProgram, "weekend");
 
   let updated = await store.updateCustomLink(id, { pinned: false });
-  assert.equal(updated.customLinks[0].title, "Google Form");
+  assert.equal(updated.customLinks[0].title, "Example page");
   assert.equal(updated.customLinks[0].pinned, false);
   updated = await store.updateCustomLink(id, {
     title: "Student page",
