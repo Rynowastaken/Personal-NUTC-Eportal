@@ -2166,11 +2166,12 @@ export async function openAisWithServerSession({
 } = {}) {
   const release = await acquireProfileAccess({ timeoutMs });
   let context;
+  let aisAuth;
 
   try {
     context = await openServerPortalSession({ headless });
     const page = context.pages()[0] || (await context.newPage());
-    const aisAuth = watchAisLoginExpiry(page);
+    aisAuth = watchAisLoginExpiry(page);
 
     await page.goto(EPORTAL_DASHBOARD, {
       waitUntil: "domcontentloaded",
@@ -2220,6 +2221,8 @@ export async function openAisWithServerSession({
   } catch (error) {
     if (context) await context.close().catch(() => {});
     await release();
+    // AIS may have shown the expiry alert while navigation was waiting.
+    aisAuth?.assertValid();
     throw error;
   }
 }
