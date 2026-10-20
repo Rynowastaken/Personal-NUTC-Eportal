@@ -30,7 +30,7 @@
 - 桌面與手機 RWD
 - 可選擇用 Cloudflare Access 保護公開部署
 
-## 快速開始
+> **注意**：AIS 網站本身的登入 Cookie 存在使用者瀏覽器，Dashboard 因跨網域安全限制無法直接讀取 `ais.nutc.edu.tw` 的 Cookie 或攔截其原生彈出視窗。因此這個檢查是針對 **Server ePortal / Server AIS** 的登入狀態；如果只在個人瀏覽器的 AIS 頁面看到逾期訊息，回到 Dashboard 點 **學生管理**（或「重新連接 AIS」）走一次新的 SSO。\n\n## 快速開始
 
 ### 你需要
 
@@ -97,6 +97,8 @@ server 不需要圖形桌面環境，你可以用手機或另一台電腦完成�
 3. **活動報名系統** — 因為目標是舊架構 HTTP 系統，沒辦法乾淨轉交 SSO URL，所以 server 會跑一個暫存 30 分鐘的 reverse proxy，把頁面內容即時轉譯給你
 4. **Login Bridge** — 登入時的表單是即時從 ePortal 頁面擷取的（含驗證碼圖片），你在網頁上填什麼 server 就打什麼進 Chromium，密碼跟 MFA 只存在記憶體，不會寫入任何檔案或 log
 5. **Keepalive** — 預設每 10 分鐘檢查一次 ePortal session 是否還有效
+6. **進站登入檢查** — 每次開啟 Dashboard 都會重新檢查 Server ePortal 登入；確定過期時自動開啟 Login Bridge（防止重導迴圈，兩分鐘內不會重複自動跳轉）。登入表單仍須由使用者填寫，不保存密碼。回到已開啟的分頁時也會重新確認（最短間隔 1 分鐘）。
+7. **AIS 逾期偵測** — 每次進站會強制確認一次 AIS 課表登入狀態，辨識 AIS 的「驗證失敗、連線可能逾期」訊息。如果 Server ePortal 仍有效，Dashboard 提供「重新連接 AIS」讓瀏覽器重新走 SSO，及「重新登入 ePortal」的選項。
 
 ## 從舊版遷移
 
