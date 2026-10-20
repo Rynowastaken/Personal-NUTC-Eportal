@@ -97,6 +97,14 @@ async function acquireProfileFileLock({ timeoutMs = 120_000 } = {}) {
   }
 }
 
+function profileBusyError() {
+  const error = new Error(
+    "The persistent ePortal browser profile is currently in use.",
+  );
+  error.code = "EPORTAL_PROFILE_BUSY";
+  return error;
+}
+
 async function acquireProfileAccess(options = {}) {
   const previous = profileQueue;
   let releaseQueue;
@@ -105,11 +113,37 @@ async function acquireProfileAccess(options = {}) {
     releaseQueue = resolve;
   });
 
-  await previous;
+  // The file-lock timeout alone does not cover waiting for other work inside
+  // this Node process. Bound both waits so login startup cannot hang forever.
+  const timeoutMs = Number(options.timeoutMs);
+  const bounded = Number.isFinite(timeoutMs) && timeoutMs > 0;
+  const started = Date.now();
+  let queueTimer;
+  try {
+    if (bounded) {
+      await Promise.race([
+        previous,
+        new Promise((_, reject) => {
+          queueTimer = setTimeout(() => reject(profileBusyError()), timeoutMs);
+        }),
+      ]);
+    } else {
+      await previous;
+    }
+  } catch (error) {
+    releaseQueue();
+    throw error;
+  } finally {
+    if (queueTimer) clearTimeout(queueTimer);
+  }
 
   let releaseFile;
   try {
-    releaseFile = await acquireProfileFileLock(options);
+    const remaining = bounded ? timeoutMs - (Date.now() - started) : null;
+    if (bounded && remaining <= 0) throw profileBusyError();
+    releaseFile = await acquireProfileFileLock(
+      bounded ? { ...options, timeoutMs: remaining } : options,
+    );
   } catch (error) {
     releaseQueue();
     throw error;
