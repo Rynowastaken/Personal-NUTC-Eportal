@@ -98,17 +98,27 @@
           id="errorMessage"
           class="mx-auto mt-2 max-w-md text-sm font-medium leading-6 text-[var(--muted)]"
         ></p>
-        <a
-          href="/"
-          class="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
-        >
-          回到首頁
-        </a>
+        <div class="mt-4 flex flex-wrap justify-center gap-2">
+          <button
+            id="retryButton"
+            type="button"
+            class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] transition hover:bg-[var(--control-hover-bg)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+          >
+            <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>
+            重試登入
+          </button>
+          <a
+            href="/"
+            class="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+          >
+            回到首頁
+          </a>
+        </div>
       </section>
     </main>
 
     <script src="/theme.js?v=4"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/server-login.js?v=12" type="module"></script>
+    <script src="/server-login.js?v=13" type="module"></script>
   </body>
 </html>
