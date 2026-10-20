@@ -1,3 +1,5 @@
+import { loginRequestOptions } from "./login-route.js";
+
 const motion = window.NutcMotion;
 const statusDot = document.querySelector("#statusDot");
 const statusTitle = document.querySelector("#statusTitle");
@@ -332,7 +334,7 @@ function leaveLoginPage() {
   setTimeout(() => {
     // Only allow the known internal AIS launch path after fresh login.
     // Never use an arbitrary return URL from the query string.
-    const next = new URLSearchParams(location.search).get("next");
+    const next = loginRequestOptions(location.search).next;
     if (next === "/go/ais") {
       location.replace(next);
       return;
@@ -617,8 +619,7 @@ closeButton.addEventListener("click", async () => {
     },
   );
 
-  const search = new URLSearchParams(location.search);
-  const forceLogin = search.get("force") === "1";
+  const { force: forceLogin } = loginRequestOptions(location.search);
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
   token = fragment.get("token") || "";
   history.replaceState(null, "", location.pathname + location.search);
