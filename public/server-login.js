@@ -13,6 +13,7 @@ const bridgeForm = document.querySelector("#bridgeForm");
 const errorCard = document.querySelector("#errorCard");
 const errorMessage = document.querySelector("#errorMessage");
 const closeButton = document.querySelector("#closeButton");
+const retryButton = document.querySelector("#retryButton");
 
 let token = "";
 let lastState = null;
@@ -24,6 +25,9 @@ const objectUrls = new Set();
 let lastStatusKind = "";
 let lastStatusTitle = "";
 let pageCardShown = false;
+const START_TIMEOUT_MS = 20_000;
+const PHASE_TIMEOUT_MS = 60_000;
+let startupStartedAt = Date.now();
 
 function renderIcons() {
   if (window.lucide) {
@@ -379,11 +383,16 @@ function render(state) {
   }
 
   if (state.active && !state.page) {
+    if (Date.now() - startupStartedAt > PHASE_TIMEOUT_MS) {
+      showError("Login Bridge 啟動逾時。請按「重試登入」，或確認 Server ePortal 是否有其他操作正在使用。");
+      return;
+    }
     pageCard.classList.add("hidden");
     errorCard.classList.add("hidden");
 
     const phaseText = {
       starting: "準備登入…",
+      "waiting-profile": "等待 Server ePortal 瀏覽器…",
       "checking-session": "檢查登入狀態…",
       "opening-login": "載入登入頁…",
     };
@@ -514,10 +523,18 @@ function render(state) {
 }
 
 async function refresh() {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 15_000);
   try {
-    render(await bridgeApi("/api/login-bridge/state"));
+    render(await bridgeApi("/api/login-bridge/state", {
+      signal: controller.signal,
+    }));
   } catch (error) {
-    showError(error.message);
+    showError(error?.name === "AbortError"
+      ? "登入狀態查詢逾時，請重試或稍後再試。"
+      : error.message);
+  } finally {
+    window.clearTimeout(timer);
   }
 }
 
@@ -590,6 +607,11 @@ bridgeForm.addEventListener("submit", (event) => {
   else void submitAction(null, true);
 });
 
+retryButton?.addEventListener("click", () => {
+  // A retry is explicit user intent; keep the chosen re-login/AIS return mode.
+  location.reload();
+});
+
 closeButton.addEventListener("click", async () => {
   clearCompletionPolling();
 
@@ -605,7 +627,12 @@ closeButton.addEventListener("click", async () => {
 });
 
 (async () => {
-  await window.NutcTheme.init();
+  // Theme initialization can wait on remote preferences/image palette extraction.
+  // Never let visual customization block access to the login form.
+  setStatus("checking", "正在連接登入服務…");
+  void Promise.resolve()
+    .then(() => window.NutcTheme?.init?.())
+    .catch((error) => console.warn("Theme initialization failed:", error));
   renderIcons();
 
   void motion?.stagger?.(
@@ -626,9 +653,12 @@ closeButton.addEventListener("click", async () => {
 
   try {
     if (!token) {
-      setStatus("checking", "準備登入…");
-
-      const response = await fetch("/api/login-bridge/start", {
+      setStatus("checking", "正在啟動登入工作階段…");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), START_TIMEOUT_MS);
+      let response;
+      try {
+        response = await fetch("/api/login-bridge/start", {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -637,7 +667,11 @@ closeButton.addEventListener("click", async () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ force: forceLogin }),
-      });
+        signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeout);
+      }
 
       const state = await response.json().catch(() => ({}));
 
@@ -674,6 +708,8 @@ closeButton.addEventListener("click", async () => {
 
     await refresh();
   } catch (error) {
-    showError(error.message);
+    showError(error?.name === "AbortError"
+      ? "啟動登入服務逾時。請按「重試登入」，或稍後再試。"
+      : error?.message || "無法啟動登入服務。");
   }
 })();
