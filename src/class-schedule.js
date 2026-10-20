@@ -67,6 +67,10 @@ async function fetchFreshSchedule() {
       );
     }
 
+    session.aisAuth.assertValid();
+    // AIS can report expired authentication using a blocking JS alert while
+    // staying on the expected URL. Check again after page data has loaded.
+
     await page.waitForFunction(
       () =>
         typeof globalThis.g_ClsTime === "object" &&
@@ -75,6 +79,7 @@ async function fetchFreshSchedule() {
       { timeout: 12_000 },
     );
 
+    session.aisAuth.assertValid();
     const parsed = await page.evaluate(() => {
       const source = globalThis.g_ClsTime || {};
       const clean = (value) => {
@@ -157,6 +162,7 @@ async function fetchFreshSchedule() {
       scheduledCells,
     };
   } catch (error) {
+    session.aisAuth.assertValid();
     if (error?.code === "EPORTAL_LOGIN_REQUIRED") throw error;
 
     if (error?.name === "TimeoutError") {
