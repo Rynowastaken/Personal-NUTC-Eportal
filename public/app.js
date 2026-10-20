@@ -1,5 +1,8 @@
 const motion = window.NutcMotion;
+import { needsInteractiveLogin, isSessionExpiredError } from "./session-auth.js";
+
 const moduleGrid = document.querySelector("#moduleGrid");
+const sessionWarning = document.querySelector("#sessionWarning");
 const customLinksGrid = document.querySelector("#customLinksGrid");
 const manageCustomLinks = document.querySelector("#manageCustomLinks");
 const customLinksDialog = document.querySelector("#customLinksDialog");
@@ -105,6 +108,8 @@ let classScheduleData = null;
 let currentAcademicProgram = "day";
 let stagedAcademicProgram = "day";
 let absenceListData = null;
+let checkingSessionExpiry = null;
+let lastPortalCheckAt = 0;
 
 const accountNameKey = "nutc-portal-account-name-v1";
 const accountAvatarKey = "nutc-portal-account-avatar-v1";
@@ -134,6 +139,41 @@ async function api(path) {
   }
 
   return data;
+}
+
+function startAutomaticLogin(status) {
+  if (!needsInteractiveLogin(status)) return false;
+  window.location.replace("/server-login/?autocheck=1");
+  return true;
+}
+
+function hideSessionWarning() {
+  sessionWarning?.classList.add("hidden");
+  sessionWarning?.classList.remove("flex");
+}
+
+// The browser's AIS cookies cannot be inspected by our dashboard (separate
+// origin). Verify the server status before asking the user to renew AIS SSO.
+async function handleAisSessionExpiry() {
+  if (checkingSessionExpiry) return checkingSessionExpiry;
+  checkingSessionExpiry = (async () => {
+    try {
+      const status = await api("/api/portal-status");
+      lastPortalCheckAt = Date.now();
+      setServerStatus(status);
+      if (startAutomaticLogin(status)) return;
+    } catch {
+      // A temporary status-check error isn't proof that login expired.
+    }
+    sessionWarning?.classList.remove("hidden");
+    sessionWarning?.classList.add("flex");
+    renderIcons();
+  })();
+  try {
+    await checkingSessionExpiry;
+  } finally {
+    checkingSessionExpiry = null;
+  }
 }
 
 function renderIcons() {
@@ -1339,7 +1379,17 @@ async function loadClassSchedule({ force = false } = {}) {
     classScheduleData = data;
     renderScheduleGrid();
     updateScheduleMeta(data);
+    hideSessionWarning();
+    return true;
   } catch (error) {
+    if (isSessionExpiredError(error)) {
+      scheduleMeta.textContent = "AIS 登入可能已逾期";
+      setScheduleMessage("AIS 連線已逾期，請在上方重新連接 AIS 或登入 ePortal。", {
+        kind: "login",
+      });
+      await handleAisSessionExpiry();
+      return false;
+    }
     if (classScheduleData) {
       scheduleMeta.textContent = "更新失敗，保留目前課表";
       scheduleMeta.title = error?.message || "";
@@ -1617,7 +1667,16 @@ async function loadAbsenceList({ force = false } = {}) {
     absenceListData = data;
     renderAbsenceList();
     updateAbsenceMeta(data);
+    hideSessionWarning();
   } catch (error) {
+    if (isSessionExpiredError(error)) {
+      absenceMeta.textContent = "AIS 登入可能已逾期";
+      setAbsenceMessage("AIS 連線已逾期，請在上方重新連接 AIS 或登入 ePortal。", {
+        kind: "login",
+      });
+      await handleAisSessionExpiry();
+      return;
+    }
     if (absenceListData) {
       absenceMeta.textContent = "更新失敗，保留目前紀錄";
       absenceMeta.title = error?.message || "";
@@ -2737,12 +2796,17 @@ if (typeof ResizeObserver !== "undefined") {
   }
 
   if (statusResult.status === "fulfilled") {
+    lastPortalCheckAt = Date.now();
     setServerStatus(statusResult.value);
+
+    if (startAutomaticLogin(statusResult.value)) return;
 
     if (statusResult.value.status === "valid") {
       void (async () => {
-        await loadClassSchedule();
-        await loadAbsenceList();
+        // Do not trust a recently cached timetable as proof of an active AIS
+        // session. Revalidate with a fresh AIS handoff on every dashboard visit.
+        const scheduleVerified = await loadClassSchedule({ force: true });
+        if (scheduleVerified !== false) await loadAbsenceList();
       })();
     } else if (statusResult.value.status === "busy") {
       scheduleMeta.textContent = "Server ePortal 使用中";
