@@ -2689,6 +2689,41 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+// Also check when returning to an existing tab. A backgrounded dashboard can
+// outlive the ePortal session, and BFCache navigation skips regular startup.
+let portalReturnCheckInFlight = false;
+async function checkPortalWhenReturning() {
+  if (document.hidden || portalReturnCheckInFlight ||
+      !lastPortalCheckAt || Date.now() - lastPortalCheckAt < 60_000) {
+    return;
+  }
+
+  portalReturnCheckInFlight = true;
+  lastPortalCheckAt = Date.now();
+  try {
+    const status = await api("/api/portal-status");
+    setServerStatus(status);
+    if (startAutomaticLogin(status)) return;
+    if (status.status === "valid" && !scheduleRefreshButton.disabled) {
+      const validSchedule = await loadClassSchedule({ force: true });
+      if (validSchedule !== false && !absenceRefreshButton.disabled) {
+        await loadAbsenceList();
+      }
+    }
+  } catch (error) {
+    console.warn("Could not re-check ePortal session:", error?.message || error);
+  } finally {
+    portalReturnCheckInFlight = false;
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void checkPortalWhenReturning();
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) void checkPortalWhenReturning();
+});
+
 window.addEventListener("nutc-theme-change", () => {
   syncThemeMenu();
   if (modulesCache.length) renderModules(modulesCache, { animate: false });
