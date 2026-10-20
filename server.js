@@ -842,6 +842,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/login-bridge/start") {
       try {
+        const body = await readJsonBody(req, 8 * 1024);
+        if (body.force !== undefined && typeof body.force !== "boolean") {
+          sendError(res, 400, "force must be a boolean.");
+          return;
+        }
         clearClassScheduleCache();
         clearAbsenceListCache();
         sendJson(
@@ -849,6 +854,7 @@ const server = http.createServer(async (req, res) => {
           200,
           await startLoginBridge({
             ttlMinutes: loginBridgeTtlMinutes,
+            force: body.force === true,
           }),
         );
       } catch (error) {
