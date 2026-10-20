@@ -56,10 +56,18 @@ function bridgeLog(message, page) {
 async function closeBrowser(browser) {
   if (!browser) return;
 
-  await Promise.race([
-    browser.close().catch(() => {}),
-    new Promise((resolve) => setTimeout(resolve, 5_000)),
-  ]);
+  let timer;
+  try {
+    await Promise.race([
+      browser.close().catch(() => {}),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, 5_000);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function navigateForBridge(page, url, label) {
