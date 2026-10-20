@@ -75,6 +75,16 @@ Dashboard 的「自訂捷徑」區塊按 **新增 / 管理捷徑**，填寫網�
 - 最多儲存 30 個。資料寫入本機 Server 的 `data/dashboard-preferences.json`，因此同一部署的所有裝置共用；這**不是依使用者分開儲存**的私有清單。
 - 網址僅允許 HTTP(S)，且不可內含帳密。請自行確認外部網站可信任，並避免儲存包含私人存取權杖的分享網址。
 
+## AIS 登入逾期時的處理
+
+如果 Dashboard 顯示 **AIS 登入可能已過期**：
+
+- **重新登入 ePortal**：明確要求重新登入，Login Bridge 只清除 server 端保留的 ePortal 驗證 Cookie，再開啟官方登入表單（可能需要圖形驗證碼），不會靜默沿用舊登入狀態。
+- **重新連接 AIS**：同樣先重新登入 ePortal；登入成功後自動啟動學生管理系統的 SSO 連接。請等候登入流程完成，不要直接打開 AIS 的舊書籤。
+- **仍顯示 AIS「驗證失敗／連線可能逾期」**：AIS 的登入 Cookie 存在你自己的瀏覽器（`ais.nutc.edu.tw`），server 無法跨網域清除。請在瀏覽器設定清除 **僅 ais.nutc.edu.tw 的網站資料/Cookie**，再回 Dashboard 點 **學生管理** 進行 SSO。這可能使 AIS 分頁登出，但不會刪除 Server ePortal 的資料。
+
+自動健康檢查只會在確認需要登入時開啟登入介面；**不會自動清除 Cookie 或儲存／重送密碼**。
+
 ## 第一次登入
 
 打開 Dashboard，點 **登入 Server ePortal**。
