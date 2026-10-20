@@ -2284,7 +2284,9 @@ accountSettingsSave.addEventListener("click", async () => {
 });
 
 serverLoginAction.addEventListener("click", () => {
-  window.location.assign("/server-login/");
+  // This control explicitly says re-login. Do not silently reuse a valid
+  // server session and bounce straight back to the dashboard.
+  window.location.assign("/server-login/?force=1");
 });
 
 themeDialogClose.addEventListener("click", () => {
