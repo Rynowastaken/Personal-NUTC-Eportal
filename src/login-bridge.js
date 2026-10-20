@@ -426,14 +426,24 @@ async function initializeLoginBridge(session) {
   const { page } = session;
 
   try {
-    session.phase = "checking-session";
-    await navigateForBridge(
-      page,
-      EPORTAL_DASHBOARD,
-      "checking saved ePortal session",
-    );
+    if (session.forceLogin) {
+      session.phase = "opening-login";
+      // Explicit user action: invalidate only the saved ePortal cookies.
+      // Never erase credentials simply because a background check failed.
+      await session.browser.context.clearCookies({
+        domain: /(^|\.)eportal\.nutc\.edu\.tw$/,
+      });
+      await openCleanLoginPage(session, "user requested fresh login");
+    } else {
+      session.phase = "checking-session";
+      await navigateForBridge(
+        page,
+        EPORTAL_DASHBOARD,
+        "checking saved ePortal session",
+      );
+    }
 
-    if (await loginComplete(page)) {
+    if (!session.forceLogin && await loginComplete(page)) {
       session.complete = true;
       session.phase = "complete";
       await closeBrowser(session.browser);
@@ -486,10 +496,11 @@ async function initializeLoginBridge(session) {
   }
 }
 
-async function createLoginBridge({ ttlMinutes = 15 } = {}) {
+async function createLoginBridge({ ttlMinutes = 15, force = false } = {}) {
   bridgeLog("start requested");
 
   if (
+    !force &&
     active &&
     !active.complete &&
     !active.error &&
@@ -527,6 +538,7 @@ async function createLoginBridge({ ttlMinutes = 15 } = {}) {
     timer: null,
     phase: "starting",
     complete: false,
+    forceLogin: force === true,
     error: null,
     lastSnapshotSignature: null,
     stateRequestLogged: false,
