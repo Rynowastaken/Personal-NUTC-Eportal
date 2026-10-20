@@ -11,3 +11,12 @@ export function isSessionExpiredError(error) {
   return error?.code === "EPORTAL_LOGIN_REQUIRED" ||
     error?.code === "AIS_SESSION_EXPIRED";
 }
+
+export function shouldAutoOpenLogin(status, lastRedirectAt, now = Date.now()) {
+  if (!needsInteractiveLogin(status)) return false;
+  const previous = Number(lastRedirectAt);
+  // Avoid redirect loops when the university is temporarily slow or the
+  // user returns from Login Bridge before the server session is usable.
+  return !Number.isFinite(previous) || now < previous ||
+    now - previous >= 2 * 60_000;
+}
