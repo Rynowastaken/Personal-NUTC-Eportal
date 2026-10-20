@@ -330,6 +330,13 @@ function collectFields() {
 
 function leaveLoginPage() {
   setTimeout(() => {
+    // Only allow the known internal AIS launch path after fresh login.
+    // Never use an arbitrary return URL from the query string.
+    const next = new URLSearchParams(location.search).get("next");
+    if (next === "/go/ais") {
+      location.replace(next);
+      return;
+    }
     if (window.opener && !window.opener.closed) {
       window.close();
 
@@ -610,6 +617,8 @@ closeButton.addEventListener("click", async () => {
     },
   );
 
+  const search = new URLSearchParams(location.search);
+  const forceLogin = search.get("force") === "1";
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
   token = fragment.get("token") || "";
   history.replaceState(null, "", location.pathname + location.search);
@@ -626,7 +635,7 @@ closeButton.addEventListener("click", async () => {
           Accept: "application/json",
           "Content-Type": "application/json",
         },
-        body: "{}",
+        body: JSON.stringify({ force: forceLogin }),
       });
 
       const state = await response.json().catch(() => ({}));
@@ -657,7 +666,7 @@ closeButton.addEventListener("click", async () => {
         throw new Error("Login Bridge did not return a usable token.");
       }
 
-      history.replaceState(null, "", "/server-login/");
+      history.replaceState(null, "", location.pathname + location.search);
       await refresh();
       return;
     }
