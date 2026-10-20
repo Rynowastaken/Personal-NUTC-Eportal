@@ -496,6 +496,42 @@ async function initializeLoginBridge(session) {
   }
 }
 
+async function prepareLoginBridge(session) {
+  let browser;
+  try {
+    bridgeLog("acquiring persistent profile and launching headless Chromium");
+    browser = await openLoginBridgeSession({ timeoutMs: 5_000 });
+
+    // The user may have cancelled or replaced the login while waiting for
+    // Chromium. Never let a delayed startup revive an expired bridge.
+    if (active !== session || !session.launchToken) {
+      await closeBrowser(browser);
+      return;
+    }
+
+    session.browser = browser;
+    session.page = browser.page;
+    bridgeLog("headless Chromium launched", browser.page);
+    await initializeLoginBridge(session);
+  } catch (error) {
+    if (active !== session) {
+      await closeBrowser(browser);
+      return;
+    }
+
+    session.error = {
+      message: error?.code === "EPORTAL_PROFILE_BUSY"
+        ? "Server ePortal is busy. Please wait for the current operation to finish, then try again."
+        : error?.message || String(error),
+      code: error?.code || "EPORTAL_LOGIN_BRIDGE_START_FAILED",
+    };
+    session.phase = "error";
+    bridgeLog("startup failed: " + session.error.message, session.page);
+    await closeBrowser(browser);
+    session.browser = null;
+  }
+}
+
 async function createLoginBridge({ ttlMinutes = 15, force = false } = {}) {
   bridgeLog("start requested");
 
@@ -519,24 +555,21 @@ async function createLoginBridge({ ttlMinutes = 15, force = false } = {}) {
 
   await closeActive();
 
-  bridgeLog("acquiring persistent profile and launching headless Chromium");
-  const browser = await openLoginBridgeSession({ timeoutMs: 5_000 });
-  const { page } = browser;
-  bridgeLog("headless Chromium launched", page);
-
+  // Issue the token before Chromium launches so a slow/locked profile never
+  // leaves the login page waiting indefinitely for the initial HTTP response.
   const token = crypto.randomBytes(32).toString("base64url");
   const expiresAt = new Date(
     Date.now() + Math.max(5, Number(ttlMinutes) || 15) * 60_000,
   );
 
   const session = {
-    browser,
-    page,
+    browser: null,
+    page: null,
     launchToken: token,
     tokenHash: hash(token),
     expiresAt: expiresAt.toISOString(),
     timer: null,
-    phase: "starting",
+    phase: "waiting-profile",
     complete: false,
     forceLogin: force === true,
     error: null,
@@ -552,13 +585,13 @@ async function createLoginBridge({ ttlMinutes = 15, force = false } = {}) {
   }, expiresAt.getTime() - Date.now());
   active.timer.unref?.();
 
-  void initializeLoginBridge(session);
+  void prepareLoginBridge(session);
 
   return {
     active: true,
     complete: false,
-    phase: "starting",
-    expiresAt: active.expiresAt,
+    phase: "waiting-profile",
+    expiresAt: session.expiresAt,
     launchPath: `/server-login/#token=${encodeURIComponent(token)}`,
   };
 }
