@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { watchAisLoginExpiry } from "./ais-auth.js";
 import {
   EPORTAL_DASHBOARD,
   EPORTAL_HOME,
@@ -2169,6 +2170,7 @@ export async function openAisWithServerSession({
   try {
     context = await openServerPortalSession({ headless });
     const page = context.pages()[0] || (await context.newPage());
+    const aisAuth = watchAisLoginExpiry(page);
 
     await page.goto(EPORTAL_DASHBOARD, {
       waitUntil: "domcontentloaded",
@@ -2196,6 +2198,7 @@ export async function openAisWithServerSession({
       { timeout: 20_000 },
     );
 
+    aisAuth.assertValid();
     const managedContext = new Proxy(context, {
       get(target, property) {
         if (property === "close") {
@@ -2213,7 +2216,7 @@ export async function openAisWithServerSession({
       },
     });
 
-    return { context: managedContext, page };
+    return { context: managedContext, page, aisAuth };
   } catch (error) {
     if (context) await context.close().catch(() => {});
     await release();
