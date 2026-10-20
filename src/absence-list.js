@@ -41,6 +41,10 @@ async function fetchFreshAbsences() {
       );
     }
 
+    session.aisAuth.assertValid();
+    // AIS can report expired authentication using a blocking JS alert while
+    // staying on the expected URL. Check again after page data has loaded.
+
     await page
       .waitForFunction(
         () =>
@@ -51,6 +55,7 @@ async function fetchFreshAbsences() {
       )
       .catch(() => {});
 
+    session.aisAuth.assertValid();
     const parsed = await page.evaluate(() => {
       const clean = (value) =>
         String(value ?? "")
@@ -196,6 +201,7 @@ async function fetchFreshAbsences() {
       emptyMessage: parsed.emptyMessage || "",
     };
   } catch (error) {
+    session.aisAuth.assertValid();
     if (error?.code === "EPORTAL_LOGIN_REQUIRED") throw error;
 
     if (error?.name === "TimeoutError") {
