@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { isAisLoginExpiredMessage, watchAisLoginExpiry } from "../src/ais-auth.js";
-import { needsInteractiveLogin, isSessionExpiredError } from "../public/session-auth.js";
+import { needsInteractiveLogin, isSessionExpiredError, shouldAutoOpenLogin } from "../public/session-auth.js";
 
 test("AIS login-expiry dialog is recognized while unrelated alerts are ignored", () => {
   assert.equal(isAisLoginExpiredMessage("驗證失敗!\n連線可能逾期，請重新登入 ePortal。"), true);
@@ -56,4 +56,14 @@ test("AIS expiry is distinguishable from other network failures", () => {
   assert.equal(isSessionExpiredError({ code: "CLASS_SCHEDULE_TIMEOUT", status: 504 }), false);
   assert.equal(isSessionExpiredError({ code: "EPORTAL_PROFILE_BUSY", status: 409 }), false);
   assert.equal(isSessionExpiredError({ status: 401 }), false);
+});
+
+test("automatic login redirects once, with a cooldown to avoid loops", () => {
+  const expired = { status: "needs-login" };
+  const now = Date.now();
+  assert.equal(shouldAutoOpenLogin(expired, 0, now), true);
+  assert.equal(shouldAutoOpenLogin(expired, now - 30_000, now), false);
+  assert.equal(shouldAutoOpenLogin(expired, now - 120_000, now), true);
+  assert.equal(shouldAutoOpenLogin({ status: "valid" }, 0, now), false);
+  assert.equal(shouldAutoOpenLogin({ status: "busy" }, 0, now), false);
 });
