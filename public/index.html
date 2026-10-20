@@ -396,16 +396,16 @@
           <div>
             <p class="text-sm font-semibold">AIS 登入可能已過期</p>
             <p class="mt-1 text-xs font-medium leading-5 text-[var(--muted)]">
-              已檢查 Server ePortal。請透過 ePortal 重新開啟 AIS；如仍失敗，請重新登入 ePortal。
+              AIS 的瀏覽器登入可能已逾期。重新連接會要求重新登入 ePortal，完成後再發起 AIS SSO。若仍失敗，請清除瀏覽器中 ais.nutc.edu.tw 的網站資料後重試。
             </p>
           </div>
         </div>
         <div class="flex shrink-0 flex-wrap gap-2">
-          <a href="/go/ais"
+          <a href="/server-login/?force=1&amp;next=%2Fgo%2Fais"
             class="inline-flex min-h-10 items-center rounded-xl border border-white/[.18] bg-white/[.10] px-3 text-xs font-semibold hover:bg-white/[.16] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]">
             重新連接 AIS
           </a>
-          <a href="/server-login/"
+          <a href="/server-login/?force=1"
             class="inline-flex min-h-10 items-center rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-xs font-semibold text-[var(--control-text)] hover:bg-[var(--control-hover-bg)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]">
             重新登入 ePortal
           </a>
@@ -1213,6 +1213,6 @@
     <script src="/theme.js?v=5"></script>
     <script src="/backdrop-scroll.js?v=1"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=58" type="module"></script>
+    <script src="/app.js?v=59" type="module"></script>
   </body>
 </html>
