@@ -1,5 +1,5 @@
 const motion = window.NutcMotion;
-import { needsInteractiveLogin, isSessionExpiredError } from "./session-auth.js";
+import { isSessionExpiredError, shouldAutoOpenLogin } from "./session-auth.js";
 
 const moduleGrid = document.querySelector("#moduleGrid");
 const sessionWarning = document.querySelector("#sessionWarning");
@@ -142,7 +142,20 @@ async function api(path) {
 }
 
 function startAutomaticLogin(status) {
-  if (!needsInteractiveLogin(status)) return false;
+  const key = "nutc-portal-last-auto-login-redirect";
+  let previous = 0;
+  try {
+    previous = Number(window.sessionStorage.getItem(key) || 0);
+  } catch {
+    // Private browsing may prohibit session storage.
+  }
+  const now = Date.now();
+  if (!shouldAutoOpenLogin(status, previous, now)) return false;
+  try {
+    window.sessionStorage.setItem(key, String(now));
+  } catch {
+    // Login works even when storage is not available.
+  }
   window.location.replace("/server-login/?autocheck=1");
   return true;
 }
