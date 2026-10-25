@@ -87,18 +87,18 @@ test("single rounded border and clean surfaces come from dashboard CSS", async (
   const start = css.indexOf(".dashboard-module-card {");
   const componentCSS = css.slice(start);
   assert.ok(start >= 0, "dashboard stylesheet must own the card chrome");
-  assert.doesNotMatch(generated, /\\.dashboard-module-card\\s*\\{/);
+  assert.doesNotMatch(generated, /\.dashboard-module-card\s*\{/);
   assert.match(componentCSS, /border-radius: 20px;/);
   assert.match(componentCSS, /overflow: hidden;/);
   assert.match(componentCSS, /background-clip: padding-box;/);
-  assert.match(componentCSS, /border: 1px solid rgba\\(255,255,255,\\.13\\);/);
-  assert.match(componentCSS, /\\.dashboard-module-card::before\\s*\\{[\\s\\S]*?content: none;/);
-  assert.match(componentCSS, /\\.dashboard-module-icon\\s*\\{\\s*border-radius: 12px;/);
-  assert.match(componentCSS, /\\.dashboard-module-action\\s*\\{\\s*border-radius: 10px;/);
-  assert.match(componentCSS, /@media \\(prefers-reduced-motion: reduce\\)/);
-  assert.match(html, /\\/dashboard\\.css\\?v=2/);
-  assert.match(html, /\\/app\\.js\\?v=64/);
-  assert.match(html, /\\/generated\\/site\\.css\\?v=5/);
+  assert.match(componentCSS, /border: 1px solid rgba\(255,255,255,\.13\);/);
+  assert.match(componentCSS, /\.dashboard-module-card::before\s*\{[\s\S]*?content: none;/);
+  assert.match(componentCSS, /\.dashboard-module-icon\s*\{\s*border-radius: 12px;/);
+  assert.match(componentCSS, /\.dashboard-module-action\s*\{\s*border-radius: 10px;/);
+  assert.match(componentCSS, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(html, /\/dashboard\.css\?v=2/);
+  assert.match(html, /\/app\.js\?v=64/);
+  assert.match(html, /\/generated\/site\.css\?v=5/);
 });
 
 test("glass action buttons match shadcn version and preserve existing dimensions", async () => {
