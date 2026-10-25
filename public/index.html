@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark" />
     <title>NUTC Portal</title>
     <script src="/theme-defaults.js?v=1"></script>
-    <link rel="stylesheet" href="/generated/site.css?v=2" />
+    <link rel="stylesheet" href="/generated/site.css?v=3" />
     <script src="/vendor/lucide-1.24.0.min.js"></script>
 
     <style>
@@ -15,23 +15,49 @@
        * The buttons keep their original sizes, radii, icons and typography.
        */
       .dashboard-tinted-glass {
-        border: 1px solid rgba(255,255,255,.16);
-        background: linear-gradient(135deg,
-          rgba(245,235,242,.12), rgba(115,100,111,.16));
+        position: relative;
+        isolation: isolate;
+        border: 1px solid transparent;
+        background:
+          linear-gradient(135deg, rgba(245,235,242,.12), rgba(115,100,111,.16)) padding-box,
+          linear-gradient(140deg, rgba(255,255,255,.21), rgba(255,255,255,.08)) border-box;
         color: var(--foreground);
         box-shadow:
-          inset 0 1px 0 rgba(255,255,255,.07),
-          0 2px 10px rgba(0,0,0,.16);
+          inset 0 1px 0 rgba(255,255,255,.075),
+          0 5px 16px -10px rgba(0,0,0,.30);
         backdrop-filter: blur(18px) saturate(170%);
         -webkit-backdrop-filter: blur(18px) saturate(170%);
-        transition: transform 150ms ease, border-color 150ms ease,
-          background 150ms ease;
+        transition:
+          transform 200ms cubic-bezier(.22, 1, .36, 1),
+          box-shadow 200ms ease;
+      }
+      .dashboard-tinted-glass::before {
+        content: "";
+        position: absolute;
+        inset: 1px;
+        border-radius: inherit;
+        background: rgba(255,255,255,.075);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 200ms ease;
       }
       .dashboard-tinted-glass:hover:not(:disabled) {
         transform: translateY(-1px);
-        border-color: rgba(255,255,255,.23);
-        background: linear-gradient(135deg,
-          rgba(245,235,242,.17), rgba(115,100,111,.23));
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,.09),
+          0 8px 19px -10px rgba(0,0,0,.36);
+      }
+      .dashboard-tinted-glass:hover:not(:disabled)::before {
+        opacity: 1;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dashboard-tinted-glass,
+        .dashboard-tinted-glass::before {
+          transition: none;
+        }
+        .dashboard-tinted-glass:hover:not(:disabled) {
+          transform: none;
+        }
       }
       .dashboard-tinted-glass:focus-visible {
         outline: 2px solid var(--primary);
@@ -1219,7 +1245,7 @@
     <script src="/theme.js?v=5"></script>
     <script src="/backdrop-scroll.js?v=1"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=61" type="module"></script>
+    <script src="/app.js?v=62" type="module"></script>
     <script src="/generated/ui.js?v=1" type="module"></script>
   </body>
 </html>
