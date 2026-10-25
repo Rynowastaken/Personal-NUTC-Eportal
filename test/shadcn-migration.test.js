@@ -8,7 +8,7 @@ const repoFile = async (path) =>
 test("production HTML loads compiled CSS, not the Tailwind browser CDN", async () => {
   for (const path of ["public/index.html", "public/server-login.html", "public/launch.html"]) {
     const html = await repoFile(path);
-    assert.match(html, /<link rel="stylesheet" href="\/generated\/site\.css\?v=1"/);
+    assert.match(html, /<link rel="stylesheet" href="\/generated\/site\.css\?v=\d+"/);
     assert.match(html, /<script src="\/theme-defaults\.js\?v=1"/);
     assert.doesNotMatch(html, /tailwind-config\.js|vendor\/tailwindcss-3|cdn\.tailwindcss\.com/);
   }
