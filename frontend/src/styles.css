@@ -12,25 +12,40 @@
 /* Accessible React portal controls match the existing tinted glass surface. */
 @layer components {
   .shadcn-dashboard-glass {
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: linear-gradient(
-      135deg,
-      rgba(245, 235, 242, 0.12),
-      rgba(115, 100, 111, 0.16)
-    );
+    position: relative;
+    isolation: isolate;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(135deg, rgba(245,235,242,.12), rgba(115,100,111,.16)) padding-box,
+      linear-gradient(140deg, rgba(255,255,255,.21), rgba(255,255,255,.08)) border-box;
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.07),
-      0 2px 10px rgba(0,0,0,.16);
+      inset 0 1px 0 rgba(255,255,255,.075),
+      0 5px 16px -10px rgba(0,0,0,.30);
     backdrop-filter: blur(18px) saturate(170%);
     -webkit-backdrop-filter: blur(18px) saturate(170%);
   }
+  .shadcn-dashboard-glass::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background: rgba(255,255,255,.075);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+  }
   .shadcn-dashboard-glass:hover {
-    background: linear-gradient(
-      135deg,
-      rgba(245,235,242,.17),
-      rgba(115,100,111,.23)
-    );
-    border-color: rgba(255,255,255,.23);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.09),
+      0 8px 19px -10px rgba(0,0,0,.36);
+  }
+  .shadcn-dashboard-glass:hover::before {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .shadcn-dashboard-glass::before {
+      transition: none;
+    }
   }
 }
 
