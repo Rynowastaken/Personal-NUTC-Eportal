@@ -60,6 +60,8 @@ npm start
 
 > `npm run install-browser` 會裝 Playwright Chromium，在大多數 Linux 發行版上也會順便裝需要的系統套件。
 
+開發者可先閱讀 [程式架構與工作流程](docs/architecture.md)，並在提交前執行 `npm run verify`（建置 → 語法檢查 → 測試）。
+
 ## Frontend UI（shadcn/ui 漸進遷移）
 
 本專案原本是使用 **Tailwind Play CDN + Vanilla JS** 的 Dashboard。shadcn/ui 其實是 **基於 React 和 Tailwind CSS** 的元件集合，不能直接以 shadcn 取代 Tailwind CSS。為避免一次改寫登入、SSO、背景設定和課表，先以漸進方式遷移：
