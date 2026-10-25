@@ -77,6 +77,14 @@ test("built-in modules and pinned links share smooth card rendering", async () =
     assert.equal(card.children[0].style.backgroundClip, "padding-box");
     assert.equal(card.children[2].style.backgroundClip, "padding-box");
   }
+  // Assigning background resets background-clip back to border-box in CSS.
+  // Applying clip last prevents tinted fills from bleeding into card edges.
+  for (const name of ["card", "icon", "arrow"]) {
+    const background = source.indexOf(name + ".style.background =");
+    const clip = source.indexOf(name + '.style.backgroundClip = "padding-box";');
+    assert.ok(background >= 0 && clip > background,
+      name + " must apply backgroundClip after the background shorthand");
+  }
   assert.doesNotMatch(source, /mouseenter|mouseleave/);
 });
 
@@ -91,6 +99,10 @@ test("single rounded border and clean surfaces come from dashboard CSS", async (
   assert.match(componentCSS, /border-radius: 20px;/);
   assert.match(componentCSS, /overflow: hidden;/);
   assert.match(componentCSS, /background-clip: padding-box;/);
+  const cardRule = componentCSS.slice(0, componentCSS.indexOf("}"));
+  assert.ok(cardRule.indexOf("background-clip: padding-box;") >
+    cardRule.indexOf("background: linear-gradient("),
+    "background-clip must follow the shorthand, even without JS");
   assert.match(componentCSS, /border: 1px solid rgba\(255,255,255,\.13\);/);
   assert.match(componentCSS, /\.dashboard-module-card::before\s*\{[\s\S]*?content: none;/);
   assert.match(componentCSS, /\.dashboard-module-icon\s*\{\s*border-radius: 12px;/);
