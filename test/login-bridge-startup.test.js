@@ -84,7 +84,7 @@ test("Login UI initializes bridge without waiting for theme image extraction", a
   assert.match(js, /START_TIMEOUT_MS = 20_000/);
   assert.match(js, /PHASE_TIMEOUT_MS = 60_000/);
   assert.match(html, /id="retryButton"/);
-  assert.match(html, /server-login\.js\?v=13/);
+  assert.match(html, /server-login\.js\?v=14/);
 });
 
 test("Profile queue has its own deadline, not only the file lock timeout", async () => {
