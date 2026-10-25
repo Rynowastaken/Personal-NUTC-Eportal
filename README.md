@@ -60,6 +60,28 @@ npm start
 
 > `npm run install-browser` 會裝 Playwright Chromium，在大多數 Linux 發行版上也會順便裝需要的系統套件。
 
+## Frontend UI（shadcn/ui 漸進遷移）
+
+本專案原本是使用 **Tailwind Play CDN + Vanilla JS** 的 Dashboard。shadcn/ui 其實是 **基於 React 和 Tailwind CSS** 的元件集合，不能直接以 shadcn 取代 Tailwind CSS。為避免一次改寫登入、SSO、背景設定和課表，先以漸進方式遷移：
+
+- 移除 `public/vendor/tailwindcss-3.4.17.js` 與瀏覽器端的 Tailwind 配置，改由 **Vite + Tailwind CSS** 在部署時產生 `public/generated/site.css`。正式環境不再執行 Tailwind CDN 編譯器。
+- 引入 **React + 自有原始碼的 shadcn-style Button**，先接管首頁「新增 / 管理捷徑」按鈕；原本的管理視窗和資料 API 保留。React 腳本未能載入時，靜態 HTML 按鈕仍然可用。
+- 其他頁面與表單目前仍使用既有 HTML/JS，後續可以逐一搬進 `frontend/src/components/`，不需要重寫 Node/Playwright 伺服器。
+
+`npm install` 將自動執行 `npm run build`。手動更新 / 本機開發：
+
+```bash
+npm install
+npm run build
+npm run check
+npm test
+npm start
+```
+
+**systemd 使用者：** 範例服務仍然以 `node server.js` 啟動，需先在 checkout 內執行 `npm install && npm run build`，才可 `sudo systemctl restart personal-nutc-eportal.service`；否則靜態 CSS 與 React bundle 不會存在。請保留 `public/generated/` 在伺服器上（由建置產生，不會提交 Git）。如果使用 `npm install --ignore-scripts`，需要再手動執行 `npm run build`。
+
+新增 shadcn 元件可編輯 `frontend/src/components/ui/` 的原始碼，也可以在依照 `components.json` 安裝 CLI 後執行 `npx shadcn@latest add <component>`，並視 Tailwind v3 相容性調整元件樣式。
+
 ## 背景圖片亮度
 
 在右上角 **網站設定 → 背景圖片 → 背景亮度** 調整滑桿，可即時預覽自訂背景的明暗（0% 最暗、100% 為原本背景亮度、200% 最亮）。按 **Apply** 儲存，按 **Reset** 回復 100%，直接關閉設定則還原未儲存的調整。此設定與上方的主題配色 **Brightness** 各自獨立，不會改變卡片或文字的亮度。

@@ -1,6 +1,6 @@
-window.tailwind = window.tailwind || {};
-
-const root = document.documentElement;
+// Portal color variables are shared by the static pages and shadcn components.
+// They are set before CSS loads to avoid a theme flash.
+(() => {
 const defaults = {
   "--foreground": "#f7f1f6",
   "--muted": "rgba(247,241,246,.56)",
@@ -19,19 +19,8 @@ const defaults = {
   "--control-hover-text": "#17121b",
 };
 
-for (const [name, value] of Object.entries(defaults)) {
-  root.style.setProperty(name, value);
-}
 
-window.tailwind.config = {
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-      },
-      transitionTimingFunction: {
-        "soft-out": "cubic-bezier(0.22, 1, 0.36, 1)",
-      },
-    },
-  },
-};
+  for (const [name, value] of Object.entries(defaults)) {
+    document.documentElement.style.setProperty(name, value);
+  }
+})();

@@ -4,7 +4,6 @@ import { isSessionExpiredError, shouldAutoOpenLogin } from "./session-auth.js";
 const moduleGrid = document.querySelector("#moduleGrid");
 const sessionWarning = document.querySelector("#sessionWarning");
 const customLinksGrid = document.querySelector("#customLinksGrid");
-const manageCustomLinks = document.querySelector("#manageCustomLinks");
 const customLinksDialog = document.querySelector("#customLinksDialog");
 const customLinksClose = document.querySelector("#customLinksClose");
 const customLinkForm = document.querySelector("#customLinkForm");
@@ -2029,7 +2028,10 @@ async function mutateCustomLink(method, id = "", body = null) {
   }
 }
 
-manageCustomLinks?.addEventListener("click", () => {
+// Event delegation works for both the HTML fallback button and the
+// shadcn/React button that replaces it once the UI bundle mounts.
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#manageCustomLinks")) return;
   setCustomLinkStatus("");
   resetCustomLinkForm();
   renderCustomLinksManager();
