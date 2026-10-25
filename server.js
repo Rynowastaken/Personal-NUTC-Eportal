@@ -497,16 +497,61 @@ function runGit(args) {
   });
 }
 
+// The systemd service runs node server.js directly (no npm start). After
+// pulling CSS/React changes we must build *before* restarting the process,
+// otherwise the dashboard uses new JS with old /generated/site.css.
+function rebuildFrontendAfterPull() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"], {
+      cwd: __dirname,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const chunks = [];
+    const limitBytes = 32_768;
+    let timer;
+    const fail = (message) => {
+      const error = new Error(message);
+      error.code = "SERVER_UPDATE_BUILD_FAILED";
+      error.statusCode = 502;
+      reject(error);
+    };
+    function capture(data) {
+      // Bound the output retained from the build process.
+      if (Buffer.concat(chunks).length < limitBytes) chunks.push(data);
+    }
+    child.stdout.on("data", capture);
+    child.stderr.on("data", capture);
+    child.once("error", (error) => {
+      if (timer) clearTimeout(timer);
+      fail("Unable to start frontend build: " + error.message);
+    });
+    child.once("close", (code) => {
+      if (timer) clearTimeout(timer);
+      const output = Buffer.concat(chunks).toString("utf8").slice(-limitBytes).trim();
+      if (code === 0) {
+        resolve(output);
+      } else {
+        fail("Frontend build failed (exit " + code + "): " + output);
+      }
+    });
+    timer = setTimeout(() => child.kill("SIGTERM"), 120_000);
+    timer.unref?.();
+  });
+}
+
 async function updateServerFromGitPull() {
   const before = (await runGit(["rev-parse", "HEAD"])).stdout;
   const pull = await runGit(["pull"]);
   const after = (await runGit(["rev-parse", "HEAD"])).stdout;
+  const updated = Boolean(before && after && before !== after);
+  const buildOutput = updated ? await rebuildFrontendAfterPull() : "";
 
   return {
-    updated: Boolean(before && after && before !== after),
+    updated,
     previousCommit: before || null,
     currentCommit: after || null,
-    output: [pull.stdout, pull.stderr].filter(Boolean).join("\n"),
+    output: [pull.stdout, pull.stderr, buildOutput].filter(Boolean).join("\n"),
   };
 }
 
