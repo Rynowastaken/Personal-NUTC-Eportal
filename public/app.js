@@ -1763,22 +1763,18 @@ function createDashboardModuleCard({
   descriptionText,
   trailingIcon = "arrow-right",
 }) {
-  const rgba = window.NutcTheme?.rgba || ((color) => color);
   const card = document.createElement(tag);
   if (tag === "button") card.type = "button";
   card.className =
-    "group relative flex min-h-[108px] w-full items-center gap-4 overflow-hidden rounded-[20px] border p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] transition duration-150 ease-soft-out hover:-translate-y-px hover:bg-white/[.075] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:p-5";
-  card.style.borderColor = rgba(accent, 0.18);
-  card.style.background =
-    "linear-gradient(110deg, " + rgba(accent, 0.06) +
-    " 0%, rgba(22,16,28,.08) 42%, rgba(12,10,14,.34) 100%)";
+    "dashboard-module-card group relative flex min-h-[108px] w-full items-center gap-4 rounded-[20px] p-4 text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:p-5";
+  // Use one CSS-driven glass surface for built-in modules and pinned links.
+  // Inline backgrounds prevented hover treatments from blending smoothly.
+  card.style.setProperty("--module-accent", accent);
 
   const icon = document.createElement("span");
   icon.className =
-    "relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[11px] border transition duration-150 group-hover:-translate-y-px";
+    "dashboard-module-icon relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[12px]";
   icon.style.color = accent;
-  icon.style.backgroundColor = rgba(accent, 0.12);
-  icon.style.borderColor = rgba(accent, 0.3);
   const iconGlyph = document.createElement("i");
   iconGlyph.setAttribute("data-lucide", iconName);
   iconGlyph.className = "h-[20px] w-[20px]";
@@ -1798,10 +1794,8 @@ function createDashboardModuleCard({
 
   const arrow = document.createElement("span");
   arrow.className =
-    "relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition duration-150 group-hover:translate-x-0.5";
+    "dashboard-module-action relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-[10px]";
   arrow.style.color = accent;
-  arrow.style.backgroundColor = rgba(accent, 0.07);
-  arrow.style.borderColor = rgba(accent, 0.18);
   const arrowGlyph = document.createElement("i");
   arrowGlyph.setAttribute("data-lucide", trailingIcon);
   arrowGlyph.setAttribute("aria-hidden", "true");
@@ -1809,12 +1803,6 @@ function createDashboardModuleCard({
   arrow.append(arrowGlyph);
 
   card.append(icon, copy, arrow);
-  card.addEventListener("mouseenter", () => {
-    card.style.borderColor = rgba(accent, 0.3);
-  });
-  card.addEventListener("mouseleave", () => {
-    card.style.borderColor = rgba(accent, 0.18);
-  });
   return card;
 }
 
