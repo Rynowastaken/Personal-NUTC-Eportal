@@ -1,0 +1,29 @@
+name: Frontend build and tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies and build frontend
+        run: npm install --no-audit --no-fund
+      - name: Verify frontend output
+        run: |
+          test -s public/generated/site.css
+          test -s public/generated/ui.js
+      - name: Syntax checks
+        run: npm run check
+      - name: Tests
+        run: npm test
