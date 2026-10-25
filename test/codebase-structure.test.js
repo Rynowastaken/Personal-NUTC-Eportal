@@ -28,7 +28,7 @@ test("dashboard-only styling lives in dedicated CSS with no duplicate inline blo
   const html = await read("public/index.html");
   const css = await read("public/dashboard.css");
   assert.doesNotMatch(html, /<style\b/);
-  assert.match(html, /<link rel="stylesheet" href="\/dashboard\.css\?v=1"/);
+  assert.match(html, /<link rel="stylesheet" href="\/dashboard\.css\?v=2"/);
   assert.ok(html.indexOf("/generated/site.css") < html.indexOf("/dashboard.css"));
   for (const selector of [
     ".dashboard-tinted-glass",
@@ -43,7 +43,7 @@ test("dashboard-only styling lives in dedicated CSS with no duplicate inline blo
 test("shared card factory is imported rather than duplicated in dashboard controller", async () => {
   const app = await read("public/app.js");
   const cards = await read("public/dashboard-cards.js");
-  assert.match(app, /import \{ moduleAccent, createDashboardModuleCard \} from "\.\/dashboard-cards\.js";/);
+  assert.match(app, /import \{ moduleAccent, createDashboardModuleCard \} from "\.\/dashboard-cards\.js\?v=2";/);
   assert.doesNotMatch(app, /^function createDashboardModuleCard\(/m);
   assert.match(cards, /export function createDashboardModuleCard\(/);
   assert.match(cards, /export function moduleAccent\(/);
