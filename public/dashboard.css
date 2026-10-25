@@ -242,3 +242,69 @@
   width: 1.25rem;
   height: 1.25rem;
 }
+
+/*
+ * Module cards and shortcuts: a single border + one rounded clipping layer.
+ * Keep these rules in dashboard.css, not generated CSS, so they take effect
+ * even if the server's compiled Tailwind bundle is cached or late to rebuild.
+ */
+.dashboard-module-card {
+  border-radius: 20px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid rgba(255,255,255,.13);
+  background: linear-gradient(110deg,
+    rgba(50,44,56,.72) 0%,
+    rgba(37,34,42,.74) 42%,
+    rgba(22,20,27,.82) 100%);
+  background-clip: padding-box;
+  box-shadow: 0 8px 24px -17px rgba(0,0,0,.42);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transition:
+    transform 220ms cubic-bezier(.22, 1, .36, 1),
+    box-shadow 220ms ease;
+}
+
+/* Override leftover sheen from previously cached generated CSS. This inner
+ * pseudo-element created a second rounded edge, especially on mobile. */
+.dashboard-module-card::before {
+  content: none;
+  display: none;
+}
+
+.dashboard-module-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 25px -16px rgba(0,0,0,.48);
+}
+
+.dashboard-module-icon {
+  border-radius: 12px;
+}
+.dashboard-module-action {
+  border-radius: 10px;
+}
+.dashboard-module-icon,
+.dashboard-module-action {
+  background-clip: padding-box;
+  box-shadow: none;
+  transition: transform 200ms cubic-bezier(.22, 1, .36, 1);
+}
+.dashboard-module-card:hover .dashboard-module-icon {
+  transform: translateY(-1px);
+}
+.dashboard-module-card:hover .dashboard-module-action {
+  transform: translateX(2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-module-card,
+  .dashboard-module-icon,
+  .dashboard-module-action {
+    transition: none;
+  }
+  .dashboard-module-card:hover,
+  .dashboard-module-card:hover .dashboard-module-icon,
+  .dashboard-module-card:hover .dashboard-module-action {
+    transform: none;
+  }
+}

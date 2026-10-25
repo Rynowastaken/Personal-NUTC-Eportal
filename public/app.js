@@ -1,6 +1,6 @@
 const motion = window.NutcMotion;
 import { isSessionExpiredError, shouldAutoOpenLogin } from "./session-auth.js";
-import { moduleAccent, createDashboardModuleCard } from "./dashboard-cards.js";
+import { moduleAccent, createDashboardModuleCard } from "./dashboard-cards.js?v=2";
 
 const moduleGrid = document.querySelector("#moduleGrid");
 const sessionWarning = document.querySelector("#sessionWarning");

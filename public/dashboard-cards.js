@@ -35,12 +35,17 @@ export function createDashboardModuleCard({
   const rgba = window.NutcTheme?.rgba ||
     ((_color, alpha) => "rgba(45, 40, 50, " + alpha + ")");
   card.style.setProperty("--module-accent", accent);
-  card.style.border = "1px solid " + rgba(accent, 0.20);
+  // Critical corner geometry cannot depend on a cached Tailwind build.
+  // Use one low-contrast outline (not an accent rim plus inset highlight).
+  card.style.borderRadius = "20px";
+  card.style.overflow = "hidden";
+  card.style.border = "1px solid rgba(255,255,255,.13)";
   card.style.background =
-    "linear-gradient(110deg, " + rgba(accent, 0.07) +
+    "linear-gradient(110deg, " + rgba(accent, 0.06) +
     " 0%, rgba(37,34,42,.74) 42%, rgba(22,20,27,.82) 100%)";
-  card.style.boxShadow =
-    "inset 0 1px 0 rgba(255,255,255,.055), 0 6px 18px -12px rgba(0,0,0,.42)";
+  // The background shorthand resets background-clip, so this must be last.
+  card.style.backgroundClip = "padding-box";
+  card.style.boxShadow = "0 8px 24px -17px rgba(0,0,0,.42)";
   card.style.backdropFilter = "blur(18px) saturate(160%)";
   card.style.webkitBackdropFilter = "blur(18px) saturate(160%)";
 
@@ -48,9 +53,11 @@ export function createDashboardModuleCard({
   icon.className =
     "dashboard-module-icon relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[12px]";
   icon.style.color = accent;
-  icon.style.border = "1px solid " + rgba(accent, 0.24);
+  icon.style.borderRadius = "12px";
+  icon.style.border = "1px solid " + rgba(accent, 0.22);
   icon.style.background = rgba(accent, 0.12);
-  icon.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.055)";
+  icon.style.backgroundClip = "padding-box";
+  icon.style.boxShadow = "none";
   const iconGlyph = document.createElement("i");
   iconGlyph.setAttribute("data-lucide", iconName);
   iconGlyph.className = "h-[20px] w-[20px]";
@@ -72,9 +79,11 @@ export function createDashboardModuleCard({
   arrow.className =
     "dashboard-module-action relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-[10px]";
   arrow.style.color = accent;
-  arrow.style.border = "1px solid " + rgba(accent, 0.18);
+  arrow.style.borderRadius = "10px";
+  arrow.style.border = "1px solid " + rgba(accent, 0.16);
   arrow.style.background = rgba(accent, 0.08);
-  arrow.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.04)";
+  arrow.style.backgroundClip = "padding-box";
+  arrow.style.boxShadow = "none";
   const arrowGlyph = document.createElement("i");
   arrowGlyph.setAttribute("data-lucide", trailingIcon);
   arrowGlyph.setAttribute("aria-hidden", "true");
