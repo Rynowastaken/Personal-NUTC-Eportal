@@ -51,35 +51,27 @@
 
 
 /*
- * A single, softly tinted glass treatment for every module card.
- * Keeping a transparent 1px border and two clipped background layers
- * avoids the jagged hard-color outline previously drawn inline by JS.
- * An opacity-animated sheen avoids abruptly swapping CSS gradients.
+ * Solid cross-browser fallback for module cards and icon tiles.
+ * The renderer supplies per-module tinted rgba fills inline, so cards never
+ * disappear if this generated stylesheet is stale or color-mix is unsupported.
  */
 .dashboard-module-card {
   isolation: isolate;
   overflow: hidden;
-  border: 1px solid transparent;
-  background:
-    linear-gradient(
-      110deg,
-      color-mix(in srgb, var(--module-accent) 7%, rgba(28, 24, 33, .36)) 0%,
-      rgba(24, 21, 29, .36) 45%,
-      rgba(14, 12, 19, .32) 100%
-    ) padding-box,
-    linear-gradient(
-      140deg,
-      color-mix(in srgb, var(--module-accent) 23%, rgba(255,255,255,.05)),
-      rgba(255,255,255,.085) 50%,
-      rgba(255,255,255,.055) 100%
-    ) border-box;
+  border: 1px solid rgba(255,255,255,.16);
+  background: linear-gradient(
+    110deg,
+    rgba(54,48,57,.76) 0%,
+    rgba(37,34,42,.76) 45%,
+    rgba(22,20,27,.82) 100%
+  );
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.055),
     0 7px 22px -13px rgba(0,0,0,.38);
   backdrop-filter: blur(18px) saturate(165%);
   -webkit-backdrop-filter: blur(18px) saturate(165%);
   transition:
-    transform 220ms cubic-bezier(.22, 1, .36, 1),
+    transform 220ms cubic-bezier(.22,1,.36,1),
     box-shadow 220ms ease;
 }
 
@@ -90,8 +82,8 @@
   border-radius: inherit;
   background: linear-gradient(
     115deg,
-    color-mix(in srgb, var(--module-accent) 8%, transparent),
-    rgba(255,255,255,.035) 55%,
+    rgba(255,255,255,.07),
+    rgba(255,255,255,.025) 55%,
     transparent 90%
   );
   opacity: 0;
@@ -112,33 +104,10 @@
 
 .dashboard-module-icon,
 .dashboard-module-action {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(
-      150deg,
-      color-mix(in srgb, var(--module-accent) 13%, rgba(35,31,40,.56)),
-      rgba(24,22,30,.42)
-    ) padding-box,
-    linear-gradient(
-      140deg,
-      color-mix(in srgb, var(--module-accent) 27%, rgba(255,255,255,.055)),
-      rgba(255,255,255,.075)
-    ) border-box;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(58,50,62,.55);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.055);
-  transition: transform 220ms cubic-bezier(.22, 1, .36, 1);
-}
-.dashboard-module-action {
-  background:
-    linear-gradient(
-      150deg,
-      color-mix(in srgb, var(--module-accent) 8%, rgba(35,31,40,.40)),
-      rgba(24,22,30,.30)
-    ) padding-box,
-    linear-gradient(
-      140deg,
-      color-mix(in srgb, var(--module-accent) 20%, rgba(255,255,255,.04)),
-      rgba(255,255,255,.055)
-    ) border-box;
+  transition: transform 220ms cubic-bezier(.22,1,.36,1);
 }
 .dashboard-module-card:hover .dashboard-module-icon {
   transform: translateY(-1px);
