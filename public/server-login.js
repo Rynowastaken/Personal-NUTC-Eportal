@@ -1,4 +1,15 @@
-import { loginRequestOptions } from "./login-route.js";
+// Standalone classic script: the login form must not depend on an ES-module
+// import being available, especially when the server is partially deployed.
+// Keep the return-path allowlist aligned with login-route.js.
+function loginRequestOptions(search = "") {
+  const params = new URLSearchParams(search);
+  return {
+    force: params.get("force") === "1",
+    next: params.get("next") === "/go/ais" ? "/go/ais" : "/",
+  };
+}
+
+window.__nutcLoginBridgeBooted = true;
 
 const motion = window.NutcMotion;
 const statusDot = document.querySelector("#statusDot");
@@ -627,6 +638,8 @@ closeButton.addEventListener("click", async () => {
 });
 
 (async () => {
+  // Hide watchdog errors once the login script actually starts.
+  errorCard.classList.add("hidden");
   // Theme initialization can wait on remote preferences/image palette extraction.
   // Never let visual customization block access to the login form.
   setStatus("checking", "正在連接登入服務…");
