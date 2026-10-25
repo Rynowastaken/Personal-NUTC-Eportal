@@ -577,7 +577,13 @@ function setAcademicProgramSelection(program) {
 
 function setAcademicProgramMenuOpen(open, { focusSelected = false, returnFocus = false } = {}) {
   const visible = Boolean(open && !academicProgramSelect.disabled && themeDialog.open);
-  academicProgramOptions.classList.toggle("hidden", !visible);
+
+  // Keep the listbox mounted so opacity/transform can animate in both
+  // directions. Inert and aria-hidden still exclude closed options from
+  // keyboard focus and assistive technology throughout the exit transition.
+  academicProgramOptions.dataset.state = visible ? "open" : "closed";
+  academicProgramOptions.inert = !visible;
+  academicProgramOptions.setAttribute("aria-hidden", String(!visible));
   academicProgramSelect.setAttribute("aria-expanded", String(visible));
   academicProgramChevron.classList.toggle("rotate-180", visible);
 
@@ -585,9 +591,9 @@ function setAcademicProgramMenuOpen(open, { focusSelected = false, returnFocus =
     const selected = academicProgramChoices.find(
       (choice) => choice.dataset.academicProgram === stagedAcademicProgram,
     );
-    selected?.focus();
+    selected?.focus({ preventScroll: true });
   } else if (!visible && returnFocus) {
-    academicProgramSelect.focus();
+    academicProgramSelect.focus({ preventScroll: true });
   }
 }
 
