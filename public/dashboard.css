@@ -252,12 +252,12 @@
   border-radius: 20px;
   overflow: hidden;
   isolation: isolate;
-  background-clip: padding-box;
   border: 1px solid rgba(255,255,255,.13);
   background: linear-gradient(110deg,
     rgba(50,44,56,.72) 0%,
     rgba(37,34,42,.74) 42%,
     rgba(22,20,27,.82) 100%);
+  background-clip: padding-box;
   box-shadow: 0 8px 24px -17px rgba(0,0,0,.42);
   backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
