@@ -1767,14 +1767,28 @@ function createDashboardModuleCard({
   if (tag === "button") card.type = "button";
   card.className =
     "dashboard-module-card group relative flex min-h-[108px] w-full items-center gap-4 rounded-[20px] p-4 text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] sm:p-5";
-  // Use one CSS-driven glass surface for built-in modules and pinned links.
-  // Inline backgrounds prevented hover treatments from blending smoothly.
+  // Core glass surfaces must render even when generated CSS is stale on a
+  // mobile browser or the server was restarted before rebuilding its assets.
+  // The stylesheet only adds smooth transitions and an optional hover sheen.
+  const rgba = window.NutcTheme?.rgba ||
+    ((_color, alpha) => "rgba(45, 40, 50, " + alpha + ")");
   card.style.setProperty("--module-accent", accent);
+  card.style.border = "1px solid " + rgba(accent, 0.20);
+  card.style.background =
+    "linear-gradient(110deg, " + rgba(accent, 0.07) +
+    " 0%, rgba(37,34,42,.74) 42%, rgba(22,20,27,.82) 100%)";
+  card.style.boxShadow =
+    "inset 0 1px 0 rgba(255,255,255,.055), 0 6px 18px -12px rgba(0,0,0,.42)";
+  card.style.backdropFilter = "blur(18px) saturate(160%)";
+  card.style.webkitBackdropFilter = "blur(18px) saturate(160%)";
 
   const icon = document.createElement("span");
   icon.className =
     "dashboard-module-icon relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-[12px]";
   icon.style.color = accent;
+  icon.style.border = "1px solid " + rgba(accent, 0.24);
+  icon.style.background = rgba(accent, 0.12);
+  icon.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.055)";
   const iconGlyph = document.createElement("i");
   iconGlyph.setAttribute("data-lucide", iconName);
   iconGlyph.className = "h-[20px] w-[20px]";
@@ -1796,6 +1810,9 @@ function createDashboardModuleCard({
   arrow.className =
     "dashboard-module-action relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-[10px]";
   arrow.style.color = accent;
+  arrow.style.border = "1px solid " + rgba(accent, 0.18);
+  arrow.style.background = rgba(accent, 0.08);
+  arrow.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.04)";
   const arrowGlyph = document.createElement("i");
   arrowGlyph.setAttribute("data-lucide", trailingIcon);
   arrowGlyph.setAttribute("aria-hidden", "true");
