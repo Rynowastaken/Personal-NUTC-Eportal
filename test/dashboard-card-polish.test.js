@@ -23,9 +23,14 @@ function loadModuleCardRenderer(source) {
       };
     },
   };
-  return new Function("document",
+  const window = {
+    NutcTheme: {
+      rgba: (_hex, alpha) => "rgba(219,147,158," + alpha + ")",
+    },
+  };
+  return new Function("document", "window",
     source.slice(begin, end) + "\nreturn createDashboardModuleCard;",
-  )(document);
+  )(document, window);
 }
 
 test("built-in modules and pinned links share smooth card rendering", async () => {
@@ -53,20 +58,33 @@ test("built-in modules and pinned links share smooth card rendering", async () =
   assert.equal(custom.style.properties["--module-accent"], opts.accent);
   assert.equal(custom.children[2].children[0].attributes["data-lucide"], "external-link");
   assert.equal(custom.children[1].children[0].textContent, opts.titleText);
+  // The browser may still have yesterday's generated CSS after a dashboard
+  // git update. These surfaces must be visible from JS alone on mobile.
+  assert.match(native.style.background, /^linear-gradient\(/);
+  assert.match(native.style.border, /^1px solid rgba\(/);
+  assert.match(native.children[0].style.background, /^rgba\(/);
+  assert.match(native.children[0].style.border, /^1px solid rgba\(/);
+  assert.match(native.children[2].style.background, /^rgba\(/);
+  assert.match(native.children[2].style.border, /^1px solid rgba\(/);
+  assert.equal(custom.style.background, native.style.background);
   assert.doesNotMatch(source.slice(
     source.indexOf("function createDashboardModuleCard("),
     source.indexOf("\nfunction renderModules(")
-  ), /mouseenter|mouseleave|card\.style\.background\s*=/);
+  ), /mouseenter|mouseleave/);
 });
 
-test("cards use softened gradient borders instead of hard inline color borders", async () => {
+test("module cards use compatible fallback surfaces, including without color-mix", async () => {
   const css = await read("frontend/src/styles.css");
-  assert.match(css, /\.dashboard-module-card\s*\{[\s\S]*?border: 1px solid transparent;/);
-  assert.match(css, /\.dashboard-module-card\s*\{[\s\S]*?padding-box,[\s\S]*?border-box;/);
-  assert.match(css, /\.dashboard-module-card::before\s*\{[\s\S]*?opacity: 0;[\s\S]*?transition: opacity/);
-  assert.match(css, /\.dashboard-module-card:hover::before,[\s\S]*?opacity: 1;/);
-  assert.match(css, /\.dashboard-module-icon,[\s\S]*?\.dashboard-module-action\s*\{[\s\S]*?border: 1px solid transparent;/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.dashboard-module-card/);
+  const start = css.indexOf(".dashboard-module-card {");
+  const end = css.indexOf("/*\n * Animated academic-program listbox", start);
+  const componentCSS = css.slice(start, end);
+  assert.match(componentCSS, /border: 1px solid rgba\(/);
+  assert.match(componentCSS, /background: linear-gradient\(/);
+  assert.doesNotMatch(componentCSS, /color-mix\(/);
+  assert.match(componentCSS, /\.dashboard-module-card::before\s*\{[\s\S]*?opacity: 0;[\s\S]*?transition: opacity/);
+  assert.match(componentCSS, /\.dashboard-module-card:hover::before,[\s\S]*?opacity: 1;/);
+  assert.match(componentCSS, /\.dashboard-module-icon,[\s\S]*?\.dashboard-module-action\s*\{[\s\S]*?border: 1px solid rgba\(/);
+  assert.match(componentCSS, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.dashboard-module-card/);
 });
 
 test("glass action buttons match shadcn version and preserve existing dimensions", async () => {
@@ -79,6 +97,6 @@ test("glass action buttons match shadcn version and preserve existing dimensions
   assert.match(html, /id="scheduleRefreshButton"[\s\S]*?min-h-\[36px\]/);
   assert.match(html, /id="absenceRefreshButton"[\s\S]*?min-h-\[36px\]/);
   assert.match(html, /id="manageCustomLinks"[\s\S]*?min-h-\[42px\]/);
-  assert.match(html, /\/generated\/site\.css\?v=3/);
-  assert.match(html, /\/app\.js\?v=62/);
+  assert.match(html, /\/generated\/site\.css\?v=4/);
+  assert.match(html, /\/app\.js\?v=63/);
 });
