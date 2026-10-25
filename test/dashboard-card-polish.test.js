@@ -5,9 +5,7 @@ import { readFile } from "node:fs/promises";
 const read = (path) => readFile(new URL("../" + path, import.meta.url), "utf8");
 
 function loadModuleCardRenderer(source) {
-  const begin = source.indexOf("function createDashboardModuleCard(");
-  const end = source.indexOf("\nfunction renderModules(", begin);
-  assert.ok(begin >= 0 && end > begin, "shared card renderer must exist");
+  assert.match(source, /export function createDashboardModuleCard\(/);
   const document = {
     createElement(tag) {
       return {
@@ -29,12 +27,12 @@ function loadModuleCardRenderer(source) {
     },
   };
   return new Function("document", "window",
-    source.slice(begin, end) + "\nreturn createDashboardModuleCard;",
+    source.replace(/^export /gm, "") + "\nreturn createDashboardModuleCard;",
   )(document, window);
 }
 
 test("built-in modules and pinned links share smooth card rendering", async () => {
-  const source = await read("public/app.js");
+  const source = await read("public/dashboard-cards.js");
   const makeCard = loadModuleCardRenderer(source);
   const opts = {
     accent: "#db939e",
@@ -67,10 +65,7 @@ test("built-in modules and pinned links share smooth card rendering", async () =
   assert.match(native.children[2].style.background, /^rgba\(/);
   assert.match(native.children[2].style.border, /^1px solid rgba\(/);
   assert.equal(custom.style.background, native.style.background);
-  assert.doesNotMatch(source.slice(
-    source.indexOf("function createDashboardModuleCard("),
-    source.indexOf("\nfunction renderModules(")
-  ), /mouseenter|mouseleave/);
+  assert.doesNotMatch(source, /mouseenter|mouseleave/);
 });
 
 test("module cards use compatible fallback surfaces, including without color-mix", async () => {
@@ -90,10 +85,11 @@ test("module cards use compatible fallback surfaces, including without color-mix
 test("glass action buttons match shadcn version and preserve existing dimensions", async () => {
   const css = await read("frontend/src/styles.css");
   const html = await read("public/index.html");
+  const dashboardCss = await read("public/dashboard.css");
   assert.match(css, /\.shadcn-dashboard-glass\s*\{[\s\S]*?border: 1px solid transparent;/);
   assert.match(css, /\.shadcn-dashboard-glass::before[\s\S]*?transition: opacity/);
-  assert.match(html, /\.dashboard-tinted-glass\s*\{[\s\S]*?border: 1px solid transparent;/);
-  assert.match(html, /\.dashboard-tinted-glass::before[\s\S]*?transition: opacity/);
+  assert.match(dashboardCss, /\.dashboard-tinted-glass\s*\{[\s\S]*?border: 1px solid transparent;/);
+  assert.match(dashboardCss, /\.dashboard-tinted-glass::before[\s\S]*?transition: opacity/);
   assert.match(html, /id="scheduleRefreshButton"[\s\S]*?min-h-\[36px\]/);
   assert.match(html, /id="absenceRefreshButton"[\s\S]*?min-h-\[36px\]/);
   assert.match(html, /id="manageCustomLinks"[\s\S]*?min-h-\[42px\]/);
