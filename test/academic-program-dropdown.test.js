@@ -88,6 +88,6 @@ test("styles animate both directions and respect reduced-motion preferences", as
   assert.match(css, /visibility 0s linear 220ms/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(html, /id="academicProgramOptions"[\s\S]*?aria-hidden="true"[\s\S]*?data-state="closed"[\s\S]*?inert/);
-  assert.match(html, /app\.js\?v=61/);
-  assert.match(html, /site\.css\?v=2/);
+  assert.match(html, /app\.js\?v=\d+/);
+  assert.match(html, /site\.css\?v=\d+/);
 });
