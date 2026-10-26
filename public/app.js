@@ -2531,10 +2531,13 @@ async function waitForUpdateAndRestart(previousInstanceId, operationId) {
 
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 850));
+    const controller = new AbortController();
+    const requestTimeout = window.setTimeout(() => controller.abort(), 6_000);
     try {
       const response = await fetch("/api/debug/update/status", {
         credentials: "same-origin",
         cache: "no-store",
+        signal: controller.signal,
         headers: { Accept: "application/json" },
       });
       if (!response.ok) {
@@ -2564,6 +2567,8 @@ async function waitForUpdateAndRestart(previousInstanceId, operationId) {
       // update failures, expired access, or an operation ID mismatch.
       if (error instanceof TypeError || error?.name === "AbortError") continue;
       throw error;
+    } finally {
+      window.clearTimeout(requestTimeout);
     }
   }
 
