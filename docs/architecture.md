@@ -46,6 +46,36 @@ which launches `node server.js` directly and does not invoke npm scripts.
 The authenticated dashboard's Update action already runs the frontend build
 after pulling new commits and before restarting.
 
+## In-site updater (Update Server)
+
+The Settings → Server → **Update** button now starts an asynchronous update
+operation and shows each step on the page:
+
+1. Fast-forward Git only (`git pull --ff-only`).
+2. Install dependencies if `package.json` or a lockfile has changed, or the
+   installed dependency fingerprint is absent/outdated. This fingerprint lives
+   in ignored `node_modules/.nutc-dependency-revision`, so failed installs
+   will retry even after Git has already pulled the new commit.
+3. Always rebuild the frontend, including when Git is already up to date.
+   This allows an in-site **Repair** of broken or missing compiled UI assets.
+4. Write to a private temporary directory, validate `site.css` and `ui.js`,
+   then replace `public/generated/` with rollback on publish failure.
+5. Restart only after a valid frontend build. The browser follows the
+   operation through `/api/debug/update/status`, waits for a **new instance
+   ID**, then navigates to a versioned URL.
+
+The checkout has no `package-lock.json`, so dependency installation uses
+`npm install --no-save --package-lock=false --no-audit --no-fund` without
+creating an untracked lockfile. If a lockfile is introduced, the updater uses
+`npm ci`. The server exposes progress and failure messages, but never
+includes secrets or browser profiles. If a Git pull or build fails, it will
+not restart and the previous generated CSS/JS are retained.
+
+Static portal HTML, CSS and JavaScript are served with `Cache-Control:
+no-store`; each server boot also injects a unique `build` query parameter
+into its HTML asset references. The only immutable assets are versioned
+third-party vendor files.
+
 ## Changes with elevated risk
 
 - **Login/SSO**: avoid storing credentials; user-initiated re-login must

@@ -55,7 +55,7 @@ test("HTTP server imports the updater instead of defining a second build pipelin
   assert.match(server, /import \{ createServerUpdater \} from "\.\/src\/server-update\.js"/);
   assert.doesNotMatch(server, /^function runGit\(/m);
   assert.match(updater, /export function createServerUpdater\(/);
-  assert.match(updater, /await rebuildFrontendAfterPull\(\)/);
+  assert.match(updater, /await verifyAssets\(staged\)/);
 });
 
 test("one verification command covers build, syntax, and automated tests", async () => {

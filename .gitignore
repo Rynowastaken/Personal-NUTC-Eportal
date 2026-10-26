@@ -20,6 +20,8 @@ data/
 # Generated output
 output/
 public/generated/
+.update-build-*/
+.update-backup-*/
 .deploy/
 *.html
 *.json.tmp
