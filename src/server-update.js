@@ -97,6 +97,18 @@ export function createServerUpdater({
     }
   }
 
+  async function dependencyFingerprint() {
+    const fragments = [];
+    for (const filename of ["package.json", "package-lock.json", "npm-shrinkwrap.json"]) {
+      try {
+        fragments.push(await files.readFile(path.join(rootDir, filename)));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    return crypto.createHash("sha256").update(Buffer.concat(fragments)).digest("hex");
+  }
+
   async function verifyAssets(directory) {
     for (const filename of OUTPUT_FILES) {
       const location = path.join(directory, filename);
@@ -162,7 +174,15 @@ export function createServerUpdater({
       }
 
       const viteInstalled = await exists(path.join(rootDir, "node_modules", "vite"));
-      if (dependencyChanged || !viteInstalled) {
+      const stampFile = path.join(rootDir, "node_modules", ".nutc-dependency-revision");
+      const revision = await dependencyFingerprint();
+      const installedRevision = await files.readFile(stampFile, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return "";
+        throw error;
+      });
+      const needsInstall = dependencyChanged || !viteInstalled ||
+        installedRevision.trim() !== revision;
+      if (needsInstall) {
         emit("installing", "正在安裝前端依賴套件…");
         const lockFile = await exists(path.join(rootDir, "package-lock.json"));
         const npmArgs = lockFile
@@ -175,6 +195,8 @@ export function createServerUpdater({
           // the staging area so it never wipes the live CSS during install.
           env: { ...process.env, NUTC_BUILD_OUT_DIR: staged },
         });
+        await files.mkdir(path.dirname(stampFile), { recursive: true });
+        await files.writeFile(stampFile, revision + "\n");
       }
 
       // Rebuild on *every manual update*, even when Git has no new commits.
@@ -196,7 +218,7 @@ export function createServerUpdater({
         restartRequired: true,
         previousCommit: before || null,
         currentCommit: after || null,
-        dependenciesInstalled: dependencyChanged || !viteInstalled,
+        dependenciesInstalled: needsInstall,
         output: pull.stdout,
       };
     } finally {
