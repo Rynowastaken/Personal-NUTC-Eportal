@@ -1,99 +1,190 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { createServerUpdater } from "../src/server-update.js";
 
-function fakeProcessQueue(steps) {
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const git = (args, stdout = "", exitCode = 0) =>
+  ({ command: "git", args, stdout, exitCode });
+const install = () => ({ command: npm, args: [
+  "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
+] });
+const build = (exitCode = 0, missing = false) =>
+  ({ command: npm, args: ["run", "build"], exitCode, build: true, missing });
+
+function fakeQueue(steps) {
   const calls = [];
   function spawnCommand(command, args, options) {
-    calls.push({ command, args: [...args], cwd: options.cwd });
     const step = steps.shift();
-    assert.ok(step, "unexpected subprocess " + command + " " + args.join(" "));
+    assert.ok(step, "unexpected subprocess: " + command + " " + args.join(" "));
     assert.equal(command, step.command);
     assert.deepEqual(args, step.args);
+    calls.push({ command, args, options });
 
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     child.kill = () => {};
-    queueMicrotask(() => {
-      if (step.stdout) child.stdout.emit("data", Buffer.from(step.stdout));
-      if (step.stderr) child.stderr.emit("data", Buffer.from(step.stderr));
-      child.emit("close", step.exitCode ?? 0);
+    queueMicrotask(async () => {
+      try {
+        if (step.beforeClose) await step.beforeClose(options);
+        if (step.build && step.exitCode !== 1) {
+          const staging = options.env.NUTC_BUILD_OUT_DIR;
+          assert.ok(staging.includes(".update-build-"), "build must use staging");
+          await fs.mkdir(staging, { recursive: true });
+          await fs.writeFile(path.join(staging, "site.css"), "/* fresh CSS */");
+          if (!step.missing) await fs.writeFile(path.join(staging, "ui.js"), "/* fresh JS */");
+        }
+        if (step.stdout) child.stdout.emit("data", Buffer.from(step.stdout));
+        if (step.stderr) child.stderr.emit("data", Buffer.from(step.stderr));
+        child.emit("close", step.exitCode ?? 0);
+      } catch (error) {
+        child.emit("error", error);
+      }
     });
     return child;
   }
   return { spawnCommand, calls, remaining: () => steps.length };
 }
 
-const git = (args, stdout, exitCode = 0) => ({
-  command: "git", args, stdout, exitCode,
-});
-const build = (exitCode = 0) => ({
-  command: process.platform === "win32" ? "npm.cmd" : "npm",
-  args: ["run", "build"], stdout: "vite completed", exitCode,
-});
+async function fixture(fn) {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "nutc-updater-"));
+  try {
+    await fs.mkdir(path.join(rootDir, "public", "generated"), { recursive: true });
+    await fs.mkdir(path.join(rootDir, "node_modules", "vite"), { recursive: true });
+    await fs.writeFile(path.join(rootDir, "package.json"), '{"name":"test"}');
+    await fs.writeFile(path.join(rootDir, "public", "generated", "site.css"), "old css");
+    await fs.writeFile(path.join(rootDir, "public", "generated", "ui.js"), "old js");
+    let counter = 0;
+    return await fn({ rootDir, makeId: () => String(++counter) });
+  } finally {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+}
 
-test("unchanged server checkout does not rebuild or restart", async () => {
-  const tasks = fakeProcessQueue([
-    git(["rev-parse", "HEAD"], "aaa"),
-    git(["pull"], "Already up to date."),
-    git(["rev-parse", "HEAD"], "aaa"),
-  ]);
-  const updater = createServerUpdater({
-    rootDir: "/mock/portal", spawnCommand: tasks.spawnCommand,
-  });
-  const result = await updater.updateServerFromGitPull();
-  assert.equal(result.updated, false);
-  assert.equal(result.currentCommit, "aaa");
-  assert.equal(tasks.calls.length, 3);
-  assert.equal(tasks.remaining(), 0);
-});
+const unchangedGit = [
+  git(["rev-parse", "HEAD"], "aaa"),
+  git(["pull", "--ff-only"], "Already up to date."),
+  git(["rev-parse", "HEAD"], "aaa"),
+];
 
-test("changed checkout builds generated frontend assets before reporting success", async () => {
-  const tasks = fakeProcessQueue([
-    git(["rev-parse", "HEAD"], "aaa"),
-    git(["pull"], "Fast-forward"),
-    git(["rev-parse", "HEAD"], "bbb"),
-    build(),
-  ]);
-  const updater = createServerUpdater({
-    rootDir: "/mock/portal", spawnCommand: tasks.spawnCommand,
-  });
-  const result = await updater.updateServerFromGitPull();
-  assert.equal(result.updated, true);
-  assert.equal(result.previousCommit, "aaa");
-  assert.equal(result.currentCommit, "bbb");
-  assert.match(result.output, /vite completed/);
-  assert.deepEqual(tasks.calls.map(c => c.command), ["git", "git", "git",
-    process.platform === "win32" ? "npm.cmd" : "npm"]);
-  assert.ok(tasks.calls.every(c => c.cwd === "/mock/portal"));
-  assert.equal(tasks.remaining(), 0);
-});
+test("even unchanged Git builds/repairs frontend and requests restart", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([...unchangedGit, install(), build()]);
+    const updater = createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand });
+    const phases = [];
+    const result = await updater.updateServerFromGitPull({
+      onProgress: ({ stage }) => phases.push(stage),
+    });
 
-test("build failures prevent the API from reporting a successful update", async () => {
-  const tasks = fakeProcessQueue([
-    git(["rev-parse", "HEAD"], "aaa"),
-    git(["pull"], "Fast-forward"),
-    git(["rev-parse", "HEAD"], "bbb"),
-    build(1),
-  ]);
-  const updater = createServerUpdater({ spawnCommand: tasks.spawnCommand });
-  await assert.rejects(updater.updateServerFromGitPull(), {
-    code: "SERVER_UPDATE_BUILD_FAILED",
-    statusCode: 502,
-  });
-});
+    assert.equal(result.updated, false);
+    assert.equal(result.rebuilt, true);
+    assert.equal(result.restartRequired, true);
+    assert.equal(result.dependenciesInstalled, true);
+    assert.deepEqual(phases, ["checking", "pulling", "installing", "building",
+      "verifying", "publishing", "complete"]);
+    assert.equal(
+      await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"),
+      "/* fresh CSS */",
+    );
+    assert.equal(tasks.remaining(), 0);
+    assert.ok(!tasks.calls.some(c => c.command === "sh" || c.command === "bash"));
+  })
+);
 
-test("Git errors short-circuit before the frontend build", async () => {
-  const tasks = fakeProcessQueue([
-    git(["rev-parse", "HEAD"], "aaa"),
-    { command: "git", args: ["pull"], stderr: "merge conflict", exitCode: 1 },
-  ]);
-  const updater = createServerUpdater({ spawnCommand: tasks.spawnCommand });
-  await assert.rejects(updater.updateServerFromGitPull(), {
-    code: "SERVER_UPDATE_GIT_FAILED",
-    statusCode: 502,
-  });
-  assert.equal(tasks.remaining(), 0);
-});
+test("rebuild runs without reinstalling dependencies when fingerprint matches", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const initial = fakeQueue([...unchangedGit, install(), build()]);
+    await createServerUpdater({ rootDir, makeId, spawnCommand: initial.spawnCommand })
+      .updateServerFromGitPull();
+    const next = fakeQueue([...unchangedGit, build()]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: next.spawnCommand,
+    }).updateServerFromGitPull();
+    assert.equal(result.dependenciesInstalled, false);
+    assert.equal(next.remaining(), 0);
+  })
+);
+
+test("package changes reinstall dependencies before staging build", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([
+      git(["rev-parse", "HEAD"], "aaa"),
+      git(["pull", "--ff-only"], "Updated."),
+      git(["rev-parse", "HEAD"], "bbb"),
+      git(["diff", "--name-only", "aaa", "bbb", "--",
+        "package.json", "package-lock.json", "npm-shrinkwrap.json"], "package.json"),
+      install(), build(),
+    ]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+    }).updateServerFromGitPull();
+    assert.equal(result.updated, true);
+    assert.equal(result.dependenciesInstalled, true);
+    assert.equal(result.currentCommit, "bbb");
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("failed build preserves the old working CSS and JS", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([...unchangedGit, install(), build(1)]);
+    await assert.rejects(
+      createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand })
+        .updateServerFromGitPull(),
+      { code: "SERVER_UPDATE_BUILD_FAILED", statusCode: 502 },
+    );
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"), "old css");
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/ui.js"), "utf8"), "old js");
+    assert.equal(await fs.stat(path.join(rootDir, ".update-build-1")).catch(() => null), null);
+  })
+);
+
+test("incomplete build is rejected before swapping assets", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([...unchangedGit, install(), build(0, true)]);
+    await assert.rejects(
+      createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand })
+        .updateServerFromGitPull(),
+      { code: "SERVER_UPDATE_VERIFY_FAILED", statusCode: 502 },
+    );
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/ui.js"), "utf8"), "old js");
+  })
+);
+
+test("Git errors stop the update before installing or building", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([
+      git(["rev-parse", "HEAD"], "aaa"),
+      git(["pull", "--ff-only"], "merge conflict", 1),
+    ]);
+    await assert.rejects(
+      createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand })
+        .updateServerFromGitPull(),
+      { code: "SERVER_UPDATE_GIT_FAILED", statusCode: 502 },
+    );
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("a second update cannot run while another is already active", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    const tasks = fakeQueue([
+      { ...git(["rev-parse", "HEAD"], "aaa"), beforeClose: async () => pending },
+      ...unchangedGit.slice(1), install(), build(),
+    ]);
+    const updater = createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand });
+    const first = updater.updateServerFromGitPull();
+    await assert.rejects(updater.updateServerFromGitPull(), {
+      code: "SERVER_UPDATE_IN_PROGRESS", statusCode: 409,
+    });
+    release();
+    await first;
+    assert.equal(tasks.remaining(), 0);
+  })
+);
