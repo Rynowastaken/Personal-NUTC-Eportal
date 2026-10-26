@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { EPORTAL_DASHBOARD, EPORTAL_HOME, EPORTAL_LOGIN } from "./eportal.js";
+import { classifyEportalLoginFailure } from "./eportal-login-page.js";
 import {
   STUDENT_BUTTON_SELECTOR,
   openLoginBridgeSession,
@@ -73,7 +74,7 @@ async function closeBrowser(browser) {
 async function navigateForBridge(page, url, label) {
   bridgeLog(`${label}: request started`);
 
-  await page.goto(url, {
+  const response = await page.goto(url, {
     waitUntil: "commit",
     timeout: 15_000,
   });
@@ -87,6 +88,7 @@ async function navigateForBridge(page, url, label) {
     });
 
   await page.waitForTimeout(250);
+  return response?.status?.() || 0;
 }
 
 async function closeActive() {
@@ -403,6 +405,20 @@ async function pageHasLoginControls(page) {
   );
 }
 
+async function assertUpstreamLoginAvailable(page, status = 0) {
+  // Inspect only a short text sample, never page HTML or input values.
+  // A license error may arrive with HTTP 200, so status alone is insufficient.
+  const text = await page.evaluate(() =>
+    (document.body?.innerText || document.body?.textContent || "").slice(0, 2000),
+  ).catch(() => "");
+  const failure = classifyEportalLoginFailure({ status, text });
+  if (!failure) return;
+
+  const error = new Error(failure.message);
+  error.code = failure.code;
+  throw error;
+}
+
 async function openCleanLoginPage(session, reason) {
   const { page, browser } = session;
   session.phase = "opening-login";
@@ -417,7 +433,11 @@ async function openCleanLoginPage(session, reason) {
     });
   }
 
-  await navigateForBridge(page, EPORTAL_LOGIN, "opening ePortal login");
+  const responseStatus = await navigateForBridge(page, EPORTAL_LOGIN, "opening ePortal login");
+
+  if (!(await pageHasLoginControls(page))) {
+    await assertUpstreamLoginAvailable(page, responseStatus);
+  }
 
   await page
     .locator(
@@ -428,6 +448,10 @@ async function openCleanLoginPage(session, reason) {
     .catch(() => {
       bridgeLog("login controls did not become visible within 5s; extracting current DOM", page);
     });
+
+  if (!(await pageHasLoginControls(page))) {
+    await assertUpstreamLoginAvailable(page, responseStatus);
+  }
 }
 
 async function initializeLoginBridge(session) {
@@ -465,6 +489,7 @@ async function initializeLoginBridge(session) {
     if (current.pathname === "/sess_exceed.php") {
       await openCleanLoginPage(session, "session exceeded page detected");
     } else if (!(await pageHasLoginControls(page))) {
+      if (allowedPageUrl(page.url())) await assertUpstreamLoginAvailable(page);
       if (!allowedPageUrl(page.url())) {
         session.phase = "opening-login";
         await navigateForBridge(page, EPORTAL_HOME, "opening ePortal home");
@@ -481,6 +506,7 @@ async function initializeLoginBridge(session) {
     await ensureAllowed(page);
 
     if (!(await pageHasLoginControls(page))) {
+      await assertUpstreamLoginAvailable(page);
       const error = new Error(
         `ePortal login controls were not found on ${pageLocation(page)}.`,
       );

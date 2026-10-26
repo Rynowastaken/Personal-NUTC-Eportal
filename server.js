@@ -286,6 +286,11 @@ async function serveStatic(req, res, pathname) {
 }
 
 function handleBridgeError(res, error) {
+  if (error?.code === "EPORTAL_UPSTREAM_UNAVAILABLE") {
+    sendError(res, 503, error.message, error.code);
+    return true;
+  }
+
   if (error?.code === "EPORTAL_LOGIN_BRIDGE_UNAUTHORIZED") {
     sendError(res, 401, error.message, error.code);
     return true;

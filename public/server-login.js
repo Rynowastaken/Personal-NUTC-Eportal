@@ -23,6 +23,7 @@ const actionList = document.querySelector("#actionList");
 const bridgeForm = document.querySelector("#bridgeForm");
 const errorCard = document.querySelector("#errorCard");
 const errorMessage = document.querySelector("#errorMessage");
+const errorTitle = document.querySelector("#errorTitle");
 const closeButton = document.querySelector("#closeButton");
 const retryButton = document.querySelector("#retryButton");
 
@@ -123,7 +124,7 @@ function startCompletionPolling() {
       completionPollTimer = setTimeout(poll, 500);
     } catch (error) {
       clearCompletionPolling();
-      showError(error.message);
+      showError(error.message, error?.code);
     }
   };
 
@@ -149,9 +150,11 @@ async function bridgeApi(path, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       data.error || `Bridge request failed (${response.status}).`,
     );
+    error.code = data.code || "";
+    throw error;
   }
 
   return data;
@@ -543,7 +546,7 @@ async function refresh() {
   } catch (error) {
     showError(error?.name === "AbortError"
       ? "登入狀態查詢逾時，請重試或稍後再試。"
-      : error.message);
+      : error.message, error?.code);
   } finally {
     window.clearTimeout(timer);
   }
@@ -578,13 +581,17 @@ async function submitAction(activate = null, pressEnter = false) {
       startCompletionPolling();
     }
   } catch (error) {
-    showError(error.message);
+    showError(error.message, error?.code);
   } finally {
     busy = false;
   }
 }
 
-function showError(message) {
+function showError(message, code = "") {
+  const upstreamUnavailable = code === "EPORTAL_UPSTREAM_UNAVAILABLE";
+  if (errorTitle) {
+    errorTitle.textContent = upstreamUnavailable ? "校方 ePortal 服務異常" : "無法登入";
+  }
   clearCompletionPolling();
 
   if (startupPollTimer) {
@@ -600,7 +607,7 @@ function showError(message) {
     y: 10,
     scale: 0.985,
   });
-  setStatus("invalid", "登入失敗");
+  setStatus("invalid", upstreamUnavailable ? "校方服務暫時不可用" : "登入失敗");
   disposeImages();
   renderIcons();
 }
