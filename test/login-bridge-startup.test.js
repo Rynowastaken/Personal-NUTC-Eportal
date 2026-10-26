@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { classifyEportalLoginFailure } from "../src/eportal-login-page.js";
 import { readFile } from "node:fs/promises";
 
 const bridgeSource = await readFile(
@@ -17,6 +18,7 @@ function makeLoginBridge(openLoginBridgeSession) {
   return new Function(
     "crypto", "openLoginBridgeSession", "EPORTAL_DASHBOARD",
     "EPORTAL_HOME", "EPORTAL_LOGIN", "STUDENT_BUTTON_SELECTOR",
+    "classifyEportalLoginFailure",
     source + "return { startLoginBridge, getLoginBridgeState, stopLoginBridge };",
   )(
     crypto, openLoginBridgeSession,
@@ -24,6 +26,7 @@ function makeLoginBridge(openLoginBridgeSession) {
     "https://eportal.nutc.edu.tw/",
     "https://eportal.nutc.edu.tw/login.php",
     'button[onclick*="NUTC_6401"]',
+    classifyEportalLoginFailure,
   );
 }
 
@@ -92,4 +95,49 @@ test("Profile queue has its own deadline, not only the file lock timeout", async
   assert.match(js, /await Promise\.race\(\[\s*previous,/);
   assert.match(js, /queueTimer = setTimeout\(\(\) => reject\(profileBusyError\(\)\), timeoutMs\)/);
   assert.match(js, /const remaining = bounded \? timeoutMs - \(Date\.now\(\) - started\)/);
+});
+
+test("license error with HTTP 200 reports university outage, not missing inputs", async () => {
+  let navigationCount = 0;
+  let cleared = 0;
+  let closed = 0;
+  const page = {
+    url: () => "https://eportal.nutc.edu.tw/login.php",
+    goto: async () => {
+      navigationCount++;
+      return { status: () => 200 };
+    },
+    waitForLoadState: async () => {},
+    waitForTimeout: async () => {},
+    locator: () => ({
+      count: async () => 0,
+      first: () => ({ waitFor: async () => {
+        throw new Error("no login inputs");
+      } }),
+    }),
+    evaluate: async () => 'checkLicense("OAKlouds") is failed!',
+  };
+  const browser = {
+    page,
+    context: { clearCookies: async () => { cleared++; } },
+    close: async () => { closed++; },
+  };
+  const bridge = makeLoginBridge(async () => browser);
+  const started = await bridge.startLoginBridge({ force: true });
+  const token = tokenFromLaunchPath(started.launchPath);
+
+  // Async initialization has a bounded number of microtasks in this mock.
+  for (let i = 0; i < 16; i++) await Promise.resolve();
+  await assert.rejects(
+    bridge.getLoginBridgeState(token),
+    (error) => {
+      assert.equal(error.code, "EPORTAL_UPSTREAM_UNAVAILABLE");
+      assert.match(error.message, /OAKlouds/);
+      assert.doesNotMatch(error.message, /login controls were not found/);
+      return true;
+    },
+  );
+  assert.equal(navigationCount, 1, "known upstream errors should not trigger another login navigation");
+  assert.equal(cleared, 1, "forced login retains existing explicit-cookie handling");
+  assert.equal(closed, 1, "failed login browser should be closed");
 });
