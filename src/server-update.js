@@ -1,107 +1,208 @@
+import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-// The dashboard update endpoint only orchestrates this module. Keep Git and
-// Vite build lifecycle together, so UI changes are built before Node restarts.
+const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const OUTPUT_FILES = ["site.css", "ui.js"];
+
+function updateError(code, message) {
+  return Object.assign(new Error(message), { code, statusCode: 502 });
+}
+
+// Keep update commands isolated, bounded, and testable. Nothing is evaluated
+// through a shell, and we never print environment values or credentials.
 export function createServerUpdater({
-  rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+  rootDir = DEFAULT_ROOT,
   spawnCommand = spawn,
+  files = fs,
+  makeId = () => crypto.randomUUID(),
 } = {}) {
-  function runGit(args) {
+  let inFlight = false;
+  const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
+
+  function runCommand(command, args, { timeoutMs = 120_000, env = process.env, errorCode } = {}) {
     return new Promise((resolve, reject) => {
-      const child = spawnCommand("git", args, {
-        cwd: rootDir,
-        env: process.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const stdout = [];
-      const stderr = [];
-  
-      child.stdout.on("data", (chunk) => stdout.push(chunk));
-      child.stderr.on("data", (chunk) => stderr.push(chunk));
-      child.once("error", (error) => reject(error));
-      child.once("close", (code) => {
-        const result = {
-          code,
-          stdout: Buffer.concat(stdout).toString("utf8").trim(),
-          stderr: Buffer.concat(stderr).toString("utf8").trim(),
-        };
-  
-        if (code === 0) {
-          resolve(result);
-          return;
-        }
-  
-        const error = new Error(
-          result.stderr ||
-            result.stdout ||
-            `git ${args.join(" ")} failed with exit code ${code}.`,
-        );
-        error.code = "SERVER_UPDATE_GIT_FAILED";
-        error.statusCode = 502;
-        reject(error);
-      });
-    });
-  }
-  
-  // The systemd service runs node server.js directly (no npm start). After
-  // pulling CSS/React changes we must build *before* restarting the process,
-  // otherwise the dashboard uses new JS with old /generated/site.css.
-  function rebuildFrontendAfterPull() {
-    return new Promise((resolve, reject) => {
-      const child = spawnCommand(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"], {
-        cwd: rootDir,
-        env: process.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const chunks = [];
-      const limitBytes = 32_768;
+      let child;
+      let finished = false;
       let timer;
-      const fail = (message) => {
-        const error = new Error(message);
-        error.code = "SERVER_UPDATE_BUILD_FAILED";
-        error.statusCode = 502;
-        reject(error);
-      };
-      function capture(data) {
-        // Bound the output retained from the build process.
-        if (Buffer.concat(chunks).length < limitBytes) chunks.push(data);
+      const output = [];
+      let outputBytes = 0;
+      const maxBytes = 32_768;
+
+      function finish(error, result) {
+        if (finished) return;
+        finished = true;
+        if (timer) clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(result);
       }
-      child.stdout.on("data", capture);
-      child.stderr.on("data", capture);
+
+      try {
+        child = spawnCommand(command, args, {
+          cwd: rootDir,
+          env,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (error) {
+        finish(updateError(errorCode, "Could not launch " + command + ": " + error.message));
+        return;
+      }
+
+      function capture(chunk) {
+        const data = Buffer.from(chunk);
+        const remaining = maxBytes - outputBytes;
+        if (remaining > 0) {
+          const truncated = data.subarray(0, remaining);
+          output.push(truncated);
+          outputBytes += truncated.length;
+        }
+      }
+
+      child.stdout?.on("data", capture);
+      child.stderr?.on("data", capture);
       child.once("error", (error) => {
-        if (timer) clearTimeout(timer);
-        fail("Unable to start frontend build: " + error.message);
+        finish(updateError(errorCode, command + " failed: " + error.message));
       });
-      child.once("close", (code) => {
-        if (timer) clearTimeout(timer);
-        const output = Buffer.concat(chunks).toString("utf8").slice(-limitBytes).trim();
+      child.once("close", (code, signal) => {
+        const text = Buffer.concat(output).toString("utf8").trim();
         if (code === 0) {
-          resolve(output);
+          finish(null, { stdout: text, code });
         } else {
-          fail("Frontend build failed (exit " + code + "): " + output);
+          finish(updateError(
+            errorCode,
+            command + " " + args.join(" ") + " failed" +
+              (signal ? " (" + signal + ")" : " (exit " + code + ")") +
+              (text ? ": " + text : ""),
+          ));
         }
       });
-      timer = setTimeout(() => child.kill("SIGTERM"), 120_000);
+      timer = setTimeout(() => {
+        child.kill("SIGTERM");
+        finish(updateError("SERVER_UPDATE_TIMEOUT", command + " timed out after " + timeoutMs + "ms."));
+      }, timeoutMs);
       timer.unref?.();
     });
   }
-  
-  async function updateServerFromGitPull() {
-    const before = (await runGit(["rev-parse", "HEAD"])).stdout;
-    const pull = await runGit(["pull"]);
-    const after = (await runGit(["rev-parse", "HEAD"])).stdout;
-    const updated = Boolean(before && after && before !== after);
-    const buildOutput = updated ? await rebuildFrontendAfterPull() : "";
-  
-    return {
-      updated,
-      previousCommit: before || null,
-      currentCommit: after || null,
-      output: [pull.stdout, pull.stderr, buildOutput].filter(Boolean).join("\n"),
-    };
+
+  async function exists(filename) {
+    try {
+      await files.stat(filename);
+      return true;
+    } catch (error) {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
+  async function verifyAssets(directory) {
+    for (const filename of OUTPUT_FILES) {
+      const location = path.join(directory, filename);
+      const info = await files.stat(location).catch(() => null);
+      if (!info?.isFile() || info.size === 0) {
+        throw updateError(
+          "SERVER_UPDATE_VERIFY_FAILED",
+          "Frontend build is missing " + filename + ". Previous assets were preserved.",
+        );
+      }
+    }
+  }
+
+  async function publishAssets(staged, live, backup) {
+    const hadLive = await exists(live);
+    if (hadLive) await files.rename(live, backup);
+    try {
+      await files.rename(staged, live);
+    } catch (error) {
+      if (hadLive) await files.rename(backup, live);
+      throw updateError("SERVER_UPDATE_PUBLISH_FAILED", "Unable to publish frontend assets: " + error.message);
+    }
+    if (hadLive) {
+      // The new assets are live. A failure deleting the old backup should
+      // never misreport the update as failed or try to undo a good release.
+      await files.rm(backup, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  async function updateServerFromGitPull({ onProgress } = {}) {
+    if (inFlight) throw Object.assign(new Error("A server update is already running."), {
+      code: "SERVER_UPDATE_IN_PROGRESS",
+      statusCode: 409,
+    });
+    inFlight = true;
+    const emit = (stage, detail) => onProgress?.({ stage, detail });
+    const staged = path.join(rootDir, ".update-build-" + makeId());
+    const backup = path.join(rootDir, ".update-backup-" + makeId());
+    const live = path.join(rootDir, "public", "generated");
+
+    try {
+      emit("checking", "檢查目前版本…");
+      const before = (await runCommand("git", ["rev-parse", "HEAD"], {
+        errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 15_000,
+      })).stdout;
+      emit("pulling", "正在取得最新程式碼…");
+      const pull = await runCommand("git", ["pull", "--ff-only"], {
+        errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 90_000,
+      });
+      const after = (await runCommand("git", ["rev-parse", "HEAD"], {
+        errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 15_000,
+      })).stdout;
+      const updated = before !== after;
+
+      let dependencyChanged = false;
+      if (updated) {
+        const diff = await runCommand(
+          "git",
+          ["diff", "--name-only", before, after, "--", "package.json", "package-lock.json", "npm-shrinkwrap.json"],
+          { errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 15_000 },
+        );
+        dependencyChanged = Boolean(diff.stdout);
+      }
+
+      const viteInstalled = await exists(path.join(rootDir, "node_modules", "vite"));
+      if (dependencyChanged || !viteInstalled) {
+        emit("installing", "正在安裝前端依賴套件…");
+        const lockFile = await exists(path.join(rootDir, "package-lock.json"));
+        const npmArgs = lockFile
+          ? ["ci", "--no-audit", "--no-fund"]
+          : ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund"];
+        await runCommand(npmBinary, npmArgs, {
+          errorCode: "SERVER_UPDATE_INSTALL_FAILED",
+          timeoutMs: 240_000,
+          // package.json postinstall also compiles CSS; direct that build to
+          // the staging area so it never wipes the live CSS during install.
+          env: { ...process.env, NUTC_BUILD_OUT_DIR: staged },
+        });
+      }
+
+      // Rebuild on *every manual update*, even when Git has no new commits.
+      // This repairs stale/missing generated CSS without requiring SSH.
+      emit("building", "正在重新編譯 CSS 與 UI…");
+      await runCommand(npmBinary, ["run", "build"], {
+        errorCode: "SERVER_UPDATE_BUILD_FAILED",
+        timeoutMs: 150_000,
+        env: { ...process.env, NUTC_BUILD_OUT_DIR: staged },
+      });
+      emit("verifying", "正在檢查新產生的前端檔案…");
+      await verifyAssets(staged);
+      emit("publishing", "正在套用更新後的資源…");
+      await publishAssets(staged, live, backup);
+      emit("complete", "前端資源已更新，即將重新啟動 Server。");
+      return {
+        updated,
+        rebuilt: true,
+        restartRequired: true,
+        previousCommit: before || null,
+        currentCommit: after || null,
+        dependenciesInstalled: dependencyChanged || !viteInstalled,
+        output: pull.stdout,
+      };
+    } finally {
+      inFlight = false;
+      await files.rm(staged, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   return { updateServerFromGitPull };
