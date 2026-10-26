@@ -188,3 +188,48 @@ test("a second update cannot run while another is already active", () =>
     assert.equal(tasks.remaining(), 0);
   })
 );
+
+test("failed dependency installation remains retryable even without new Git commits", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const brokenInstall = { ...install(), exitCode: 1, stderr: "network unavailable" };
+    const failed = fakeQueue([...unchangedGit, brokenInstall]);
+    await assert.rejects(
+      createServerUpdater({ rootDir, makeId, spawnCommand: failed.spawnCommand })
+        .updateServerFromGitPull(),
+      { code: "SERVER_UPDATE_INSTALL_FAILED", statusCode: 502 },
+    );
+    assert.equal(await fs.stat(path.join(rootDir, "node_modules/.nutc-dependency-revision"))
+      .catch(() => null), null);
+    const retried = fakeQueue([...unchangedGit, install(), build()]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: retried.spawnCommand,
+    }).updateServerFromGitPull();
+    assert.equal(result.dependenciesInstalled, true);
+    assert.equal(retried.remaining(), 0);
+  })
+);
+
+test("publish failure restores the previous verified assets", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    let intercepted = false;
+    const files = {
+      ...fs,
+      async rename(from, to) {
+        if (!intercepted && from.includes(".update-build-") && to.endsWith("generated")) {
+          intercepted = true;
+          throw Object.assign(new Error("simulated disk failure"), { code: "EIO" });
+        }
+        return fs.rename(from, to);
+      },
+    };
+    const tasks = fakeQueue([...unchangedGit, install(), build()]);
+    await assert.rejects(
+      createServerUpdater({ rootDir, makeId, files, spawnCommand: tasks.spawnCommand })
+        .updateServerFromGitPull(),
+      { code: "SERVER_UPDATE_PUBLISH_FAILED", statusCode: 502 },
+    );
+    assert.equal(intercepted, true);
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"), "old css");
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/ui.js"), "utf8"), "old js");
+  })
+);
