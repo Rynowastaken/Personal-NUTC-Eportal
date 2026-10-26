@@ -54,6 +54,7 @@ const serverInstanceId =
   crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex");
 const serverStartedAt = Date.now();
 let restartScheduled = false;
+let updateOperation = null;
 const preferenceStore = new PreferenceStore();
 const dashboardPreferenceStore = new DashboardPreferenceStore();
 const launchJobs = new Map();
@@ -231,9 +232,13 @@ async function loadStaticAsset(resolved, relative) {
     body,
     contentType: contentType(resolved),
     cacheControl:
-      extension === ".html" || !relative.startsWith("vendor/")
-        ? "no-cache"
-        : "public, max-age=31536000, immutable",
+      // These scripts/styles are not content-addressed and can retain the
+      // same URL across releases. Never let mobile browsers pin stale UI.
+      [".html", ".js", ".css"].includes(extension) && !relative.startsWith("vendor/")
+        ? "no-store"
+        : !relative.startsWith("vendor/")
+          ? "no-cache"
+          : "public, max-age=31536000, immutable",
     etag:
       '"' +
       crypto.createHash("sha256").update(body).digest("base64url").slice(0, 22) +
@@ -611,6 +616,7 @@ const server = http.createServer(async (req, res) => {
         instanceId: serverInstanceId,
         startedAt: serverStartedAt,
         restartScheduled,
+        assetRevision: serverInstanceId,
         platform: process.platform,
         arch: process.arch,
         authMode: cloudflareAccess.enabled
@@ -623,56 +629,76 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/debug/update/status") {
+      sendJson(res, 200, {
+        ...(updateOperation || { state: "idle", stage: "idle", detail: "" }),
+        instanceId: serverInstanceId,
+        restartScheduled,
+      });
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/debug/update") {
-      if (restartScheduled) {
-        sendError(
-          res,
-          409,
-          "A server restart is already in progress.",
-          "SERVER_RESTART_IN_PROGRESS",
-        );
+      if (restartScheduled || updateOperation?.state === "running" ||
+          updateOperation?.state === "restarting") {
+        sendError(res, 409, "Update or restart already in progress.", "SERVER_UPDATE_IN_PROGRESS");
         return;
       }
 
-      try {
-        const result = await updateServerFromGitPull();
+      // Respond *before* git, npm, and Vite run. A mobile proxy may disconnect
+      // long requests even when the subprocess is still making progress.
+      const operation = {
+        id: crypto.randomUUID(),
+        state: "running",
+        stage: "checking",
+        detail: "檢查 Server 更新…",
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      updateOperation = operation;
+      sendJson(res, 202, { ok: true, ...operation, instanceId: serverInstanceId });
 
-        if (!result.updated) {
-          sendJson(res, 200, {
-            ok: true,
-            restarting: false,
-            ...result,
+      void (async () => {
+        try {
+          const result = await updateServerFromGitPull({
+            onProgress({ stage, detail }) {
+              operation.stage = stage;
+              operation.detail = detail;
+              operation.updatedAt = new Date().toISOString();
+            },
           });
-          return;
+
+          operation.state = "restarting";
+          operation.stage = "restarting";
+          operation.detail = "更新成功，正在重新啟動 Server…";
+          operation.updatedAt = new Date().toISOString();
+          operation.result = result;
+
+          await shutdownLoginBridge();
+          clearActivityRelaySessions();
+          clearClassScheduleCache();
+          clearAbsenceListCache();
+
+          restartScheduled = true;
+          // Give the browser time to receive one last progress response.
+          setTimeout(restartServerProcess, 1100).unref();
+        } catch (error) {
+          console.error("In-site update failed:", error?.message || error);
+          operation.state = "error";
+          operation.stage = "error";
+          operation.detail = error?.message || "Server 更新失敗。";
+          operation.code = error?.code || "SERVER_UPDATE_FAILED";
+          operation.updatedAt = new Date().toISOString();
         }
-
-        await shutdownLoginBridge();
-        clearActivityRelaySessions();
-        clearClassScheduleCache();
-        clearAbsenceListCache();
-
-        restartScheduled = true;
-        sendJson(res, 202, {
-          ok: true,
-          restarting: true,
-          instanceId: serverInstanceId,
-          ...result,
-        });
-
-        res.once("finish", () => {
-          setTimeout(restartServerProcess, 120).unref();
-        });
-      } catch (error) {
-        sendError(
-          res,
-          error?.statusCode || 500,
-          error?.message || "Unable to update the server.",
-          error?.code || "SERVER_UPDATE_FAILED",
-        );
-      }
+      })();
       return;
     }
+
     if (req.method === "POST" && url.pathname === "/api/debug/restart") {
+      if (updateOperation?.state === "running" || updateOperation?.state === "restarting") {
+        sendError(res, 409, "Cannot restart while the frontend is rebuilding.", "SERVER_UPDATE_IN_PROGRESS");
+        return;
+      }
       if (restartScheduled) {
         sendJson(res, 202, {
           ok: true,
