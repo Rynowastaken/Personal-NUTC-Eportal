@@ -44,7 +44,7 @@ test("Vite compiles Tailwind from existing HTML and new React components", async
   assert.match(tailwind, /\.\/public\/\*\.html/);
   assert.match(tailwind, /\.\/public\/\*\.js/);
   assert.match(tailwind, /\.\/frontend\/src/);
-  assert.match(vite, /outDir: "public\/generated"/);
+  assert.match(vite, /outDir: process\.env\.NUTC_BUILD_OUT_DIR \|\| "public\/generated"/);
   assert.match(styles, /@tailwind base;/);
   assert.match(styles, /@tailwind utilities;/);
 });
