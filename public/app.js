@@ -2522,13 +2522,61 @@ debugRestartServer.addEventListener("click", async () => {
   }
 });
 
+// Async updates may run for minutes (dependency install + a staged Vite build).
+// Poll a small status endpoint instead of holding one HTTP request open.
+// The session is complete only after a NEW server instance is reachable.
+async function waitForUpdateAndRestart(previousInstanceId, operationId) {
+  const deadline = Date.now() + 8 * 60_000;
+  let lastStage = "";
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    try {
+      const response = await fetch("/api/debug/update/status", {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) {
+        if ([401, 403].includes(response.status)) {
+          throw new Error("登入憑證已失效，請重新驗證管理權限。");
+        }
+        continue;
+      }
+
+      const state = await response.json();
+      if (state.instanceId && state.instanceId !== previousInstanceId) {
+        return state.instanceId;
+      }
+      if (state.id !== operationId) {
+        // Another tab cannot complete or overwrite this operation.
+        throw new Error("更新狀態已被另一項操作取代，請重新整理頁面。");
+      }
+      if (state.state === "error") {
+        throw new Error(state.detail || "前端編譯或發佈失敗。");
+      }
+      if (state.stage !== lastStage || state.detail) {
+        debugUpdateStatus.textContent = state.detail || "正在更新 Server…";
+        lastStage = state.stage;
+      }
+    } catch (error) {
+      // A connection reset is normal during restart. Don't swallow actual
+      // update failures, expired access, or an operation ID mismatch.
+      if (error instanceof TypeError || error?.name === "AbortError") continue;
+      throw error;
+    }
+  }
+
+  throw new Error("更新後的 Server 尚未重新上線，請檢查服務紀錄。");
+}
+
 debugUpdateServer?.addEventListener("click", async () => {
   if (debugUpdateServer.disabled) return;
 
   debugUpdateServer.disabled = true;
   debugRestartServer.disabled = true;
   debugUpdateIcon.classList.add("animate-spin");
-  debugUpdateStatus.textContent = "正在執行 git pull…";
+  debugUpdateStatus.textContent = "正在啟動更新與前端重建…";
   debugUpdateStatus.classList.remove("text-[#f4a0a5]");
   debugUpdateStatus.classList.add("text-[var(--muted)]");
 
@@ -2543,34 +2591,17 @@ debugUpdateServer?.addEventListener("click", async () => {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(
-        data.error || `Update failed (${response.status})`,
-      );
+      throw new Error(data.error || "無法開始更新 (" + response.status + ")。");
     }
+    if (!data.id) throw new Error("Server 未回傳更新工作 ID。");
 
-    if (!data.updated) {
-      debugUpdateStatus.textContent =
-        data.output || "git pull 完成，沒有新的更新。";
-      debugUpdateServer.disabled = false;
-      debugRestartServer.disabled = false;
-      debugUpdateIcon.classList.remove("animate-spin");
-      return;
-    }
-
-    debugUpdateStatus.textContent =
-      "git pull 完成，正在重新啟動 Server…";
-
-    const restarted = await waitForServerRestart(before.instanceId);
-
-    if (!restarted) {
-      throw new Error("更新完成，但 Server 沒有在 15 秒內重新上線。");
-    }
-
-    debugUpdateStatus.textContent = "更新完成，正在重新載入…";
-    await motion?.emphasize?.(debugUpdateServer, {
-      duration: 180,
-    });
-    window.location.reload();
+    const newInstanceId = await waitForUpdateAndRestart(before.instanceId, data.id);
+    debugUpdateStatus.textContent = "前端檔案已更新，正在載入最新版…";
+    // A new URL forces the mobile browser and its reverse proxy to retrieve
+    // fresh HTML. Server also marks JS/CSS/HTML no-store.
+    const target = new URL(window.location.href);
+    target.searchParams.set("build", newInstanceId);
+    window.location.replace(target.toString());
   } catch (error) {
     debugUpdateServer.disabled = false;
     debugRestartServer.disabled = false;
