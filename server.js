@@ -36,6 +36,7 @@ import { createCloudflareAccessGuard } from "./src/cloudflare-access.js";
 import { DashboardPreferenceStore } from "./src/dashboard-preferences.js";
 import { PreferenceStore } from "./src/preference-store.js";
 import { createServerUpdater } from "./src/server-update.js";
+import { stampHtmlAssetRevision, staticCacheControl } from "./src/static-assets.js";
 import {
   checkServerPortalStatus,
   createModuleHandoff,
@@ -226,19 +227,15 @@ async function loadStaticAsset(resolved, relative) {
   const cached = staticAssetCache.get(resolved);
   if (cached) return cached;
 
-  const body = await fsp.readFile(resolved);
+  const raw = await fsp.readFile(resolved);
   const extension = path.extname(resolved).toLowerCase();
+  const body = extension === ".html"
+    ? Buffer.from(stampHtmlAssetRevision(raw.toString("utf8"), serverInstanceId))
+    : raw;
   const asset = {
     body,
     contentType: contentType(resolved),
-    cacheControl:
-      // These scripts/styles are not content-addressed and can retain the
-      // same URL across releases. Never let mobile browsers pin stale UI.
-      [".html", ".js", ".css"].includes(extension) && !relative.startsWith("vendor/")
-        ? "no-store"
-        : !relative.startsWith("vendor/")
-          ? "no-cache"
-          : "public, max-age=31536000, immutable",
+    cacheControl: staticCacheControl(relative, extension),
     etag:
       '"' +
       crypto.createHash("sha256").update(body).digest("base64url").slice(0, 22) +
