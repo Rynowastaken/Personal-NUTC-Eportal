@@ -8,7 +8,7 @@ export default defineConfig({
     alias: { "@": path.resolve("frontend/src") },
   },
   build: {
-    outDir: "public/generated",
+    outDir: process.env.NUTC_BUILD_OUT_DIR || "public/generated",
     emptyOutDir: true,
     cssCodeSplit: false,
     lib: {
