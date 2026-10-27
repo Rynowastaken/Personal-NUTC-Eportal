@@ -1,6 +1,7 @@
 const motion = window.NutcMotion;
 import { isSessionExpiredError, shouldAutoOpenLogin } from "./session-auth.js";
 import { moduleAccent, createDashboardModuleCard } from "./dashboard-cards.js?v=2";
+import { createHitokotoWidget, normalizeHitokotoSettings } from "./hitokoto.js?v=1";
 
 const moduleGrid = document.querySelector("#moduleGrid");
 const sessionWarning = document.querySelector("#sessionWarning");
@@ -43,6 +44,17 @@ const accountAvatarButton = document.querySelector("#accountAvatarButton");
 const accountAvatarImage = document.querySelector("#accountAvatarImage");
 const accountAvatarFallback = document.querySelector("#accountAvatarFallback");
 const welcomeUsername = document.querySelector("#welcomeUsername");
+const hitokotoEnabled = document.querySelector("#hitokotoEnabled");
+const hitokotoLanguage = document.querySelector("#hitokotoLanguage");
+const hitokotoWidget = createHitokotoWidget({
+  subtitle: document.querySelector("#welcomeSubtitle"),
+  details: document.querySelector("#hitokotoDetails"),
+  speaker: document.querySelector("#hitokotoSpeaker"),
+  source: document.querySelector("#hitokotoSource"),
+  link: document.querySelector("#hitokotoLink"),
+  refresh: document.querySelector("#hitokotoRefresh"),
+  status: document.querySelector("#hitokotoStatus"),
+});
 const accountSettingsAction = document.querySelector("#accountSettingsAction");
 const accountDialog = document.querySelector("#accountDialog");
 const accountDialogClose = document.querySelector("#accountDialogClose");
@@ -107,6 +119,8 @@ let statusFocusInside = false;
 let classScheduleData = null;
 let currentAcademicProgram = "day";
 let stagedAcademicProgram = "day";
+let currentHitokotoSettings = normalizeHitokotoSettings();
+let stagedHitokotoSettings = normalizeHitokotoSettings();
 let absenceListData = null;
 let checkingSessionExpiry = null;
 let lastPortalCheckAt = 0;
@@ -250,6 +264,7 @@ async function saveServerAccountProfile({
 async function loadServerAccountProfile() {
   try {
     const preferences = await api("/api/preferences");
+    currentHitokotoSettings = normalizeHitokotoSettings(preferences.hitokoto);
     currentAcademicProgram = ["day", "evening", "weekend"].includes(
       preferences.academicProgram,
     ) ? preferences.academicProgram : "day";
@@ -655,12 +670,28 @@ themeDialog.addEventListener("close", () => {
   );
 });
 
+function renderHitokotoSettings() {
+  hitokotoEnabled.checked = stagedHitokotoSettings.enabled;
+  hitokotoLanguage.value = stagedHitokotoSettings.language;
+  hitokotoLanguage.disabled = !stagedHitokotoSettings.enabled;
+}
+
+hitokotoEnabled.addEventListener("change", () => {
+  stagedHitokotoSettings.enabled = hitokotoEnabled.checked;
+  renderHitokotoSettings();
+});
+hitokotoLanguage.addEventListener("change", () => {
+  stagedHitokotoSettings.language = hitokotoLanguage.value;
+});
+
 async function openThemeDialog() {
   stagedThemeSettings = {
     ...window.NutcTheme.settings(),
   };
   setAcademicProgramSelection(currentAcademicProgram);
   setAcademicProgramMenuOpen(false);
+  stagedHitokotoSettings = { ...currentHitokotoSettings };
+  renderHitokotoSettings();
   academicProgramStatus.textContent = "";
   academicProgramStatus.classList.remove("text-[#f4a0a5]");
   academicProgramStatus.classList.add("text-[var(--muted)]");
@@ -2260,6 +2291,8 @@ themeReset.addEventListener("click", () => {
   stagedThemeSettings = {
     ...window.NutcTheme.defaultSettings(),
   };
+  stagedHitokotoSettings = normalizeHitokotoSettings();
+  renderHitokotoSettings();
   renderThemePreview({ animate: true });
   window.NutcTheme.previewBackgroundBrightness(
     stagedThemeSettings.backgroundBrightness,
@@ -2293,6 +2326,23 @@ themeApply.addEventListener("click", async () => {
         // unshifted current week returned by the preference endpoint.
         void loadClassSchedule();
       }
+    }
+
+    if (stagedHitokotoSettings.enabled !== currentHitokotoSettings.enabled ||
+        stagedHitokotoSettings.language !== currentHitokotoSettings.language) {
+      const response = await fetch("/api/preferences/hitokoto", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(stagedHitokotoSettings),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `儲存語錄設定失敗（${response.status}）`);
+      }
+      currentHitokotoSettings = normalizeHitokotoSettings(data.hitokoto);
+      void hitokotoWidget.applySettings(currentHitokotoSettings);
     }
 
     window.NutcTheme.applySettings(stagedThemeSettings);
@@ -2730,6 +2780,7 @@ if (typeof ResizeObserver !== "undefined") {
     loadServerAccountProfile(),
   ]);
   applyAccountProfile();
+  void hitokotoWidget.applySettings(currentHitokotoSettings);
   syncThemeMenu();
   renderIcons();
   updateStatusButtonExpansion();
