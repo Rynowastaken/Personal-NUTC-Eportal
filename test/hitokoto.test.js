@@ -16,11 +16,16 @@ const sample = {
 };
 
 test("Hitokoto is opt-in and rejects unrecognized language values", () => {
-  assert.deepEqual(normalizeHitokotoSettings(), { enabled: false, language: "original" });
+  assert.deepEqual(normalizeHitokotoSettings(), {
+    enabled: false, language: "original", showSpeaker: true, showSource: true,
+  });
   assert.deepEqual(normalizeHitokotoSettings({ enabled: true, language: "ja" }),
-    { enabled: true, language: "ja" });
+    { enabled: true, language: "ja", showSpeaker: true, showSource: true });
+  assert.deepEqual(normalizeHitokotoSettings({
+    enabled: true, language: "en", showSpeaker: false, showSource: true,
+  }), { enabled: true, language: "en", showSpeaker: false, showSource: true });
   assert.deepEqual(normalizeHitokotoSettings({ enabled: "true", language: "fr" }),
-    { enabled: false, language: "original" });
+    { enabled: false, language: "original", showSpeaker: true, showSource: true });
 });
 
 test("quote parser escapes dangerous URL data and retains speaker/source", () => {
@@ -87,14 +92,24 @@ test("backend preference retains toggle and language and rejects malformed value
   const store = new DashboardPreferenceStore();
   let saved = 0;
   store.persist = async () => { saved += 1; };
-  assert.deepEqual(store.get().hitokoto, { enabled: false, language: "original" });
+  assert.deepEqual(store.get().hitokoto, {
+    enabled: false, language: "original", showSpeaker: true, showSource: true,
+  });
   await store.setHitokotoSettings({ enabled: true, language: "en" });
-  assert.deepEqual(store.get().hitokoto, { enabled: true, language: "en" });
-  await store.setHitokotoSettings({ enabled: false, language: "ja" });
-  assert.deepEqual(store.get().hitokoto, { enabled: false, language: "ja" });
+  assert.deepEqual(store.get().hitokoto, {
+    enabled: true, language: "en", showSpeaker: true, showSource: true,
+  });
+  await store.setHitokotoSettings({
+    enabled: false, language: "ja", showSpeaker: false, showSource: false,
+  });
+  assert.deepEqual(store.get().hitokoto, {
+    enabled: false, language: "ja", showSpeaker: false, showSource: false,
+  });
   assert.equal(saved, 2);
   for (const payload of [null, {}, { enabled: "true", language: "en" },
-    { enabled: true, language: "fr" }]) {
+    { enabled: true, language: "fr" },
+    { enabled: true, language: "original", showSpeaker: "no" },
+    { enabled: true, language: "original", showSource: 1 }]) {
     await assert.rejects(store.setHitokotoSettings(payload), { statusCode: 400 });
   }
 });
@@ -152,10 +167,11 @@ test("disabled widget never fetches, attributes safely, and restores static subt
   }
   const subtitle = fakeNode("你的校園日常，一眼掌握。");
   const details = fakeNode(), speaker = fakeNode(), source = fakeNode();
+  const speakerRow = fakeNode(), sourceRow = fakeNode();
   const link = fakeNode(), refresh = fakeNode(), status = fakeNode();
   let calls = 0;
   const widget = createHitokotoWidget({
-    subtitle, details, speaker, source, link, refresh, status,
+    subtitle, details, speaker, source, speakerRow, sourceRow, link, refresh, status,
     fetchQuote: async () => { calls++; return parseHitokoto(sample); },
     translateQuote: async text => ({ text, translated: false }),
   });
@@ -169,7 +185,32 @@ test("disabled widget never fetches, attributes safely, and restores static subt
   assert.equal(speaker.textContent, "範例角色");
   assert.equal(source.textContent, "示範作品");
   assert.equal(details.hidden, false);
+  assert.equal(speakerRow.hidden, false);
+  assert.equal(sourceRow.hidden, false);
   assert.equal(link.href, "https://hitokoto.cn?uuid=" + sample.uuid);
+
+  // Credit toggles update without changing the quote or hitting the API.
+  await widget.applySettings({
+    enabled: true, language: "original", showSpeaker: false, showSource: true,
+  });
+  assert.equal(speakerRow.hidden, true);
+  assert.equal(sourceRow.hidden, false);
+  assert.equal(details.hidden, false);
+  assert.equal(calls, 1);
+
+  await widget.applySettings({
+    enabled: true, language: "original", showSpeaker: false, showSource: false,
+  });
+  assert.equal(details.hidden, true);
+  assert.equal(link.hidden, true);
+  assert.equal(calls, 1);
+  await widget.applySettings({
+    enabled: true, language: "original", showSpeaker: true, showSource: false,
+  });
+  assert.equal(speakerRow.hidden, false);
+  assert.equal(sourceRow.hidden, true);
+  assert.equal(details.hidden, false);
+  assert.equal(link.hidden, false);
 
   await widget.applySettings({ enabled: false, language: "original" });
   assert.equal(details.hidden, true);
@@ -183,15 +224,49 @@ test("main page exposes caption toggle, language options and attribution", async
     read("public/index.html"), read("public/app.js"), read("server.js"),
   ]);
   for (const id of [
-    "hitokotoEnabled", "hitokotoLanguage", "hitokotoSpeaker",
+    "hitokotoEnabled", "hitokotoLanguageSelect", "hitokotoLanguageOptions",
+    "hitokotoLanguageValue", "hitokotoShowSpeaker", "hitokotoShowSource",
+    "hitokotoSpeakerRow", "hitokotoSourceRow", "hitokotoSpeaker",
     "hitokotoSource", "hitokotoRefresh", "hitokotoStatus",
   ]) assert.ok(html.includes('id="' + id + '"'));
-  assert.match(html, /option value="original"/);
-  assert.match(html, /option value="en"/);
-  assert.match(html, /option value="ja"/);
-  assert.match(html, /\/dashboard\.css\?v=4/);
+  assert.match(html, /data-hitokoto-language="original"/);
+  assert.match(html, /data-hitokoto-language="en"/);
+  assert.match(html, /data-hitokoto-language="ja"/);
+  assert.match(html, /\/dashboard\.css\?v=5/);
+  assert.doesNotMatch(html, /<select id="hitokotoLanguage"/);
   assert.match(app, /createHitokotoWidget/);
   assert.match(app, /\/api\/preferences\/hitokoto/);
   assert.match(server, /url\.pathname === "\/api\/hitokoto"/);
   assert.match(server, /url\.pathname === "\/api\/preferences\/hitokoto"/);
+});
+
+test("custom language menu uses animated rounded glass and keyboard accessibility", async () => {
+  const read = file => readFile(new URL("../" + file, import.meta.url), "utf8");
+  const [html, css, app] = await Promise.all([
+    read("public/index.html"), read("public/dashboard.css"), read("public/app.js"),
+  ]);
+  assert.match(html, /id="hitokotoLanguageSelect"[^>]*[\\s\\S]*?aria-haspopup="listbox"/);
+  assert.match(html, /id="hitokotoLanguageOptions"[^>]*[\\s\\S]*?role="listbox"/);
+  assert.match(css, /\\.hitokoto-language-menu\\[data-state="open"\\]/);
+  assert.match(css, /transform: translate3d\\(0,-8px,0\\) scale\\(\\.985\\)/);
+  assert.match(css, /\\.hitokoto-language-menu[^{]*\\{[\\s\\S]*?border-radius: 16px;/);
+  assert.match(css, /@media \\(prefers-reduced-motion: reduce\\)/);
+  assert.match(app, /function setHitokotoLanguageMenuOpen\\(/);
+  assert.match(app, /function moveHitokotoLanguageFocus\\(/);
+  assert.match(app, /event\\.key === "Escape"/);
+  assert.match(app, /hitokotoLanguageDropdown\\.contains\\(event\\.target\\)/);
+});
+
+test("attribution settings are independently stored and submitted on Apply", async () => {
+  const read = file => readFile(new URL("../" + file, import.meta.url), "utf8");
+  const [app, store, widget] = await Promise.all([
+    read("public/app.js"), read("src/dashboard-preferences.js"), read("public/hitokoto.js"),
+  ]);
+  assert.match(app, /stagedHitokotoSettings\\.showSpeaker !== currentHitokotoSettings\\.showSpeaker/);
+  assert.match(app, /stagedHitokotoSettings\\.showSource !== currentHitokotoSettings\\.showSource/);
+  assert.match(app, /hitokotoShowSpeaker\\.addEventListener\\("change"/);
+  assert.match(app, /hitokotoShowSource\\.addEventListener\\("change"/);
+  assert.match(store, /showSpeaker: parsed\\?\\.hitokoto\\?\\.showSpeaker !== false/);
+  assert.match(store, /showSource: parsed\\?\\.hitokoto\\?\\.showSource !== false/);
+  assert.match(widget, /link\\.hidden = !\\(showSpeaker \\|\\| showSource\\)/);
 });
