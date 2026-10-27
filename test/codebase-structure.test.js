@@ -28,7 +28,7 @@ test("dashboard-only styling lives in dedicated CSS with no duplicate inline blo
   const html = await read("public/index.html");
   const css = await read("public/dashboard.css");
   assert.doesNotMatch(html, /<style\b/);
-  assert.match(html, /<link rel="stylesheet" href="\/dashboard\.css\?v=2"/);
+  assert.match(html, /<link rel="stylesheet" href="\/dashboard\.css\?v=\d+"/);
   assert.ok(html.indexOf("/generated/site.css") < html.indexOf("/dashboard.css"));
   for (const selector of [
     ".dashboard-tinted-glass",
