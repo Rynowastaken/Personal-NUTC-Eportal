@@ -17,7 +17,7 @@
 
 ## 公開互動展示（GitHub Pages）
 
-[**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 是使用範例課表和假資料的純靜態展示。支援手機版、外觀亮度控制、模擬重新整理及自訂捷徑（僅儲存在自己的瀏覽器），**不會登入校方系統或使用私人的 ePortal 資料**。
+[**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 是使用範例資料的完整互動預覽。除了真正的 ePortal 登入、SSO、學生資料和伺服器操作外，提供與主站相應的帳戶頭像、課表學制、缺曠篩選、捷徑釘選／編輯、完整外觀與背景控制，以及可選的 Hitokoto／OpenCC 語錄（其餘設定儲存在目前瀏覽器）。**不會登入校方系統或使用私人的 ePortal 資料**。
 
 部署檔案在 [`demo/`](demo/)，自動部署設定在 [GitHub Actions](.github/workflows/demo-pages.yml)。若網站尚未開放，請先依照 [GitHub Pages 啟用說明](docs/demo.md) 在 Repository Settings → Pages 將 Source 設為 GitHub Actions，然後執行部署工作流程。
 

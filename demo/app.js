@@ -4,7 +4,7 @@
   // Public demo: no API calls, university cookies, credentials or real student
   // information. Only local browser settings/links can be persisted.
   const STORAGE = "nutc-portal-demo-v1";
-  const DEFAULT_SHORTCUTS = [{ name: "示範捷徑", url: "https://example.com" }];
+  const DEFAULT_SHORTCUTS = [{ name: "示範捷徑", url: "https://example.com", pinned: true }];
   const SERVICES = Object.freeze({
     student: { name: "學生管理", description: "展示校園課表、學籍及個人資訊的入口設計。正式網站會連往學校服務；這裡只提供示範畫面。" },
     mail: { name: "WebMail", description: "校務信箱通知入口的示範。公開 Demo 不會開啟或讀取真實信件。" },
@@ -12,7 +12,7 @@
     learning: { name: "學習歷程", description: "展示 EP 學習歷程與成果查詢的入口樣式。所有內容均為樣本。" },
     tron: { name: "TronClass", description: "課程、教材、作業和測驗入口的示範，不會登入 TronClass。" },
   });
-  const COURSES = Object.freeze({
+  let COURSES = Object.freeze({
     "0-3": ["學涯規劃", "7605 · 範例課程"],
     "0-5": ["民法", "3701 · 示範教師"],
     "1-0": ["體育", "0000 · 示範教師"],
@@ -29,7 +29,20 @@
     ["11:10", "12:00"], ["13:25", "14:15"], ["14:20", "15:10"],
     ["15:20", "16:10"], ["16:15", "17:05"],
   ];
-  const WEEKDAY = ["一", "二", "三", "四", "五"];
+  const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
+  const DAY_COURSES = COURSES;
+  const EVENING_COURSES = Object.freeze({
+    "0-5": ["應用外語", "2101 · 模擬教師"],
+    "1-5": ["資料庫系統", "2303 · 模擬教室"],
+    "2-6": ["程式設計", "2105 · 模擬課程"],
+    "3-6": ["財務管理", "2301 · 模擬課程"],
+  });
+  const WEEKEND_COURSES = Object.freeze({
+    "0-2": ["行銷管理", "2501 · 假日班範例"],
+    "0-5": ["職場英語", "2501 · 假日班範例"],
+    "1-2": ["資訊應用", "2503 · 假日班範例"],
+  });
+  let academicProgram = "day";
   const $ = (id) => document.getElementById(id);
   const defaultState = () => ({
     brightness: 75,
@@ -53,7 +66,7 @@
         ? stored.shortcuts.slice(0, 30).flatMap((entry) => {
             const url = validExternalUrl(entry?.url);
             const name = typeof entry?.name === "string" ? entry.name.trim().slice(0, 48) : "";
-            return url && name ? [{ name, url }] : [];
+            return url && name ? [{ name, url, pinned: entry.pinned !== false }] : [];
           })
         : fallback.shortcuts;
       return {
@@ -125,7 +138,7 @@
       grid.append(empty);
       return;
     }
-    for (const item of state.shortcuts) {
+    for (const item of state.shortcuts.filter(entry => entry.pinned !== false)) {
       const card = document.createElement("a");
       card.className = "module-card";
       card.style.setProperty("--accent", "218 184 125");
@@ -152,6 +165,14 @@
       grid.append(card);
     }
   }
+  let editingShortcut = -1;
+  function resetShortcutEdit() {
+    editingShortcut = -1;
+    $("shortcutForm").reset();
+    $("shortcutSubmit").textContent = "新增捷徑";
+    $("cancelShortcutEdit").hidden = true;
+  }
+  $("cancelShortcutEdit").addEventListener("click", resetShortcutEdit);
   function renderShortcutManager() {
     const grid = $("shortcutManagerList");
     grid.replaceChildren();
@@ -171,19 +192,45 @@
       const url = document.createElement("small");
       url.textContent = item.url;
       info.append(name, url);
+      const controls = document.createElement("span");
+      controls.className = "manager-controls";
+      const togglePin = document.createElement("button");
+      togglePin.type = "button";
+      togglePin.textContent = item.pinned !== false ? "取消釘選" : "釘選";
+      togglePin.className = "manager-text-button";
+      togglePin.setAttribute("aria-label", togglePin.textContent + " " + item.name);
+      togglePin.addEventListener("click", () => {
+        item.pinned = item.pinned === false;
+        persist(); renderShortcuts(); renderShortcutManager();
+      });
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "編輯";
+      edit.className = "manager-text-button";
+      edit.setAttribute("aria-label", "編輯 " + item.name);
+      edit.addEventListener("click", () => {
+        editingShortcut = index;
+        $("shortcutName").value = item.name;
+        $("shortcutUrl").value = item.url;
+        $("shortcutSubmit").textContent = "儲存捷徑";
+        $("cancelShortcutEdit").hidden = false;
+        $("shortcutName").focus();
+      });
       const remove = document.createElement("button");
       remove.type = "button";
       remove.setAttribute("aria-label", "移除 " + item.name);
       remove.title = "移除捷徑";
       remove.append(svg("trash"));
       remove.addEventListener("click", () => {
+        if (editingShortcut === index) resetShortcutEdit();
         state.shortcuts.splice(index, 1);
         persist();
         renderShortcuts();
         renderShortcutManager();
         toast("已移除捷徑");
       });
-      row.append(info, remove);
+      controls.append(togglePin, edit, remove);
+      row.append(info, controls);
       grid.append(row);
     });
   }
@@ -191,6 +238,7 @@
   $("manageShortcuts").addEventListener("click", () => {
     renderShortcutManager();
     $("shortcutError").textContent = "";
+    resetShortcutEdit();
     openDialog("shortcutDialog");
   });
   $("shortcutForm").addEventListener("submit", (event) => {
@@ -201,17 +249,23 @@
       $("shortcutError").textContent = "請輸入名稱與有效的 http / https 網址。";
       return;
     }
-    if (state.shortcuts.length >= 30) {
-      $("shortcutError").textContent = "最多可以釘選 30 個捷徑。";
+    if (editingShortcut === -1 && state.shortcuts.length >= 30) {
+      $("shortcutError").textContent = "最多可以儲存 30 個捷徑。";
       return;
     }
-    state.shortcuts.push({ name: name.slice(0, 48), url });
+    if (editingShortcut >= 0 && state.shortcuts[editingShortcut]) {
+      state.shortcuts[editingShortcut] = {
+        ...state.shortcuts[editingShortcut], name: name.slice(0, 48), url,
+      };
+    } else {
+      state.shortcuts.push({ name: name.slice(0, 48), url, pinned: true });
+    }
     persist();
     renderShortcuts();
     renderShortcutManager();
-    $("shortcutForm").reset();
+    resetShortcutEdit();
     $("shortcutError").textContent = "";
-    toast("已新增捷徑");
+    toast("捷徑已儲存");
   });
 
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -232,6 +286,8 @@
     const today = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
     const dayIndex = (today.getUTCDay() + 6) % 7;
     const monday = new Date(today.valueOf() - dayIndex * 86_400_000);
+    const firstDay = new Date(monday.valueOf() + (academicProgram === "weekend" ? 5 : 0) * 86_400_000);
+    const count = academicProgram === "weekend" ? 2 : 5;
     const table = $("scheduleTable");
     table.replaceChildren();
     const thead = document.createElement("thead");
@@ -240,12 +296,12 @@
     first.scope = "col";
     first.textContent = "節";
     headRow.append(first);
-    for (let day = 0; day < 5; day++) {
-      const date = new Date(monday.valueOf() + day * 86_400_000);
+    for (let day = 0; day < count; day++) {
+      const date = new Date(firstDay.valueOf() + day * 86_400_000);
       const th = document.createElement("th");
       th.scope = "col";
-      th.textContent = WEEKDAY[day];
-      if (day === dayIndex) th.classList.add("today");
+      th.textContent = WEEKDAY[date.getUTCDay()];
+      if (date.getTime() === today.getTime()) th.classList.add("today");
       const small = document.createElement("small");
       small.textContent = String(date.getUTCMonth() + 1).padStart(2, "0") + "/" +
         String(date.getUTCDate()).padStart(2, "0");
@@ -263,7 +319,7 @@
       time.textContent = start + "–" + end;
       th.append(time);
       tr.append(th);
-      for (let day = 0; day < 5; day++) {
+      for (let day = 0; day < count; day++) {
         const td = document.createElement("td");
         const course = COURSES[day + "-" + period];
         if (course) {
@@ -281,7 +337,8 @@
       tbody.append(tr);
     });
     table.append(thead, tbody);
-    $("scheduleMeta").textContent = "示範課表 · 更新 " + taipeiClock() + "（台灣時間）";
+    const label = { day: "日間部", evening: "進修部夜間班", weekend: "進修部假日班" }[academicProgram];
+    $("scheduleMeta").textContent = label + " · 示範資料 · 更新 " + taipeiClock() + "（台灣時間）";
   }
 
   function refreshButton(button, callback) {
@@ -350,6 +407,17 @@
   }, { passive: true });
   window.addEventListener("resize", updateParallax);
   if (reducedMotion.addEventListener) reducedMotion.addEventListener("change", updateParallax);
+
+  window.NutcDemo = {
+    setAcademicProgram(program) {
+      if (!["day", "evening", "weekend"].includes(program)) return;
+      academicProgram = program;
+      COURSES = program === "evening" ? EVENING_COURSES
+        : program === "weekend" ? WEEKEND_COURSES : DAY_COURSES;
+      buildSchedule();
+    },
+    refreshSchedule: buildSchedule,
+  };
 
   renderShortcuts();
   buildSchedule();

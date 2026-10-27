@@ -18,7 +18,8 @@
     "build": "vite build",
     "build:watch": "vite build --watch",
     "postinstall": "npm run build",
-    "verify": "npm run build && npm run check && npm test"
+    "verify": "npm run build && npm run check && npm test",
+    "build:demo": "vite build --config demo/vite.config.js"
   },
   "engines": {
     "node": ">=18"

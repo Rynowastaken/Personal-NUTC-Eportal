@@ -30,3 +30,6 @@ public/generated/
 .DS_Store
 .vscode/
 .idea/
+
+# GitHub Pages demo Vite bundle (recreated in CI)
+demo-dist/

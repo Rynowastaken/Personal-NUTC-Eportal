@@ -12,9 +12,11 @@ const [html, css, script] = await Promise.all([
 
 test("GitHub Pages demo has local, base-path-safe assets", async () => {
   assert.match(html, /<link rel="stylesheet" href="\.\/styles\.css">/);
-  assert.match(html, /<script src="\.\/app\.js" defer><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/app\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\.\/features\.js"><\/script>/);
+  assert.match(html, /href="\.\/features\.css"/);
   assert.doesNotMatch(html, /src="\/(?:app|theme|generated)|href="\/generated/);
-  for (const file of ["demo/index.html", "demo/styles.css", "demo/app.js"]) {
+  for (const file of ["demo/index.html", "demo/styles.css", "demo/app.js", "demo/features.css", "demo/features.js"]) {
     assert.ok((await stat(path.join(base, file))).size > 1000);
   }
 });
@@ -81,7 +83,8 @@ test("Pages workflow deploys only public demo without publishing source or secre
   const workflow = await read(".github/workflows/demo-pages.yml");
   assert.match(workflow, /actions\/upload-pages-artifact@v4/);
   assert.match(workflow, /actions\/deploy-pages@v4/);
-  assert.match(workflow, /\bpath: demo\b/);
+  assert.match(workflow, /\bpath: demo-dist\b/);
+  assert.match(workflow, /npm run build:demo/);
   assert.match(workflow, /pages: write/);
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /github\.event_name != 'pull_request'/);
