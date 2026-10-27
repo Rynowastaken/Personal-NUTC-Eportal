@@ -21,13 +21,19 @@ function stringField(value, limit) {
 }
 
 export function parseHitokoto(data) {
-  const text = stringField(data?.hitokoto, 280);
+  // Accept both the provider's raw fields and the sanitized same-origin
+  // proxy response. Never trust arbitrary URLs supplied by a quote response.
+  const text = stringField(data?.hitokoto ?? data?.text, 280);
   if (!text) throw new Error("Hitokoto response did not include a quote.");
-  const uuid = stringField(data?.uuid, 36);
+  const suppliedUrl = typeof data?.url === "string" ? data.url : "";
+  const suffix = suppliedUrl.startsWith("https://hitokoto.cn?uuid=")
+    ? suppliedUrl.slice("https://hitokoto.cn?uuid=".length)
+    : "";
+  const uuid = stringField(data?.uuid ?? suffix, 36);
   return {
     text,
-    speaker: stringField(data?.from_who, 100),
-    source: stringField(data?.from, 100),
+    speaker: stringField(data?.from_who ?? data?.speaker, 100),
+    source: stringField(data?.from ?? data?.source, 100),
     url: /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(uuid)
       ? "https://hitokoto.cn?uuid=" + uuid
       : "https://hitokoto.cn/",
@@ -128,7 +134,7 @@ export function createHitokotoWidget({
     if (!current.enabled) return;
     const now = Date.now();
     // Hitokoto is a community project; do not hammer its public endpoint.
-    if (!force && now - lastFetchAt < 3500) return;
+    if (!force && now - lastFetchAt < 5500) return;
     if (refresh.disabled) return;
     lastFetchAt = now;
     controller?.abort();
