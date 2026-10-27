@@ -8,7 +8,9 @@
   <title>NUTC Portal · Interactive Demo</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='17' fill='%2325222b'/%3E%3Cpath d='m13 24 19-10 19 10-19 10-19-10zm7 8v12c9 7 15 7 24 0V32' fill='none' stroke='%23dd909b' stroke-width='4' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./styles.css">
-  <script src="./app.js" defer></script>
+  <link rel="stylesheet" href="./features.css">
+  <script type="module" src="./app.js"></script>
+  <script type="module" src="./features.js"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -42,7 +44,8 @@
         <span><strong>NUTC Portal</strong><small>Personal Campus Dashboard</small></span>
       </a>
       <div class="header-actions">
-        <span class="demo-pill"><span class="status-dot"></span> DEMO MODE</span>
+        <button type="button" class="demo-pill demo-status-trigger" id="demoServerButton" aria-label="開啟模擬 Server 狀態"><span class="status-dot"></span> DEMO MODE</button>
+        <button type="button" class="avatar-button" id="demoAccountButton" aria-label="編輯示範使用者" title="帳戶設定"><span id="demoAvatarInitial">D</span><img id="demoAvatarImage" alt="" hidden></button>
         <button type="button" class="icon-button" id="settingsButton" aria-label="開啟外觀設定" title="外觀設定">
           <svg class="icon"><use href="#i-settings"></use></svg>
         </button>
@@ -52,8 +55,15 @@
     <main>
       <section class="welcome" aria-label="歡迎">
         <div class="eyebrow"><svg class="icon"><use href="#i-shield"></use></svg> 互動展示環境 · PUBLIC PREVIEW</div>
-        <h1>Welcome: <span>Demo User</span></h1>
-        <p>你的校園日常，一眼掌握。</p>
+        <h1>Welcome: <span id="demoUsername">Demo User</span></h1>
+        <div class="demo-quote-row"><p id="demoWelcomeSubtitle" lang="zh-Hant">你的校園日常，一眼掌握。</p>
+          <button type="button" id="demoQuoteRefresh" class="mini-icon-button" hidden title="換一句一言" aria-label="換一句一言"><svg class="icon"><use href="#i-refresh"></use></svg></button></div>
+        <div class="demo-quote-credits" id="demoQuoteCredits" hidden>
+          <span id="demoQuoteSpeakerRow">角色／作者：<strong id="demoQuoteSpeaker"></strong></span>
+          <span id="demoQuoteSourceRow">出處／作品：<strong id="demoQuoteSource"></strong></span>
+          <a id="demoQuoteLink" href="https://hitokoto.cn/" target="_blank" rel="noopener noreferrer">一言來源</a>
+        </div>
+        <p class="demo-quote-status" id="demoQuoteStatus" role="status" aria-live="polite"></p>
         <div class="demo-notice" role="note">
           <svg class="icon"><use href="#i-info"></use></svg>
           <span>這是使用模擬資料的靜態展示網站，沒有真實登入、學籍資料或學校系統連線。</span>
@@ -106,7 +116,7 @@
         <div class="dashboard-grid">
           <section class="dashboard-pane">
             <div class="section-heading">
-              <div><p class="section-kicker">WEEKLY OVERVIEW</p><h2 id="scheduleHeading">本週課表</h2><p class="section-subtitle" id="scheduleMeta">示範課表 · 模擬資料</p></div>
+              <div><p class="section-kicker">WEEKLY OVERVIEW</p><h2 id="scheduleHeading">本週課表</h2><p class="section-subtitle" id="scheduleMeta">示範課表 · 模擬資料</p><p id="demoCalendarNote" class="calendar-note">示範校曆 · <span id="demoProgramLabel">日間部</span></p></div>
               <button class="glass-button refresh-button" type="button" id="refreshSchedule"><svg class="icon"><use href="#i-refresh"></use></svg> 更新</button>
             </div>
             <div class="panel schedule-panel">
@@ -120,9 +130,9 @@
               <button class="glass-button refresh-button" type="button" id="refreshAbsence"><svg class="icon"><use href="#i-refresh"></use></svg> 更新</button>
             </div>
             <div class="panel absence-panel">
-              <p class="panel-label">本學期示範紀錄</p>
+              <p class="panel-label">本學期示範紀錄</p><div class="absence-filters" role="group" aria-label="缺曠紀錄篩選"><button type="button" data-demo-absence="all" aria-pressed="true">全部</button><button type="button" data-demo-absence="leave" aria-pressed="false">請假</button><button type="button" data-demo-absence="absent" aria-pressed="false">缺席</button></div>
               <div class="absence-stats"><div><strong>0</strong><span>缺席</span></div><div><strong>1</strong><span>請假</span></div><div><strong>0</strong><span>遲到</span></div></div>
-              <div class="attendance-event"><span class="event-dot"></span><div><strong>已核准請假</strong><small>10/15 · 事假 · 1 節（範例）</small></div></div>
+              <div id="demoAbsenceEvents"><div class="attendance-event"><span class="event-dot"></span><div><strong>已核准請假</strong><small>10/15 · 事假 · 1 節（範例）</small></div></div></div>
               <div class="panel-footer"><span class="sample-dot"></span> 僅供功能展示</div>
             </div>
           </section>
@@ -141,8 +151,18 @@
 
   <dialog id="settingsDialog" class="modal" aria-labelledby="settingsTitle">
     <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">APPEARANCE</span><h2 id="settingsTitle">外觀設定</h2></div><button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
-    <div class="settings-group"><label for="brightness"><svg class="icon"><use href="#i-sun"></use></svg> 背景亮度 <output id="brightnessValue" for="brightness">75%</output></label><input id="brightness" type="range" min="20" max="140" value="75" step="5"><p class="field-help">調整背景亮度，並立即預覽效果。</p></div>
+    <div class="settings-group"><h3>Color scheme</h3><div id="demoColorSchemeOptions" class="color-scheme-grid" role="radiogroup" aria-label="Color scheme"></div><div id="demoColorPreview" class="color-preview" aria-label="主題配色預覽"></div></div>
+    <div class="settings-group"><label for="demoColorfulness">Colorfulness <output id="demoColorfulnessValue" for="demoColorfulness">1.00</output></label><input id="demoColorfulness" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
+    <div class="settings-group"><label for="demoThemeBrightness">Theme brightness <output id="demoThemeBrightnessValue" for="demoThemeBrightness">1.00</output></label><input id="demoThemeBrightness" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
+    <div class="settings-group"><h3>背景圖片</h3><div class="action-line"><label class="secondary-button file-button" for="demoBackgroundFile">選擇背景圖片</label><input id="demoBackgroundFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden><button class="secondary-button" type="button" id="demoRemoveBackground">移除背景</button></div><div id="demoBackgroundDropzone" class="drop-zone" tabindex="0">也可以拖放或貼上圖片（最多 3 MB，僅儲存在此瀏覽器）</div><label for="brightness"><svg class="icon"><use href="#i-sun"></use></svg> 背景亮度 <output id="brightnessValue" for="brightness">100%</output></label><input id="brightness" type="range" min="0" max="200" value="100" step="5"><p class="field-help">0% 最暗 · 100% 原始亮度 · 200% 最亮</p></div>
     <div class="settings-group"><label class="switch-label" for="motionToggle"><span>捲動視差效果<small>背景隨頁面輕柔移動</small></span><input type="checkbox" id="motionToggle" checked></label></div>
+    <div class="settings-group"><h3>歡迎語錄 · Hitokoto</h3><label class="switch-label" for="demoHitokotoEnabled"><span>使用隨機一言<small>語錄替換歡迎副標題</small></span><input type="checkbox" id="demoHitokotoEnabled"></label>
+      <label for="demoHitokotoLanguage" class="field-label">顯示語言</label><select id="demoHitokotoLanguage" class="text-input select-glass"><option value="original">繁體中文（OpenCC）</option><option value="en">English（需瀏覽器翻譯支援）</option><option value="ja">日本語（需瀏覽器翻譯支援）</option></select>
+      <label class="switch-label" for="demoHitokotoSpeaker"><span>顯示角色／作者<small>一言 from_who 欄位</small></span><input type="checkbox" id="demoHitokotoSpeaker" checked></label>
+      <label class="switch-label" for="demoHitokotoSource"><span>顯示作品／出處<small>一言 from 欄位</small></span><input type="checkbox" id="demoHitokotoSource" checked></label>
+      <p class="field-help">語錄來自公開的 Hitokoto API，頁面不會傳送學校資料。翻譯不支援時保留繁體中文。</p>
+    </div>
+    <div class="settings-group"><h3>課表設定</h3><label for="demoAcademicProgram" class="field-label">學制</label><select id="demoAcademicProgram" class="text-input select-glass"><option value="day">日間部</option><option value="evening">進修部夜間班</option><option value="weekend">進修部假日班</option></select><p class="field-help">改變示範課表和校曆提示，無須登入。</p></div>
     <div class="modal-actions"><button type="button" class="secondary-button" id="resetAppearance">恢復預設</button><button type="button" class="primary-button" data-close="settingsDialog">完成</button></div>
   </dialog>
 
@@ -153,9 +173,23 @@
       <label class="field-label" for="shortcutName">名稱</label><input class="text-input" id="shortcutName" name="name" placeholder="例如：我的常用網站" maxlength="48" required>
       <label class="field-label" for="shortcutUrl">連結網址</label><input class="text-input" id="shortcutUrl" name="url" placeholder="https://example.com" inputmode="url" required>
       <p class="form-error" id="shortcutError" role="alert" aria-live="polite"></p>
-      <div class="modal-actions"><button type="submit" class="primary-button"><svg class="icon"><use href="#i-plus"></use></svg> 新增捷徑</button></div>
+      <div class="modal-actions"><button type="button" class="secondary-button" id="cancelShortcutEdit" hidden>取消編輯</button><button type="submit" class="primary-button" id="shortcutSubmit"><svg class="icon"><use href="#i-plus"></use></svg> 新增捷徑</button></div>
     </form>
     <div class="manager-divider"></div><h3 class="manager-title">已釘選的捷徑</h3><div id="shortcutManagerList" class="manager-list"></div>
+  </dialog>
+  <dialog id="demoAccountDialog" class="modal" aria-labelledby="demoAccountTitle">
+    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">ACCOUNT PREVIEW</span><h2 id="demoAccountTitle">個人資料</h2></div><button class="close-button" type="button" data-close="demoAccountDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <p class="modal-description">顯示名稱與頭像只保存在目前的瀏覽器，不會寫入任何真實學生資料。</p>
+    <form id="demoAccountForm"><label class="field-label" for="demoUsernameInput">顯示名稱</label><input class="text-input" type="text" id="demoUsernameInput" maxlength="40" required>
+    <label class="field-label" for="demoAvatarFile">上傳頭像（最大 2 MB）</label><input class="text-input" id="demoAvatarFile" type="file" accept="image/png,image/jpeg,image/webp">
+    <div class="modal-actions"><button class="secondary-button" type="button" id="demoRemoveAvatar">移除頭像</button><button class="primary-button" type="submit">儲存</button></div></form>
+  </dialog>
+  <dialog id="demoServerDialog" class="modal" aria-labelledby="demoServerTitle">
+    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">SERVER PREVIEW</span><h2 id="demoServerTitle">Server 控制台</h2></div><button class="close-button" type="button" data-close="demoServerDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <div class="notice-inline"><svg class="icon"><use href="#i-info"></use></svg> 此為靜態展示。登入、SSO、登出、更新與重新啟動均不會操作真正的伺服器。</div>
+    <div class="demo-server-details"><span>Server ePortal</span><strong>Demo mode · 模擬已連線</strong><span>版本與部署</span><strong>GitHub Pages · Static preview</strong></div>
+    <p id="demoServerProgress" class="form-error" role="status" aria-live="polite"></p>
+    <div class="modal-actions"><button class="secondary-button" type="button" id="demoUpdateServer">模擬更新</button><button class="primary-button" type="button" id="demoRestartServer">模擬重新啟動</button></div>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
