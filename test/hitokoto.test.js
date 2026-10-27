@@ -245,16 +245,16 @@ test("custom language menu uses animated rounded glass and keyboard accessibilit
   const [html, css, app] = await Promise.all([
     read("public/index.html"), read("public/dashboard.css"), read("public/app.js"),
   ]);
-  assert.match(html, /id="hitokotoLanguageSelect"[^>]*[\\s\\S]*?aria-haspopup="listbox"/);
-  assert.match(html, /id="hitokotoLanguageOptions"[^>]*[\\s\\S]*?role="listbox"/);
-  assert.match(css, /\\.hitokoto-language-menu\\[data-state="open"\\]/);
-  assert.match(css, /transform: translate3d\\(0,-8px,0\\) scale\\(\\.985\\)/);
-  assert.match(css, /\\.hitokoto-language-menu[^{]*\\{[\\s\\S]*?border-radius: 16px;/);
-  assert.match(css, /@media \\(prefers-reduced-motion: reduce\\)/);
-  assert.match(app, /function setHitokotoLanguageMenuOpen\\(/);
-  assert.match(app, /function moveHitokotoLanguageFocus\\(/);
-  assert.match(app, /event\\.key === "Escape"/);
-  assert.match(app, /hitokotoLanguageDropdown\\.contains\\(event\\.target\\)/);
+  assert.match(html, /id="hitokotoLanguageSelect"[^>]*[\s\S]*?aria-haspopup="listbox"/);
+  assert.match(html, /id="hitokotoLanguageOptions"[^>]*[\s\S]*?role="listbox"/);
+  assert.match(css, /\.hitokoto-language-menu\[data-state="open"\]/);
+  assert.match(css, /transform: translate3d\(0,-8px,0\) scale\(\.985\)/);
+  assert.match(css, /\.hitokoto-language-menu[^{]*\{[\s\S]*?border-radius: 16px;/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(app, /function setHitokotoLanguageMenuOpen\(/);
+  assert.match(app, /function moveHitokotoLanguageFocus\(/);
+  assert.match(app, /event\.key === "Escape"/);
+  assert.match(app, /hitokotoLanguageDropdown\.contains\(event\.target\)/);
 });
 
 test("attribution settings are independently stored and submitted on Apply", async () => {
@@ -262,11 +262,11 @@ test("attribution settings are independently stored and submitted on Apply", asy
   const [app, store, widget] = await Promise.all([
     read("public/app.js"), read("src/dashboard-preferences.js"), read("public/hitokoto.js"),
   ]);
-  assert.match(app, /stagedHitokotoSettings\\.showSpeaker !== currentHitokotoSettings\\.showSpeaker/);
-  assert.match(app, /stagedHitokotoSettings\\.showSource !== currentHitokotoSettings\\.showSource/);
-  assert.match(app, /hitokotoShowSpeaker\\.addEventListener\\("change"/);
-  assert.match(app, /hitokotoShowSource\\.addEventListener\\("change"/);
-  assert.match(store, /showSpeaker: parsed\\?\\.hitokoto\\?\\.showSpeaker !== false/);
-  assert.match(store, /showSource: parsed\\?\\.hitokoto\\?\\.showSource !== false/);
-  assert.match(widget, /link\\.hidden = !\\(showSpeaker \\|\\| showSource\\)/);
+  assert.match(app, /stagedHitokotoSettings\.showSpeaker !== currentHitokotoSettings\.showSpeaker/);
+  assert.match(app, /stagedHitokotoSettings\.showSource !== currentHitokotoSettings\.showSource/);
+  assert.match(app, /hitokotoShowSpeaker\.addEventListener\("change"/);
+  assert.match(app, /hitokotoShowSource\.addEventListener\("change"/);
+  assert.match(store, /showSpeaker: parsed\?\.hitokoto\?\.showSpeaker !== false/);
+  assert.match(store, /showSource: parsed\?\.hitokoto\?\.showSource !== false/);
+  assert.match(widget, /link\.hidden = !\(showSpeaker \|\| showSource\)/);
 });
