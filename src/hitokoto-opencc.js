@@ -2,9 +2,9 @@ import OpenCC from "opencc-js";
 
 // Hitokoto is predominantly Chinese, but quotes and their credits may arrive
 // in Simplified Chinese. Use OpenCC's Taiwan Traditional character conversion
-// (s2tw) rather than machine translation, which can rewrite a quotation.
+// with phrase localization (s2twp), rather than machine translation.
 // Initialize once per server process; never send quote text to a new service.
-const simplifiedToTaiwanTraditional = OpenCC.Converter({ from: "cn", to: "tw" });
+const simplifiedToTaiwanTraditional = OpenCC.Converter({ from: "cn", to: "twp" });
 
 export function convertHitokotoToTraditional(quote) {
   return {
