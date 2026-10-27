@@ -82,7 +82,7 @@ test("server startup does not require OpenCC until a quote is requested", async 
     readFile(new URL("../src/hitokoto-service.js", import.meta.url), "utf8"),
     readFile(new URL("../server.js", import.meta.url), "utf8"),
   ]);
-  assert.doesNotMatch(service, /^import .*hitokoto-opencc\\.js/m);
-  assert.match(service, /await import\\("\\.\\/hitokoto-opencc\\.js"\\)/);
-  assert.match(server, /import \\{ createHitokotoService \\} from "\\.\\/src\\/hitokoto-service\\.js"/);
+  assert.ok(!service.includes('import { convertHitokotoToTraditional } from "./hitokoto-opencc.js";'));
+  assert.ok(service.includes('await import("./hitokoto-opencc.js")'));
+  assert.ok(server.includes('import { createHitokotoService } from "./src/hitokoto-service.js";'));
 });
