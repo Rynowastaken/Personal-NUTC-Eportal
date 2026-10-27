@@ -78,3 +78,20 @@ body[data-custom-background="true"] .backdrop-pattern { opacity: .05; }
   .scheme-chip { transition: none; }
   .scheme-chip:hover { transform: none; }
 }
+
+/* Portal-styled listbox rather than Android's native square select popup. */
+.demo-select-native[hidden] { display: none !important; }
+.demo-select-wrap { position: relative; margin-top: 10px; }
+.demo-select-trigger { min-height: 46px; width: 100%; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; padding: 9px 13px; background: rgba(255,255,255,.075); color: var(--ink); display: flex; gap: 12px; justify-content: space-between; align-items: center; text-align: left; font-size: 13px; font-weight: 700; backdrop-filter: blur(14px); }
+.demo-select-trigger:hover { background: rgba(255,255,255,.12); }
+.demo-select-trigger:disabled { opacity: .45; cursor: not-allowed; }
+.demo-select-chevron { font-size: 22px; line-height: 1; transition: transform .2s ease; color: var(--muted); }
+.demo-select-trigger[aria-expanded="true"] .demo-select-chevron { transform: rotate(180deg); }
+.demo-select-menu { position: absolute; z-index: 100; top: calc(100% + 7px); left: 0; right: 0; padding: 6px; background: rgba(31,26,36,.98); border: 1px solid rgba(255,255,255,.17); border-radius: 16px; box-shadow: 0 18px 44px rgba(0,0,0,.42); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-8px) scale(.985); transform-origin: top center; transition: opacity .2s ease, transform .22s cubic-bezier(.22,1,.36,1), visibility 0s linear .22s; backdrop-filter: blur(18px); }
+.demo-select-menu[data-state="open"] { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0) scale(1); transition: opacity .2s ease, transform .22s cubic-bezier(.22,1,.36,1), visibility 0s; }
+.demo-select-option { border: 1px solid transparent; border-radius: 11px; width: 100%; min-height: 42px; padding: 9px 12px; display: block; text-align: left; background: transparent; color: var(--ink); font-size: 13px; }
+.demo-select-option:hover, .demo-select-option:focus-visible { background: rgba(255,255,255,.10); outline: none; }
+.demo-select-option[aria-selected="true"] { background: rgba(224,157,177,.17); border-color: rgba(224,157,177,.3); color: var(--demo-primary); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) {
+  .demo-select-menu, .demo-select-menu[data-state="open"], .demo-select-chevron { transition: none; transform: none; }
+}
