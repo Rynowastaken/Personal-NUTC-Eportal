@@ -64,12 +64,29 @@ operation and shows each step on the page:
    operation through `/api/debug/update/status`, waits for a **new instance
    ID**, then navigates to a versioned URL.
 
-The checkout has no `package-lock.json`, so dependency installation uses
-`npm install --no-save --package-lock=false --no-audit --no-fund` without
-creating an untracked lockfile. If a lockfile is introduced, the updater uses
-`npm ci`. The server exposes progress and failure messages, but never
-includes secrets or browser profiles. If a Git pull or build fails, it will
-not restart and the previous generated CSS/JS are retained.
+The repository currently does not commit `package-lock.json`. Some servers
+already have a **local, untracked** lockfile from a manual `npm install`. Such
+files may be stale after new dependencies like `opencc-js` are added. The
+updater now checks Git's index before choosing an install command:
+
+- If a lockfile is **tracked by Git**, use reproducible `npm ci` and report a
+  concise corrective message if `package.json` and the committed lock disagree.
+- If a lockfile is **not tracked**, ignore any stale local copies and run
+  `npm install --no-save --package-lock=false --no-audit --no-fund`.
+  The updater leaves the local lockfile untouched.
+
+The server exposes progress and concise failure messages without including
+secrets or browser profiles. If a Git pull or build fails, it will not restart
+and the previous generated CSS/JS are retained.
+
+### Recovering from `npm error code EUSAGE`
+
+If an older updater reports `npm ci` and `Missing: opencc-js@1.4.2 from lock
+file`, Git has probably already pulled the new code. After this fix is
+merged, click **Update** once to fetch it, **Restart** to load the new updater,
+then **Update** again. The second update should ignore your untracked stale
+lockfile. If a server uses a genuinely committed lockfile that is out of sync,
+fix that lockfile in the repository rather than modifying live server files.
 
 ### Recovering from `spawn npm ENOENT`
 
