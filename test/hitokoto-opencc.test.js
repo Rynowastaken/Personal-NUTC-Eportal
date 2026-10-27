@@ -38,7 +38,7 @@ test("conversion preserves existing Traditional Chinese and Latin text", () => {
 test("Hitokoto API serves OpenCC-converted quotes and attribution even from cache", async () => {
   let fetched = 0;
   const response = {
-    hitokoto: "学习计算机软件，发现更多乐趣。",
+    hitokoto: "学习软件，发现更多乐趣。",
     from_who: "张三",
     from: "三国演义",
     uuid: "75a45fd4-4f2f-45eb-80cb-6f0a7bcdfaf2",
@@ -53,7 +53,7 @@ test("Hitokoto API serves OpenCC-converted quotes and attribution even from cach
     },
   });
   const quote = await service.getQuote();
-  assert.equal(quote.text, "學習計算機軟體，發現更多樂趣。");
+  assert.equal(quote.text, "學習軟體，發現更多樂趣。");
   assert.equal(quote.speaker, "張三");
   assert.equal(quote.source, "三國演義");
   assert.equal(quote.url, "https://hitokoto.cn?uuid=" + response.uuid);
