@@ -243,3 +243,44 @@ test("publish failure restores the previous verified assets", () =>
     assert.equal(await fs.readFile(path.join(rootDir, "public/generated/ui.js"), "utf8"), "old js");
   })
 );
+
+test("missing npm CLI produces a useful diagnosis rather than spawn npm ENOENT", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([...unchangedGit]);
+    const updater = createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      npmCliCandidates: [],
+    });
+    await assert.rejects(
+      updater.updateServerFromGitPull(),
+      error => {
+        assert.equal(error.code, "SERVER_UPDATE_NPM_UNAVAILABLE");
+        assert.match(error.message, /NUTC_NPM_CLI_PATH/);
+        assert.doesNotMatch(error.message, /spawn npm ENOENT/);
+        return true;
+      },
+    );
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"), "old css");
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("a healthy installation rebuilds through Node/Vite even if npm later disappears", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const setup = fakeQueue([...unchangedGit, install(), build()]);
+    await createServerUpdater({
+      rootDir, makeId, spawnCommand: setup.spawnCommand,
+    }).updateServerFromGitPull();
+    const tasks = fakeQueue([...unchangedGit, build()]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      npmCliCandidates: [],
+    }).updateServerFromGitPull();
+    assert.equal(result.dependenciesInstalled, false);
+    assert.equal(result.rebuilt, true);
+    assert.equal(tasks.remaining(), 0);
+    assert.ok(tasks.calls.some(call => call.command === process.execPath &&
+      call.args[0] === viteCli));
+    assert.ok(!tasks.calls.some(call => call.command === "npm"));
+  })
+);
