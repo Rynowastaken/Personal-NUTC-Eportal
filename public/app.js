@@ -45,12 +45,19 @@ const accountAvatarImage = document.querySelector("#accountAvatarImage");
 const accountAvatarFallback = document.querySelector("#accountAvatarFallback");
 const welcomeUsername = document.querySelector("#welcomeUsername");
 const hitokotoEnabled = document.querySelector("#hitokotoEnabled");
-const hitokotoLanguage = document.querySelector("#hitokotoLanguage");
+const hitokotoLanguageDropdown = document.querySelector("#hitokotoLanguageDropdown");
+const hitokotoLanguageSelect = document.querySelector("#hitokotoLanguageSelect");
+const hitokotoLanguageOptions = document.querySelector("#hitokotoLanguageOptions");
+const hitokotoLanguageValue = document.querySelector("#hitokotoLanguageValue");
+const hitokotoShowSpeaker = document.querySelector("#hitokotoShowSpeaker");
+const hitokotoShowSource = document.querySelector("#hitokotoShowSource");
 const hitokotoWidget = createHitokotoWidget({
   subtitle: document.querySelector("#welcomeSubtitle"),
   details: document.querySelector("#hitokotoDetails"),
   speaker: document.querySelector("#hitokotoSpeaker"),
   source: document.querySelector("#hitokotoSource"),
+  speakerRow: document.querySelector("#hitokotoSpeakerRow"),
+  sourceRow: document.querySelector("#hitokotoSourceRow"),
   link: document.querySelector("#hitokotoLink"),
   refresh: document.querySelector("#hitokotoRefresh"),
   status: document.querySelector("#hitokotoStatus"),
@@ -670,18 +677,112 @@ themeDialog.addEventListener("close", () => {
   );
 });
 
+const hitokotoLanguageLabels = {
+  original: "原文（中文為主）",
+  en: "English（需瀏覽器支援翻譯）",
+  ja: "日本語（需瀏覽器支援翻譯）",
+};
+const hitokotoLanguageChoices = Array.from(
+  hitokotoLanguageOptions.querySelectorAll("[data-hitokoto-language]"),
+);
+
+function setHitokotoLanguageSelection(language) {
+  if (!Object.hasOwn(hitokotoLanguageLabels, language)) return;
+  stagedHitokotoSettings.language = language;
+  hitokotoLanguageValue.textContent = hitokotoLanguageLabels[language];
+  hitokotoLanguageChoices.forEach((choice) => {
+    const selected = choice.dataset.hitokotoLanguage === language;
+    choice.setAttribute("aria-selected", String(selected));
+  });
+}
+
+function setHitokotoLanguageMenuOpen(open, { focusSelected = false, returnFocus = false } = {}) {
+  const visible = Boolean(open && !hitokotoLanguageSelect.disabled && themeDialog.open);
+  // Keep the list mounted so its scale/opacity animate on both open and close.
+  hitokotoLanguageOptions.dataset.state = visible ? "open" : "closed";
+  hitokotoLanguageOptions.inert = !visible;
+  hitokotoLanguageOptions.setAttribute("aria-hidden", String(!visible));
+  hitokotoLanguageSelect.setAttribute("aria-expanded", String(visible));
+  if (visible && focusSelected) {
+    const selected = hitokotoLanguageChoices.find(
+      (choice) => choice.dataset.hitokotoLanguage === stagedHitokotoSettings.language,
+    );
+    selected?.focus({ preventScroll: true });
+  } else if (!visible && returnFocus) {
+    hitokotoLanguageSelect.focus({ preventScroll: true });
+  }
+}
+
+function moveHitokotoLanguageFocus(key, startingIndex) {
+  let targetIndex = startingIndex;
+  if (key === "Home") targetIndex = 0;
+  if (key === "End") targetIndex = hitokotoLanguageChoices.length - 1;
+  if (key === "ArrowDown") targetIndex = (startingIndex + 1) % hitokotoLanguageChoices.length;
+  if (key === "ArrowUp") targetIndex =
+    (startingIndex - 1 + hitokotoLanguageChoices.length) % hitokotoLanguageChoices.length;
+  setHitokotoLanguageMenuOpen(true);
+  hitokotoLanguageChoices[targetIndex]?.focus();
+}
+
+hitokotoLanguageSelect.addEventListener("click", () => {
+  const wasOpen = hitokotoLanguageSelect.getAttribute("aria-expanded") === "true";
+  setHitokotoLanguageMenuOpen(!wasOpen, { focusSelected: !wasOpen });
+});
+hitokotoLanguageSelect.addEventListener("keydown", (event) => {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const index = hitokotoLanguageChoices.findIndex(
+    (choice) => choice.dataset.hitokotoLanguage === stagedHitokotoSettings.language,
+  );
+  moveHitokotoLanguageFocus(event.key, index);
+});
+hitokotoLanguageChoices.forEach((choice, index) => {
+  choice.addEventListener("click", () => {
+    setHitokotoLanguageSelection(choice.dataset.hitokotoLanguage);
+    setHitokotoLanguageMenuOpen(false, { returnFocus: true });
+  });
+  choice.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setHitokotoLanguageMenuOpen(false, { returnFocus: true });
+    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      moveHitokotoLanguageFocus(event.key, index);
+    } else if (event.key === "Tab") {
+      setHitokotoLanguageMenuOpen(false);
+    }
+  });
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!hitokotoLanguageDropdown.contains(event.target)) {
+    setHitokotoLanguageMenuOpen(false);
+  }
+});
+themeDialog.addEventListener("close", () => {
+  setHitokotoLanguageMenuOpen(false);
+});
+
 function renderHitokotoSettings() {
   hitokotoEnabled.checked = stagedHitokotoSettings.enabled;
-  hitokotoLanguage.value = stagedHitokotoSettings.language;
-  hitokotoLanguage.disabled = !stagedHitokotoSettings.enabled;
+  setHitokotoLanguageSelection(stagedHitokotoSettings.language);
+  hitokotoLanguageSelect.disabled = !stagedHitokotoSettings.enabled;
+  hitokotoShowSpeaker.checked = stagedHitokotoSettings.showSpeaker;
+  hitokotoShowSource.checked = stagedHitokotoSettings.showSource;
+  hitokotoShowSpeaker.disabled = !stagedHitokotoSettings.enabled;
+  hitokotoShowSource.disabled = !stagedHitokotoSettings.enabled;
+  if (!stagedHitokotoSettings.enabled) setHitokotoLanguageMenuOpen(false);
 }
 
 hitokotoEnabled.addEventListener("change", () => {
   stagedHitokotoSettings.enabled = hitokotoEnabled.checked;
   renderHitokotoSettings();
 });
-hitokotoLanguage.addEventListener("change", () => {
-  stagedHitokotoSettings.language = hitokotoLanguage.value;
+hitokotoShowSpeaker.addEventListener("change", () => {
+  stagedHitokotoSettings.showSpeaker = hitokotoShowSpeaker.checked;
+});
+hitokotoShowSource.addEventListener("change", () => {
+  stagedHitokotoSettings.showSource = hitokotoShowSource.checked;
 });
 
 async function openThemeDialog() {
@@ -690,6 +791,7 @@ async function openThemeDialog() {
   };
   setAcademicProgramSelection(currentAcademicProgram);
   setAcademicProgramMenuOpen(false);
+  setHitokotoLanguageMenuOpen(false);
   stagedHitokotoSettings = { ...currentHitokotoSettings };
   renderHitokotoSettings();
   academicProgramStatus.textContent = "";
@@ -2303,6 +2405,7 @@ themeApply.addEventListener("click", async () => {
   if (!stagedThemeSettings || themeApply.disabled) return;
 
   setAcademicProgramMenuOpen(false);
+  setHitokotoLanguageMenuOpen(false);
   themeApply.disabled = true;
   academicProgramSelect.disabled = true;
   academicProgramStatus.textContent = "";
@@ -2329,7 +2432,9 @@ themeApply.addEventListener("click", async () => {
     }
 
     if (stagedHitokotoSettings.enabled !== currentHitokotoSettings.enabled ||
-        stagedHitokotoSettings.language !== currentHitokotoSettings.language) {
+        stagedHitokotoSettings.language !== currentHitokotoSettings.language ||
+        stagedHitokotoSettings.showSpeaker !== currentHitokotoSettings.showSpeaker ||
+        stagedHitokotoSettings.showSource !== currentHitokotoSettings.showSource) {
       const response = await fetch("/api/preferences/hitokoto", {
         method: "POST",
         credentials: "same-origin",
