@@ -71,6 +71,37 @@ creating an untracked lockfile. If a lockfile is introduced, the updater uses
 includes secrets or browser profiles. If a Git pull or build fails, it will
 not restart and the previous generated CSS/JS are retained.
 
+### Recovering from `spawn npm ENOENT`
+
+Some systemd services start with a restricted `PATH`. If the dashboard reports
+`npm failed: spawn npm ENOENT`, the previous updater could not find npm even
+though Node itself was running. The updater now launches npm's JavaScript CLI
+using `process.execPath`, and rebuilds with the local Vite JavaScript CLI
+directly. It prepends the Node binary directory and normal system locations
+to child process `PATH`; no system-wide service changes should be needed for
+a normal Node + npm install.
+
+**One-time recovery after upgrading:** the old in-memory updater may have
+already fetched the new Git commit before failing. After the fix is merged,
+click **Settings → Server → Update** once to fetch it (the old updater might
+still report the same error), then click **Restart** to load the new updater
+code, and finally click **Update** again to rebuild the frontend. If the web
+restart is unavailable, from the server's project folder run:
+
+```bash
+git pull --ff-only
+npm install
+npm run verify
+sudo systemctl restart personal-nutc-eportal.service
+```
+
+If the fixed updater reports `SERVER_UPDATE_NPM_UNAVAILABLE`, npm's CLI
+really is missing or installed in a nonstandard directory. Locate it with
+`readlink -f "$(command -v npm)"`; if it is a JavaScript CLI, set the
+service environment variable `NUTC_NPM_CLI_PATH` to its absolute path and
+restart the service. The server leaves the previous frontend assets intact
+when install or build fails.
+
 Static portal HTML, CSS and JavaScript are served with `Cache-Control:
 no-store`; each server boot also injects a unique `build` query parameter
 into its HTML asset references. The only immutable assets are versioned
