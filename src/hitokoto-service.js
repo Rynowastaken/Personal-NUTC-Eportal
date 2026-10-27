@@ -1,5 +1,7 @@
 import { parseHitokoto } from "../public/hitokoto.js";
-import { convertHitokotoToTraditional } from "./hitokoto-opencc.js";
+// OpenCC is optional at server startup. npm installation may still be
+// recovering from a stale local lockfile; defer loading the dependency until
+// a quote is requested so the portal and Update UI remain available.
 
 // Fixed upstream: no user-provided host, headers, credentials, or redirects.
 // Coalesce concurrent viewers and cache results to respect the community API.
@@ -32,6 +34,7 @@ export function createHitokotoService({ fetchImpl = fetch, now = Date.now } = {}
         }
         // Normalize fields/URLs before conversion. Only the user-visible text
         // is converted; verified links and IDs remain unchanged.
+        const { convertHitokotoToTraditional } = await import("./hitokoto-opencc.js");
         const quote = convertHitokotoToTraditional(parseHitokoto(await response.json()));
         cached = quote;
         expires = now() + 5_000;

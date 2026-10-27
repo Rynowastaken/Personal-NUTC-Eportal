@@ -75,3 +75,14 @@ test("quote UI keeps the existing language setting but shows Traditional Chinese
   assert.match(widget, /subtitle\.lang = "zh-Hant-TW"/);
   assert.match(widget, /現顯示繁體中文/);
 });
+
+test("server startup does not require OpenCC until a quote is requested", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const [service, server] = await Promise.all([
+    readFile(new URL("../src/hitokoto-service.js", import.meta.url), "utf8"),
+    readFile(new URL("../server.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(!service.includes('import { convertHitokotoToTraditional } from "./hitokoto-opencc.js";'));
+  assert.ok(service.includes('await import("./hitokoto-opencc.js")'));
+  assert.ok(server.includes('import { createHitokotoService } from "./src/hitokoto-service.js";'));
+});
