@@ -151,6 +151,7 @@
 
   <dialog id="settingsDialog" class="modal" aria-labelledby="settingsTitle">
     <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">APPEARANCE</span><h2 id="settingsTitle">外觀設定</h2></div><button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <p id="demoFeatureStatus" class="form-error" role="status" aria-live="polite"></p>
     <div class="settings-group"><h3>Color scheme</h3><div id="demoColorSchemeOptions" class="color-scheme-grid" role="radiogroup" aria-label="Color scheme"></div><div id="demoColorPreview" class="color-preview" aria-label="主題配色預覽"></div></div>
     <div class="settings-group"><label for="demoColorfulness">Colorfulness <output id="demoColorfulnessValue" for="demoColorfulness">1.00</output></label><input id="demoColorfulness" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
     <div class="settings-group"><label for="demoThemeBrightness">Theme brightness <output id="demoThemeBrightnessValue" for="demoThemeBrightness">1.00</output></label><input id="demoThemeBrightness" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
