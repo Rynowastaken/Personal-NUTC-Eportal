@@ -101,6 +101,7 @@ export function createHitokotoWidget({
   let lastFetchAt = 0;
 
   function restoreDefault() {
+    refresh.hidden = !current.enabled;
     subtitle.textContent = fallback;
     subtitle.lang = "zh-Hant";
     details.hidden = true;
