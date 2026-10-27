@@ -1,4 +1,5 @@
 import { parseHitokoto } from "../public/hitokoto.js";
+import { convertHitokotoToTraditional } from "./hitokoto-opencc.js";
 
 // Fixed upstream: no user-provided host, headers, credentials, or redirects.
 // Coalesce concurrent viewers and cache results to respect the community API.
@@ -29,7 +30,9 @@ export function createHitokotoService({ fetchImpl = fetch, now = Date.now } = {}
         if (Number.isFinite(length) && length > 16_384) {
           throw new Error("Quote response is too large.");
         }
-        const quote = parseHitokoto(await response.json());
+        // Normalize fields/URLs before conversion. Only the user-visible text
+        // is converted; verified links and IDs remain unchanged.
+        const quote = convertHitokotoToTraditional(parseHitokoto(await response.json()));
         cached = quote;
         expires = now() + 5_000;
         return quote;
