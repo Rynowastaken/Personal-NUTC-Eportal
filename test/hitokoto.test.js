@@ -51,6 +51,12 @@ test("browser requests quote only through own backend, not directly from externa
   assert.equal(request.url, "/api/hitokoto");
   assert.equal(request.opts.credentials, "same-origin");
   assert.equal(quote.speaker, "範例角色");
+  const normalized = parseHitokoto(quote);
+  assert.deepEqual(normalized, quote);
+  const proxyQuote = await requestHitokoto({
+    fetchImpl: async () => ({ ok: true, json: async () => quote }),
+  });
+  assert.deepEqual(proxyQuote, quote);
 });
 
 test("browser translation only declares success for actual translations", async () => {
