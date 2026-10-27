@@ -678,7 +678,7 @@ themeDialog.addEventListener("close", () => {
 });
 
 const hitokotoLanguageLabels = {
-  original: "原文（中文為主）",
+  original: "繁體中文（OpenCC）",
   en: "English（需瀏覽器支援翻譯）",
   ja: "日本語（需瀏覽器支援翻譯）",
 };
