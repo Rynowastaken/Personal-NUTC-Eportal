@@ -6,14 +6,16 @@ import os from "node:os";
 import path from "node:path";
 import { createServerUpdater } from "../src/server-update.js";
 
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const node = process.execPath;
+const npmCli = "node_modules/npm/bin/npm-cli.js";
+const viteCli = "node_modules/vite/bin/vite.js";
 const git = (args, stdout = "", exitCode = 0) =>
   ({ command: "git", args, stdout, exitCode });
-const install = () => ({ command: npm, args: [
-  "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
+const install = () => ({ command: node, args: [
+  npmCli, "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
 ] });
 const build = (exitCode = 0, missing = false) =>
-  ({ command: npm, args: ["run", "build"], exitCode, build: true, missing });
+  ({ command: node, args: [viteCli, "build"], exitCode, build: true, missing });
 
 function fakeQueue(steps) {
   const calls = [];
@@ -21,8 +23,13 @@ function fakeQueue(steps) {
     const step = steps.shift();
     assert.ok(step, "unexpected subprocess: " + command + " " + args.join(" "));
     assert.equal(command, step.command);
-    assert.deepEqual(args, step.args);
-    calls.push({ command, args, options });
+    const relativeArgs = args.map(value =>
+      typeof value === "string" && value.startsWith(options.cwd + path.sep)
+        ? path.relative(options.cwd, value).split(path.sep).join("/")
+        : value,
+    );
+    assert.deepEqual(relativeArgs, step.args);
+    calls.push({ command, args: relativeArgs, options });
 
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
@@ -54,7 +61,10 @@ async function fixture(fn) {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "nutc-updater-"));
   try {
     await fs.mkdir(path.join(rootDir, "public", "generated"), { recursive: true });
-    await fs.mkdir(path.join(rootDir, "node_modules", "vite"), { recursive: true });
+    await fs.mkdir(path.join(rootDir, "node_modules", "vite", "bin"), { recursive: true });
+    await fs.mkdir(path.join(rootDir, "node_modules", "npm", "bin"), { recursive: true });
+    await fs.writeFile(path.join(rootDir, npmCli), "// fixture npm");
+    await fs.writeFile(path.join(rootDir, viteCli), "// fixture vite");
     await fs.writeFile(path.join(rootDir, "package.json"), '{"name":"test"}');
     await fs.writeFile(path.join(rootDir, "public", "generated", "site.css"), "old css");
     await fs.writeFile(path.join(rootDir, "public", "generated", "ui.js"), "old js");
