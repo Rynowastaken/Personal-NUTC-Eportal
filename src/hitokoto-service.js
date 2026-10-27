@@ -31,7 +31,7 @@ export function createHitokotoService({ fetchImpl = fetch, now = Date.now } = {}
         }
         const quote = parseHitokoto(await response.json());
         cached = quote;
-        expires = now() + 15_000;
+        expires = now() + 5_000;
         return quote;
       } catch {
         // A known quote is preferable to losing the greeting during an outage.
