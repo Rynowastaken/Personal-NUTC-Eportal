@@ -7,7 +7,7 @@
     <title>NUTC Portal</title>
     <script src="/theme-defaults.js?v=1"></script>
     <link rel="stylesheet" href="/generated/site.css?v=5" />
-    <link rel="stylesheet" href="/dashboard.css?v=2" />
+    <link rel="stylesheet" href="/dashboard.css?v=3" />
     <script src="/vendor/lucide-1.24.0.min.js"></script>
   </head>
   <body
@@ -51,12 +51,9 @@
             >
               國立臺中科技大學
             </p>
-            <h1
-              id="welcomeHeading"
-              class="mt-0.5 max-w-full break-words text-[clamp(1.05rem,4.5vw,1.35rem)] font-semibold leading-tight tracking-[-0.035em] sm:text-2xl"
-            >
-              Welcome! <span id="welcomeUsername">User</span>
-            </h1>
+            <p class="mt-0.5 truncate text-sm font-bold tracking-[-0.03em] sm:text-base">
+              NUTC Portal
+            </p>
           </div>
         </div>
 
@@ -168,6 +165,13 @@
           />
         </div>
       </header>
+
+      <section class="portal-welcome" aria-labelledby="welcomeHeading">
+        <h1 id="welcomeHeading" class="portal-welcome-title">
+          Welcome: <span id="welcomeUsername">User</span>
+        </h1>
+        <p class="portal-welcome-subtitle">你的校園日常，一眼掌握。</p>
+      </section>
 
       <section id="sessionWarning"
         class="hidden items-center justify-between gap-3 rounded-[18px] border border-[#f0b36e]/35 bg-[rgba(74,52,35,.68)] px-4 py-3 shadow-sm backdrop-blur-[18px] sm:flex-row"
@@ -547,7 +551,7 @@
             placeholder="User"
           />
           <span class="text-xs font-medium text-[var(--muted)]">
-            首頁會顯示為 Welcome! Username。
+            首頁會顯示為 Welcome: Username。
           </span>
         </label>
 
