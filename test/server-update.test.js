@@ -4,7 +4,17 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createServerUpdater } from "../src/server-update.js";
+import { createServerUpdater as createUpdater } from "../src/server-update.js";
+
+// These tests must not depend on the host runner's real npm installation.
+function createServerUpdater(options) {
+  return createUpdater({
+    ...options,
+    npmCliCandidates: options.npmCliCandidates === undefined
+      ? [path.join(options.rootDir, "node_modules/npm/bin/npm-cli.js")]
+      : options.npmCliCandidates,
+  });
+}
 
 const node = process.execPath;
 const npmCli = "node_modules/npm/bin/npm-cli.js";
