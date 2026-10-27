@@ -35,7 +35,7 @@ a { color: inherit; text-decoration: none; }
   position: fixed; inset: -70px 0;
   pointer-events: none;
   overflow: hidden;
-  z-index: -1;
+  z-index: 0;
   filter: brightness(var(--brightness));
   transform: translate3d(0, var(--scroll-shift), 0);
   will-change: transform;
@@ -61,7 +61,7 @@ a { color: inherit; text-decoration: none; }
   mix-blend-mode: screen;
 }
 .backdrop-shade { position: absolute; inset: 0; background: rgba(13,12,19,.37); }
-.page-shell { width: min(1260px, calc(100% - 64px)); margin: 0 auto; }
+.page-shell { position: relative; z-index: 1; width: min(1260px, calc(100% - 64px)); margin: 0 auto; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 95px; border-bottom: 1px solid rgba(255,255,255,.09); }
 .brand { display: inline-flex; align-items: center; gap: 12px; }
 .brand-icon {
