@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { locateNpmCli, updaterEnvironment } from "./update-toolchain.js";
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUTPUT_FILES = ["site.css", "ui.js"];
@@ -19,9 +20,10 @@ export function createServerUpdater({
   spawnCommand = spawn,
   files = fs,
   makeId = () => crypto.randomUUID(),
+  nodeExecutable = process.execPath,
+  npmCliCandidates,
 } = {}) {
   let inFlight = false;
-  const npmBinary = process.platform === "win32" ? "npm.cmd" : "npm";
 
   function runCommand(command, args, { timeoutMs = 120_000, env = process.env, errorCode } = {}) {
     return new Promise((resolve, reject) => {
@@ -84,6 +86,44 @@ export function createServerUpdater({
         finish(updateError("SERVER_UPDATE_TIMEOUT", command + " timed out after " + timeoutMs + "ms."));
       }, timeoutMs);
       timer.unref?.();
+    });
+  }
+
+  async function runNpmInstall(args, stagingDirectory) {
+    const cli = await locateNpmCli({
+      rootDir, files, nodeExecutable, candidates: npmCliCandidates,
+    });
+    if (!cli) {
+      throw updateError(
+        "SERVER_UPDATE_NPM_UNAVAILABLE",
+        "Cannot locate npm's JavaScript CLI. Install npm alongside Node.js, " +
+          "or configure NUTC_NPM_CLI_PATH=/absolute/path/to/npm-cli.js in the service environment. " +
+          "Existing frontend assets were kept.",
+      );
+    }
+    return runCommand(nodeExecutable, [cli, ...args], {
+      errorCode: "SERVER_UPDATE_INSTALL_FAILED",
+      timeoutMs: 240_000,
+      // package.json postinstall might also compile assets: protect the
+      // currently published bundle from that build as well.
+      env: updaterEnvironment({ nodeExecutable, stagingDirectory }),
+    });
+  }
+
+  async function runViteBuild(stagingDirectory) {
+    const cli = path.join(rootDir, "node_modules", "vite", "bin", "vite.js");
+    if (!(await exists(cli))) {
+      throw updateError(
+        "SERVER_UPDATE_VITE_UNAVAILABLE",
+        "Vite's local CLI is missing; dependencies must be installed before rebuilding.",
+      );
+    }
+    // The repository's build script is 'vite build'. Invoking that exact CLI
+    // with the running Node binary avoids the missing-npm PATH trap entirely.
+    return runCommand(nodeExecutable, [cli, "build"], {
+      errorCode: "SERVER_UPDATE_BUILD_FAILED",
+      timeoutMs: 150_000,
+      env: updaterEnvironment({ nodeExecutable, stagingDirectory }),
     });
   }
 
@@ -188,13 +228,7 @@ export function createServerUpdater({
         const npmArgs = lockFile
           ? ["ci", "--no-audit", "--no-fund"]
           : ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund"];
-        await runCommand(npmBinary, npmArgs, {
-          errorCode: "SERVER_UPDATE_INSTALL_FAILED",
-          timeoutMs: 240_000,
-          // package.json postinstall also compiles CSS; direct that build to
-          // the staging area so it never wipes the live CSS during install.
-          env: { ...process.env, NUTC_BUILD_OUT_DIR: staged },
-        });
+        await runNpmInstall(npmArgs, staged);
         await files.mkdir(path.dirname(stampFile), { recursive: true });
         await files.writeFile(stampFile, revision + "\n");
       }
@@ -202,11 +236,7 @@ export function createServerUpdater({
       // Rebuild on *every manual update*, even when Git has no new commits.
       // This repairs stale/missing generated CSS without requiring SSH.
       emit("building", "正在重新編譯 CSS 與 UI…");
-      await runCommand(npmBinary, ["run", "build"], {
-        errorCode: "SERVER_UPDATE_BUILD_FAILED",
-        timeoutMs: 150_000,
-        env: { ...process.env, NUTC_BUILD_OUT_DIR: staged },
-      });
+      await runViteBuild(staged);
       emit("verifying", "正在檢查新產生的前端檔案…");
       await verifyAssets(staged);
       emit("publishing", "正在套用更新後的資源…");

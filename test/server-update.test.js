@@ -4,16 +4,28 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createServerUpdater } from "../src/server-update.js";
+import { createServerUpdater as createUpdater } from "../src/server-update.js";
 
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+// These tests must not depend on the host runner's real npm installation.
+function createServerUpdater(options) {
+  return createUpdater({
+    ...options,
+    npmCliCandidates: options.npmCliCandidates === undefined
+      ? [path.join(options.rootDir, "node_modules/npm/bin/npm-cli.js")]
+      : options.npmCliCandidates,
+  });
+}
+
+const node = process.execPath;
+const npmCli = "node_modules/npm/bin/npm-cli.js";
+const viteCli = "node_modules/vite/bin/vite.js";
 const git = (args, stdout = "", exitCode = 0) =>
   ({ command: "git", args, stdout, exitCode });
-const install = () => ({ command: npm, args: [
-  "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
+const install = () => ({ command: node, args: [
+  npmCli, "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
 ] });
 const build = (exitCode = 0, missing = false) =>
-  ({ command: npm, args: ["run", "build"], exitCode, build: true, missing });
+  ({ command: node, args: [viteCli, "build"], exitCode, build: true, missing });
 
 function fakeQueue(steps) {
   const calls = [];
@@ -21,8 +33,13 @@ function fakeQueue(steps) {
     const step = steps.shift();
     assert.ok(step, "unexpected subprocess: " + command + " " + args.join(" "));
     assert.equal(command, step.command);
-    assert.deepEqual(args, step.args);
-    calls.push({ command, args, options });
+    const relativeArgs = args.map(value =>
+      typeof value === "string" && value.startsWith(options.cwd + path.sep)
+        ? path.relative(options.cwd, value).split(path.sep).join("/")
+        : value,
+    );
+    assert.deepEqual(relativeArgs, step.args);
+    calls.push({ command, args: relativeArgs, options });
 
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
@@ -54,7 +71,10 @@ async function fixture(fn) {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "nutc-updater-"));
   try {
     await fs.mkdir(path.join(rootDir, "public", "generated"), { recursive: true });
-    await fs.mkdir(path.join(rootDir, "node_modules", "vite"), { recursive: true });
+    await fs.mkdir(path.join(rootDir, "node_modules", "vite", "bin"), { recursive: true });
+    await fs.mkdir(path.join(rootDir, "node_modules", "npm", "bin"), { recursive: true });
+    await fs.writeFile(path.join(rootDir, npmCli), "// fixture npm");
+    await fs.writeFile(path.join(rootDir, viteCli), "// fixture vite");
     await fs.writeFile(path.join(rootDir, "package.json"), '{"name":"test"}');
     await fs.writeFile(path.join(rootDir, "public", "generated", "site.css"), "old css");
     await fs.writeFile(path.join(rootDir, "public", "generated", "ui.js"), "old js");
@@ -231,5 +251,46 @@ test("publish failure restores the previous verified assets", () =>
     assert.equal(intercepted, true);
     assert.equal(await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"), "old css");
     assert.equal(await fs.readFile(path.join(rootDir, "public/generated/ui.js"), "utf8"), "old js");
+  })
+);
+
+test("missing npm CLI produces a useful diagnosis rather than spawn npm ENOENT", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([...unchangedGit]);
+    const updater = createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      npmCliCandidates: [],
+    });
+    await assert.rejects(
+      updater.updateServerFromGitPull(),
+      error => {
+        assert.equal(error.code, "SERVER_UPDATE_NPM_UNAVAILABLE");
+        assert.match(error.message, /NUTC_NPM_CLI_PATH/);
+        assert.doesNotMatch(error.message, /spawn npm ENOENT/);
+        return true;
+      },
+    );
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"), "old css");
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("a healthy installation rebuilds through Node/Vite even if npm later disappears", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const setup = fakeQueue([...unchangedGit, install(), build()]);
+    await createServerUpdater({
+      rootDir, makeId, spawnCommand: setup.spawnCommand,
+    }).updateServerFromGitPull();
+    const tasks = fakeQueue([...unchangedGit, build()]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      npmCliCandidates: [],
+    }).updateServerFromGitPull();
+    assert.equal(result.dependenciesInstalled, false);
+    assert.equal(result.rebuilt, true);
+    assert.equal(tasks.remaining(), 0);
+    assert.ok(tasks.calls.some(call => call.command === process.execPath &&
+      call.args[0] === viteCli));
+    assert.ok(!tasks.calls.some(call => call.command === "npm"));
   })
 );
