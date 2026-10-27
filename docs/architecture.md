@@ -56,11 +56,14 @@ operation and shows each step on the page:
    installed dependency fingerprint is absent/outdated. This fingerprint lives
    in ignored `node_modules/.nutc-dependency-revision`, so failed installs
    will retry even after Git has already pulled the new commit.
-3. Always rebuild the frontend, including when Git is already up to date.
+3. Ensure the installed Playwright version's Chromium binaries are present
+   with the local Playwright CLI (also when npm dependencies are unchanged).
+   npm installs packages but does not necessarily download a matching browser.
+4. Always rebuild the frontend, including when Git is already up to date.
    This allows an in-site **Repair** of broken or missing compiled UI assets.
-4. Write to a private temporary directory, validate `site.css` and `ui.js`,
+5. Write to a private temporary directory, validate `site.css` and `ui.js`,
    then replace `public/generated/` with rollback on publish failure.
-5. Restart only after a valid frontend build. The browser follows the
+6. Restart only after Chromium provisioning and a valid frontend build. The browser follows the
    operation through `/api/debug/update/status`, waits for a **new instance
    ID**, then navigates to a versioned URL.
 
@@ -80,8 +83,23 @@ updater now checks Git's index before choosing an install command:
   The updater leaves the local lockfile untouched.
 
 The server exposes progress and concise failure messages without including
-secrets or browser profiles. If a Git pull or build fails, it will not restart
-and the previous generated CSS/JS are retained.
+secrets or browser profiles. If a Git pull, Chromium install, or build fails,
+it will not restart and the previous generated CSS/JS are retained.
+
+### Recovering from missing Playwright Chromium after an in-site update
+
+Without a committed lockfile, `npm install` can upgrade `playwright` within
+the allowed semver range. Each Playwright version requires matching Chromium
+binaries, but npm installing the package alone is not sufficient. The Update
+button now invokes `node_modules/playwright/cli.js install chromium` using
+the running server's Node executable and environment after any npm install
+and on every manual repair update. Existing matching binaries are reused.
+This installs into the same service user's browser cache, respecting
+`PLAYWRIGHT_BROWSERS_PATH` if set. For the first rollout of this fix, apply
+the new code, restart to load the new updater, and run Update once more.
+If the browser download fails, check the network and available disk space.
+Operating-system Chromium libraries still need administrator installation
+when missing (`npm run install-browser` / `npm run doctor`).
 
 ### Recovering from `npm error code EUSAGE`
 

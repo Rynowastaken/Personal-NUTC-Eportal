@@ -19,6 +19,10 @@ function createServerUpdater(options) {
 const node = process.execPath;
 const npmCli = "node_modules/npm/bin/npm-cli.js";
 const viteCli = "node_modules/vite/bin/vite.js";
+const playwrightCli = "node_modules/playwright/cli.js";
+const browser = (exitCode = 0, stderr = "") => ({
+  command: node, args: [playwrightCli, "install", "chromium"], exitCode, stderr,
+});
 const git = (args, stdout = "", exitCode = 0) =>
   ({ command: "git", args, stdout, exitCode });
 const install = () => ({ command: node, args: [
@@ -80,6 +84,8 @@ async function fixture(fn) {
     await fs.mkdir(path.join(rootDir, "public", "generated"), { recursive: true });
     await fs.mkdir(path.join(rootDir, "node_modules", "vite", "bin"), { recursive: true });
     await fs.mkdir(path.join(rootDir, "node_modules", "npm", "bin"), { recursive: true });
+    await fs.mkdir(path.join(rootDir, "node_modules", "playwright"), { recursive: true });
+    await fs.writeFile(path.join(rootDir, playwrightCli), "// fixture Playwright");
     await fs.writeFile(path.join(rootDir, npmCli), "// fixture npm");
     await fs.writeFile(path.join(rootDir, viteCli), "// fixture vite");
     await fs.writeFile(path.join(rootDir, "package.json"), '{"name":"test"}');
@@ -100,7 +106,7 @@ const unchangedGit = [
 
 test("even unchanged Git builds/repairs frontend and requests restart", () =>
   fixture(async ({ rootDir, makeId }) => {
-    const tasks = fakeQueue([...unchangedGit, install(), build()]);
+    const tasks = fakeQueue([...unchangedGit, install(), browser(), build()]);
     const updater = createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand });
     const phases = [];
     const result = await updater.updateServerFromGitPull({
@@ -111,8 +117,8 @@ test("even unchanged Git builds/repairs frontend and requests restart", () =>
     assert.equal(result.rebuilt, true);
     assert.equal(result.restartRequired, true);
     assert.equal(result.dependenciesInstalled, true);
-    assert.deepEqual(phases, ["checking", "pulling", "installing", "building",
-      "verifying", "publishing", "complete"]);
+    assert.deepEqual(phases, ["checking", "pulling", "installing", "browser",
+      "building", "verifying", "publishing", "complete"]);
     assert.equal(
       await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"),
       "/* fresh CSS */",
@@ -124,10 +130,10 @@ test("even unchanged Git builds/repairs frontend and requests restart", () =>
 
 test("rebuild runs without reinstalling dependencies when fingerprint matches", () =>
   fixture(async ({ rootDir, makeId }) => {
-    const initial = fakeQueue([...unchangedGit, install(), build()]);
+    const initial = fakeQueue([...unchangedGit, install(), browser(), build()]);
     await createServerUpdater({ rootDir, makeId, spawnCommand: initial.spawnCommand })
       .updateServerFromGitPull();
-    const next = fakeQueue([...unchangedGit, build()]);
+    const next = fakeQueue([...unchangedGit, browser(), build()]);
     const result = await createServerUpdater({
       rootDir, makeId, spawnCommand: next.spawnCommand,
     }).updateServerFromGitPull();
@@ -144,7 +150,7 @@ test("package changes reinstall dependencies before staging build", () =>
       git(["rev-parse", "HEAD"], "bbb"),
       git(["diff", "--name-only", "aaa", "bbb", "--",
         "package.json", "package-lock.json", "npm-shrinkwrap.json"], "package.json"),
-      install(), build(),
+      install(), browser(), build(),
     ]);
     const result = await createServerUpdater({
       rootDir, makeId, spawnCommand: tasks.spawnCommand,
@@ -158,7 +164,7 @@ test("package changes reinstall dependencies before staging build", () =>
 
 test("failed build preserves the old working CSS and JS", () =>
   fixture(async ({ rootDir, makeId }) => {
-    const tasks = fakeQueue([...unchangedGit, install(), build(1)]);
+    const tasks = fakeQueue([...unchangedGit, install(), browser(), build(1)]);
     await assert.rejects(
       createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand })
         .updateServerFromGitPull(),
@@ -172,7 +178,7 @@ test("failed build preserves the old working CSS and JS", () =>
 
 test("incomplete build is rejected before swapping assets", () =>
   fixture(async ({ rootDir, makeId }) => {
-    const tasks = fakeQueue([...unchangedGit, install(), build(0, true)]);
+    const tasks = fakeQueue([...unchangedGit, install(), browser(), build(0, true)]);
     await assert.rejects(
       createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand })
         .updateServerFromGitPull(),
@@ -203,7 +209,7 @@ test("a second update cannot run while another is already active", () =>
     const pending = new Promise(resolve => { release = resolve; });
     const tasks = fakeQueue([
       { ...git(["rev-parse", "HEAD"], "aaa"), beforeClose: async () => pending },
-      ...unchangedGit.slice(1), install(), build(),
+      ...unchangedGit.slice(1), install(), browser(), build(),
     ]);
     const updater = createServerUpdater({ rootDir, makeId, spawnCommand: tasks.spawnCommand });
     const first = updater.updateServerFromGitPull();
@@ -227,7 +233,7 @@ test("failed dependency installation remains retryable even without new Git comm
     );
     assert.equal(await fs.stat(path.join(rootDir, "node_modules/.nutc-dependency-revision"))
       .catch(() => null), null);
-    const retried = fakeQueue([...unchangedGit, install(), build()]);
+    const retried = fakeQueue([...unchangedGit, install(), browser(), build()]);
     const result = await createServerUpdater({
       rootDir, makeId, spawnCommand: retried.spawnCommand,
     }).updateServerFromGitPull();
@@ -249,7 +255,7 @@ test("publish failure restores the previous verified assets", () =>
         return fs.rename(from, to);
       },
     };
-    const tasks = fakeQueue([...unchangedGit, install(), build()]);
+    const tasks = fakeQueue([...unchangedGit, install(), browser(), build()]);
     await assert.rejects(
       createServerUpdater({ rootDir, makeId, files, spawnCommand: tasks.spawnCommand })
         .updateServerFromGitPull(),
@@ -284,11 +290,11 @@ test("missing npm CLI produces a useful diagnosis rather than spawn npm ENOENT",
 
 test("a healthy installation rebuilds through Node/Vite even if npm later disappears", () =>
   fixture(async ({ rootDir, makeId }) => {
-    const setup = fakeQueue([...unchangedGit, install(), build()]);
+    const setup = fakeQueue([...unchangedGit, install(), browser(), build()]);
     await createServerUpdater({
       rootDir, makeId, spawnCommand: setup.spawnCommand,
     }).updateServerFromGitPull();
-    const tasks = fakeQueue([...unchangedGit, build()]);
+    const tasks = fakeQueue([...unchangedGit, browser(), build()]);
     const result = await createServerUpdater({
       rootDir, makeId, spawnCommand: tasks.spawnCommand,
       npmCliCandidates: [],
@@ -312,7 +318,7 @@ test("untracked, outdated local package-lock never causes npm ci EUSAGE", () =>
     });
     await fs.writeFile(localLock, existing);
     const tasks = fakeQueue([
-      ...unchangedGit, trackedLocks(), install(), build(),
+      ...unchangedGit, trackedLocks(), install(), browser(), build(),
     ]);
     const result = await createServerUpdater({
       rootDir, makeId, spawnCommand: tasks.spawnCommand,
@@ -331,7 +337,7 @@ test("committed, present lockfile uses reproducible npm ci", () =>
   fixture(async ({ rootDir, makeId }) => {
     await fs.writeFile(path.join(rootDir, "package-lock.json"), "{\"lockfileVersion\":3}");
     const tasks = fakeQueue([
-      ...unchangedGit, trackedLocks("package-lock.json"), ci(), build(),
+      ...unchangedGit, trackedLocks("package-lock.json"), ci(), browser(), build(),
     ]);
     const result = await createServerUpdater({
       rootDir, makeId, spawnCommand: tasks.spawnCommand,
@@ -371,7 +377,7 @@ test("committed stale lockfile retries without modifying lockfile", () =>
       trackedLocks("package-lock.json"),
       ci(1, mismatch),
       install(),
-      build(),
+      browser(), build(),
     ]);
     const progress = [];
     const result = await createServerUpdater({
@@ -431,6 +437,67 @@ test("other npm ci failures are not retried with unlocked install", () =>
       error => {
         assert.equal(error.code, "SERVER_UPDATE_INSTALL_FAILED");
         assert.match(error.message, /network unavailable/);
+        return true;
+      },
+    );
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("manual Update repairs Chromium even when npm dependencies are unchanged", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const first = fakeQueue([...unchangedGit, install(), browser(), build()]);
+    await createServerUpdater({
+      rootDir, makeId, spawnCommand: first.spawnCommand,
+    }).updateServerFromGitPull();
+
+    const second = fakeQueue([...unchangedGit, browser(), build()]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: second.spawnCommand,
+      npmCliCandidates: [],
+    }).updateServerFromGitPull();
+    assert.equal(result.dependenciesInstalled, false);
+    assert.equal(second.remaining(), 0);
+    const browserInvocation = second.calls.find(call => call.args[0] === playwrightCli);
+    assert.ok(browserInvocation, "playwright browser install must run without npm reinstall");
+    assert.equal(browserInvocation.options.env.HOME, process.env.HOME);
+  })
+);
+
+test("failed Chromium installation never publishes new assets or marks update complete", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([
+      ...unchangedGit, install(), browser(1, "download failed"), 
+    ]);
+    await assert.rejects(
+      createServerUpdater({
+        rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      }).updateServerFromGitPull(),
+      error => {
+        assert.equal(error.code, "SERVER_UPDATE_BROWSER_INSTALL_FAILED");
+        assert.match(error.message, /download failed/);
+        return true;
+      },
+    );
+    assert.equal(
+      await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"),
+      "old css",
+    );
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("missing Playwright CLI produces an actionable update error", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    await fs.unlink(path.join(rootDir, playwrightCli));
+    const tasks = fakeQueue([...unchangedGit, install()]);
+    await assert.rejects(
+      createServerUpdater({
+        rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      }).updateServerFromGitPull(),
+      error => {
+        assert.equal(error.code, "SERVER_UPDATE_BROWSER_INSTALL_FAILED");
+        assert.match(error.message, /Playwright CLI is missing/);
         return true;
       },
     );

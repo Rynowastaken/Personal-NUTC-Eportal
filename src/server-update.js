@@ -118,6 +118,28 @@ export function createServerUpdater({
     });
   }
 
+  async function ensurePlaywrightChromium() {
+    // npm installs JavaScript packages, but it does not guarantee the matching
+    // Playwright browser binary is present. An unlocked dependency reinstall can
+    // upgrade Playwright to a revision requiring a different Chromium build.
+    const cli = path.join(rootDir, "node_modules", "playwright", "cli.js");
+    if (!(await exists(cli))) {
+      throw updateError(
+        "SERVER_UPDATE_BROWSER_INSTALL_FAILED",
+        "Playwright CLI is missing after dependency installation. " +
+          "Run npm install in the server checkout, then retry Update.",
+      );
+    }
+    // The CLI is idempotent: existing matching browsers are reused. Execute
+    // it under the running server user/environment so HOME and optional
+    // PLAYWRIGHT_BROWSERS_PATH match the login bridge at runtime.
+    return runCommand(nodeExecutable, [cli, "install", "chromium"], {
+      errorCode: "SERVER_UPDATE_BROWSER_INSTALL_FAILED",
+      timeoutMs: 480_000,
+      env: updaterEnvironment({ nodeExecutable }),
+    });
+  }
+
   async function runViteBuild(stagingDirectory) {
     const cli = path.join(rootDir, "node_modules", "vite", "bin", "vite.js");
     if (!(await exists(cli))) {
@@ -279,6 +301,11 @@ export function createServerUpdater({
         await files.mkdir(path.dirname(stampFile), { recursive: true });
         await files.writeFile(stampFile, revision + "\n");
       }
+
+      // Also repair browser binaries on an unchanged Git checkout: the
+      // previous npm install may have succeeded without downloading Chromium.
+      emit("browser", "正在確認並補齊 Playwright Chromium 瀏覽器…");
+      await ensurePlaywrightChromium();
 
       // Rebuild on *every manual update*, even when Git has no new commits.
       // This repairs stale/missing generated CSS without requiring SSH.
