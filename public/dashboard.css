@@ -1,6 +1,52 @@
 /* Dashboard-only styles. Shared generated styles stay in frontend/src/styles.css.
  * This file intentionally loads after compiled Tailwind to preserve cascade order.
  */
+
+/*
+ * Demo-inspired welcome headline. This belongs below the toolbar rather than
+ * inside its compact avatar/actions row. The personalized name is supplied by
+ * app.js through textContent, so it remains safe for user-defined nicknames.
+ */
+.portal-welcome {
+  width: 100%;
+  min-width: 0;
+  padding: clamp(1rem, 2.7vw, 2.25rem) 0 clamp(.65rem, 1.5vw, 1.25rem);
+}
+.portal-welcome-title {
+  margin: 0;
+  max-width: 100%;
+  color: var(--foreground);
+  font-size: clamp(2.15rem, 5.2vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -.07em;
+  line-height: 1.16;
+  overflow-wrap: anywhere;
+}
+.portal-welcome-title #welcomeUsername {
+  color: #e6a4ad;
+  color: var(--primary, #e6a4ad);
+}
+.portal-welcome-subtitle {
+  margin: .8rem 0 0;
+  color: var(--muted);
+  font-size: clamp(.85rem, 1.4vw, .95rem);
+  font-weight: 500;
+  line-height: 1.75;
+}
+@media (max-width: 640px) {
+  .portal-welcome {
+    padding: 1.1rem 0 .55rem;
+  }
+  .portal-welcome-title {
+    font-size: clamp(1.9rem, 8.2vw, 2.35rem);
+    line-height: 1.18;
+    letter-spacing: -.06em;
+  }
+  .portal-welcome-subtitle {
+    margin-top: .55rem;
+    font-size: .85rem;
+  }
+}
 /*
  * Share only the status pill's translucent, softly tinted glass material.
  * The buttons keep their original sizes, radii, icons and typography.
