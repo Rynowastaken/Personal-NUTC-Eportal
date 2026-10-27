@@ -6,11 +6,15 @@ on:
     paths:
       - "demo/**"
       - "test/demo-site.test.js"
+      - "test/demo-parity.test.js"
+      - "package.json"
       - ".github/workflows/demo-pages.yml"
   pull_request:
     paths:
       - "demo/**"
       - "test/demo-site.test.js"
+      - "test/demo-parity.test.js"
+      - "package.json"
       - ".github/workflows/demo-pages.yml"
   workflow_dispatch:
 
@@ -30,13 +34,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Validate standalone JavaScript and site content
+      - name: Install dependencies without production postinstall
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Bundle standalone demo including OpenCC
+        run: npm run build:demo
+      - name: Validate demo and compiled output
         run: |
           node --check demo/app.js
-          node --test test/demo-site.test.js
-          test -s demo/index.html
-          test -s demo/styles.css
-          test -s demo/app.js
+          node --check demo/features.js
+          node --test test/demo-site.test.js test/demo-parity.test.js
+          test -s demo-dist/index.html
+          test -d demo-dist/assets
 
   deploy:
     name: Deploy to GitHub Pages
@@ -54,12 +62,19 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install and compile static demo
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run build:demo
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload only the standalone demo
         uses: actions/upload-pages-artifact@v4
         with:
-          path: demo
+          path: demo-dist
       - name: Publish demo
         id: deployment
         uses: actions/deploy-pages@v4
