@@ -67,7 +67,8 @@ export async function translateHitokoto(text, language, {
         sourceLanguage: "zh",
         targetLanguage: language,
       });
-      if (availability === "unavailable") return { text, translated: false };
+      // Never trigger an implicit language-model download from a subtitle.
+      if (availability !== "available") return { text, translated: false };
     }
     const translator = await TranslatorImpl.create({
       sourceLanguage: "zh",
@@ -115,19 +116,34 @@ export function createHitokotoWidget({
   }
   async function renderQuote(id) {
     if (!lastQuote || id !== requestId || !current.enabled) return;
-    const localized = await translateQuote(lastQuote.text, current.language);
-    if (id !== requestId || !current.enabled) return;
-    subtitle.textContent = "「" + localized.text + "」";
-    subtitle.lang = localized.translated
-      ? current.language
-      : "zh";
+    // Display the original and its credits immediately, even if translation
+    // is slow, unsupported, or fails. Never block attribution on an AI model.
+    subtitle.textContent = "「" + lastQuote.text + "」";
+    subtitle.lang = "zh";
     speaker.textContent = lastQuote.speaker || "未提供";
     source.textContent = lastQuote.source || "未提供";
     link.href = lastQuote.url;
     details.hidden = false;
-    status.textContent = current.language !== "original" && !localized.translated
-      ? "此瀏覽器無法翻譯為所選語言，現顯示原文。"
-      : "";
+    status.textContent = current.language === "original"
+      ? ""
+      : "正在檢查此瀏覽器的翻譯功能…";
+
+    if (current.language === "original") return;
+    const language = current.language;
+    const localized = await Promise.race([
+      translateQuote(lastQuote.text, language),
+      new Promise((resolve) => setTimeout(() => resolve({
+        text: lastQuote.text, translated: false,
+      }), 4000)),
+    ]).catch(() => ({ text: lastQuote.text, translated: false }));
+    if (id !== requestId || !current.enabled) return;
+    if (localized.translated) {
+      subtitle.textContent = "「" + localized.text + "」";
+      subtitle.lang = language;
+      status.textContent = "";
+    } else {
+      status.textContent = "此瀏覽器無法翻譯為所選語言，現顯示原文。";
+    }
   }
 
   async function refreshQuote({ force = false } = {}) {
