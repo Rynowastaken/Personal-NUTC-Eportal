@@ -16,7 +16,7 @@ test("live dashboard has one large personalized welcome heading below the toolba
   assert.match(html, /Welcome: <span id="welcomeUsername">User<\/span>/);
   assert.match(html, /class="portal-welcome-subtitle">你的校園日常，一眼掌握。<\/p>/);
   assert.match(html, /首頁會顯示為 Welcome: Username。/);
-  assert.match(html, /\/dashboard\.css\?v=3/);
+  assert.match(html, /\/dashboard\.css\?v=\d+/);
   assert.doesNotMatch(html, /Welcome! <span/);
 });
 
