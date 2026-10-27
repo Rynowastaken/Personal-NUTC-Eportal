@@ -73,18 +73,20 @@ export function createServerUpdater({
         if (code === 0) {
           finish(null, { stdout: text, code });
         } else {
-          const lockMismatch = args.some((arg) => arg === "ci") &&
-            /(?:EUSAGE|can only install packages.*in sync|Missing: .* from lock file)/i.test(text);
+          // Only retry a genuine npm ci lockfile mismatch, not other EUSAGE errors.
+          const lockMismatch = args.includes("ci") &&
+            /(?:can only install packages[^\r\n]*in sync|(?:Missing|Invalid):[^\r\n]*from lock file)/i.test(text);
           const diagnostic = lockMismatch
-            ? "Committed npm lockfile and package.json are out of sync. " +
-              "Regenerate and commit the lockfile with 'npm install' before deploying."
+            ? "Committed npm lockfile and package.json are out of sync."
             : text.slice(0, 1800);
-          finish(updateError(
+          const failure = updateError(
             errorCode,
             command + " " + args.join(" ") + " failed" +
               (signal ? " (" + signal + ")" : " (exit " + code + ")") +
               (diagnostic ? ": " + diagnostic : ""),
-          ));
+          );
+          if (lockMismatch) failure.lockMismatch = true;
+          finish(failure);
         }
       });
       timer = setTimeout(() => {
@@ -258,10 +260,22 @@ export function createServerUpdater({
               " is missing from the checkout. Restore it from Git before updating.",
           );
         }
-        const npmArgs = committedLock
-          ? ["ci", "--no-audit", "--no-fund"]
-          : ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund"];
-        await runNpmInstall(npmArgs, staged);
+        const unlockedInstall = [
+          "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
+        ];
+        if (committedLock) {
+          try {
+            await runNpmInstall(["ci", "--no-audit", "--no-fund"], staged);
+          } catch (error) {
+            if (!error.lockMismatch) throw error;
+            // Recover without changing tracked files or the deployed assets.
+            // The maintainer should still commit a synchronized lockfile.
+            emit("installing", "鎖定檔與套件清單不一致，改用不依賴鎖定檔的安裝方式…");
+            await runNpmInstall(unlockedInstall, staged);
+          }
+        } else {
+          await runNpmInstall(unlockedInstall, staged);
+        }
         await files.mkdir(path.dirname(stampFile), { recursive: true });
         await files.writeFile(stampFile, revision + "\n");
       }

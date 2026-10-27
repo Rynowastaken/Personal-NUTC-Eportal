@@ -69,8 +69,12 @@ already have a **local, untracked** lockfile from a manual `npm install`. Such
 files may be stale after new dependencies like `opencc-js` are added. The
 updater now checks Git's index before choosing an install command:
 
-- If a lockfile is **tracked by Git**, use reproducible `npm ci` and report a
-  concise corrective message if `package.json` and the committed lock disagree.
+- If a lockfile is **tracked by Git**, try reproducible `npm ci` first.
+  If npm reports a lockfile mismatch, retry once with
+  `npm install --no-save --package-lock=false --no-audit --no-fund`.
+  This keeps the site recoverable without modifying the committed lockfile.
+  Maintainers should still synchronize and commit the lockfile; other npm
+  installation errors do not trigger a retry.
 - If a lockfile is **not tracked**, ignore any stale local copies and run
   `npm install --no-save --package-lock=false --no-audit --no-fund`.
   The updater leaves the local lockfile untouched.
@@ -85,8 +89,10 @@ If an older updater reports `npm ci` and `Missing: opencc-js@1.4.2 from lock
 file`, Git has probably already pulled the new code. After this fix is
 merged, click **Update** once to fetch it, **Restart** to load the new updater,
 then **Update** again. The second update should ignore your untracked stale
-lockfile. If a server uses a genuinely committed lockfile that is out of sync,
-fix that lockfile in the repository rather than modifying live server files.
+lockfile. If a server uses a genuinely committed lockfile that is out of sync, the
+updater retries once without using the lockfile. Fix and commit the lockfile
+in the repository for reproducible future updates rather than changing
+tracked files on the live server.
 
 ### Recovering from `spawn npm ENOENT`
 

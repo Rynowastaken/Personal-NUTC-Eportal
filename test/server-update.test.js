@@ -358,7 +358,36 @@ test("committed, missing lockfile fails cleanly before npm", () =>
   })
 );
 
-test("lock mismatch emits short actionable failure instead of dumping npm usage", () =>
+test("committed stale lockfile retries without modifying lockfile", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const lockPath = path.join(rootDir, "package-lock.json");
+    const existingLock = '{"lockfileVersion":3}';
+    await fs.writeFile(lockPath, existingLock);
+    const mismatch = "npm error code EUSAGE\n" +
+      "npm ci can only install packages when your package.json and package-lock.json are in sync.\n" +
+      "Missing: opencc-js@1.4.2 from lock file\n";
+    const tasks = fakeQueue([
+      ...unchangedGit,
+      trackedLocks("package-lock.json"),
+      ci(1, mismatch),
+      install(),
+      build(),
+    ]);
+    const progress = [];
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+    }).updateServerFromGitPull({
+      onProgress: ({ detail }) => progress.push(detail),
+    });
+    assert.equal(result.dependenciesInstalled, true);
+    assert.equal(result.rebuilt, true);
+    assert.ok(progress.some(detail => detail.includes("鎖定檔")));
+    assert.equal(await fs.readFile(lockPath, "utf8"), existingLock);
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("fallback install failure does not replace published assets", () =>
   fixture(async ({ rootDir, makeId }) => {
     await fs.writeFile(path.join(rootDir, "package-lock.json"), "{}");
     const verboseError = "npm error code EUSAGE\n" +
@@ -369,15 +398,39 @@ test("lock mismatch emits short actionable failure instead of dumping npm usage"
       ...unchangedGit,
       trackedLocks("package-lock.json"),
       ci(1, verboseError),
+      { ...install(), exitCode: 1, stderr: "npm error 503 registry unavailable" },
     ]);
     await assert.rejects(
       createServerUpdater({
         rootDir, makeId, spawnCommand: tasks.spawnCommand,
       }).updateServerFromGitPull(),
-      (err) => {
-        assert.equal(err.code, "SERVER_UPDATE_INSTALL_FAILED");
-        assert.match(err.message, /Regenerate and commit the lockfile/);
-        assert.ok(err.message.length < 650, "error output must be readable in settings");
+      error => {
+        assert.equal(error.code, "SERVER_UPDATE_INSTALL_FAILED");
+        assert.match(error.message, /registry unavailable/);
+        assert.doesNotMatch(error.message, /npm help ci/);
+        return true;
+      },
+    );
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"), "old css");
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("other npm ci failures are not retried with unlocked install", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    await fs.writeFile(path.join(rootDir, "package-lock.json"), "{}");
+    const tasks = fakeQueue([
+      ...unchangedGit,
+      trackedLocks("package-lock.json"),
+      ci(1, "npm error code ENOTFOUND\nnetwork unavailable"),
+    ]);
+    await assert.rejects(
+      createServerUpdater({
+        rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      }).updateServerFromGitPull(),
+      error => {
+        assert.equal(error.code, "SERVER_UPDATE_INSTALL_FAILED");
+        assert.match(error.message, /network unavailable/);
         return true;
       },
     );
