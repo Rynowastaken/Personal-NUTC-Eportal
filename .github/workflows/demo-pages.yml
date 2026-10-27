@@ -1,0 +1,65 @@
+name: Publish public demo (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "demo/**"
+      - "test/demo-site.test.js"
+      - ".github/workflows/demo-pages.yml"
+  pull_request:
+    paths:
+      - "demo/**"
+      - "test/demo-site.test.js"
+      - ".github/workflows/demo-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "github-pages-demo"
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate static demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate standalone JavaScript and site content
+        run: |
+          node --check demo/app.js
+          node --test test/demo-site.test.js
+          test -s demo/index.html
+          test -s demo/styles.css
+          test -s demo/app.js
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: validate
+    # Pages must be enabled once in Settings > Pages > Source: GitHub Actions.
+    # Without it, validate succeeds while deployment waits for setup.
+    if: github.event_name != 'pull_request' && github.event.repository.has_pages == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload only the standalone demo
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: demo
+      - name: Publish demo
+        id: deployment
+        uses: actions/deploy-pages@v4

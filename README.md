@@ -15,6 +15,12 @@
 > [!NOTE]
 > 本專案為非官方個人專案，與國立臺中科技大學官方無關。
 
+## 公開互動展示（GitHub Pages）
+
+[**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 是使用範例課表和假資料的純靜態展示。支援手機版、外觀亮度控制、模擬重新整理及自訂捷徑（僅儲存在自己的瀏覽器），**不會登入校方系統或使用私人的 ePortal 資料**。
+
+部署檔案在 [`demo/`](demo/)，自動部署設定在 [GitHub Actions](.github/workflows/demo-pages.yml)。若網站尚未開放，請先依照 [GitHub Pages 啟用說明](docs/demo.md) 在 Repository Settings → Pages 將 Source 設為 GitHub Actions，然後執行部署工作流程。
+
 ## 功能
 
 - 顯示 AIS 每週課表（server 定時爬取，快取 5 分鐘）

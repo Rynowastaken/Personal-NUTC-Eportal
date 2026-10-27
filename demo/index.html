@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#151318">
+  <meta name="description" content="NUTC Portal 靜態互動展示。示範課表、快捷連結和外觀設定，不連線至學校系統。">
+  <title>NUTC Portal · Interactive Demo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='17' fill='%2325222b'/%3E%3Cpath d='m13 24 19-10 19 10-19 10-19-10zm7 8v12c9 7 15 7 24 0V32' fill='none' stroke='%23dd909b' stroke-width='4' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-cap" viewBox="0 0 24 24"><path d="m2 10 10-5 10 5-10 5-10-5Z"/><path d="M6 12v5c4 3 8 3 12 0v-5M22 10v7"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="19" rx="2"/><path d="M9 3.5h6M9 13l2.5 2.5L16 11"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><rect x="3" y="3" width="9" height="5" rx="2.5"/><rect x="12" y="16" width="9" height="5" rx="2.5"/><path d="M8 17H7a4 4 0 0 1 0-8h10a4 4 0 0 1 0 8h-1"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6c-4-3-7-3-10-2v16c4-1 7-1 10 2 3-3 6-3 10-2V4c-3-1-6-1-10 2Zm0 0v16M16 12l2 2 3-4"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 .3l2-2a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7-.3l-2 2a5 5 0 1 0 7 7l1-1"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-5L3 9M3 3v6h6M4 13a8 8 0 0 0 14 5l3-3M21 21v-6h-6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 3v2M12 19v2M4 12H2M22 12h-2M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/><circle cx="12" cy="12" r="5"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 9 4v6c0 5.5-3.3 8.7-9 10-5.7-1.3-9-4.5-9-10V6l9-4Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.5"/></symbol>
+  </svg>
+
+  <div class="backdrop" id="backdrop" aria-hidden="true">
+    <div class="backdrop-pattern"></div>
+    <div class="backdrop-shade"></div>
+  </div>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="NUTC Portal demo home">
+        <span class="brand-icon"><svg class="icon"><use href="#i-cap"></use></svg></span>
+        <span><strong>NUTC Portal</strong><small>Personal Campus Dashboard</small></span>
+      </a>
+      <div class="header-actions">
+        <span class="demo-pill"><span class="status-dot"></span> DEMO MODE</span>
+        <button type="button" class="icon-button" id="settingsButton" aria-label="開啟外觀設定" title="外觀設定">
+          <svg class="icon"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="welcome" aria-label="歡迎">
+        <div class="eyebrow"><svg class="icon"><use href="#i-shield"></use></svg> 互動展示環境 · PUBLIC PREVIEW</div>
+        <h1>Welcome: <span>Demo User</span></h1>
+        <p>你的校園日常，一眼掌握。</p>
+        <div class="demo-notice" role="note">
+          <svg class="icon"><use href="#i-info"></use></svg>
+          <span>這是使用模擬資料的靜態展示網站，沒有真實登入、學籍資料或學校系統連線。</span>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="servicesHeading">
+        <div class="section-heading">
+          <div><p class="section-kicker">PORTAL</p><h2 id="servicesHeading">校務系統</h2></div>
+          <span class="section-hint">常用系統 · Demo preview</span>
+        </div>
+        <div class="module-grid">
+          <button class="module-card" type="button" data-service="student" style="--accent: 218 184 125">
+            <span class="module-icon"><svg class="icon"><use href="#i-cap"></use></svg></span>
+            <span class="module-copy"><strong>學生管理</strong><small>課表、學籍與學生資訊</small></span>
+            <span class="module-arrow"><svg class="icon"><use href="#i-arrow"></use></svg></span>
+          </button>
+          <button class="module-card" type="button" data-service="mail" style="--accent: 108 196 199">
+            <span class="module-icon"><svg class="icon"><use href="#i-mail"></use></svg></span>
+            <span class="module-copy"><strong>WebMail</strong><small>校務信箱與通知</small></span>
+            <span class="module-arrow"><svg class="icon"><use href="#i-arrow"></use></svg></span>
+          </button>
+          <button class="module-card" type="button" data-service="events" style="--accent: 114 173 111">
+            <span class="module-icon"><svg class="icon"><use href="#i-check"></use></svg></span>
+            <span class="module-copy"><strong>活動報名</strong><small>活動、報名與投票</small></span>
+            <span class="module-arrow"><svg class="icon"><use href="#i-arrow"></use></svg></span>
+          </button>
+          <button class="module-card" type="button" data-service="learning" style="--accent: 242 112 132">
+            <span class="module-icon"><svg class="icon"><use href="#i-route"></use></svg></span>
+            <span class="module-copy"><strong>學習歷程</strong><small>EP 學習歷程與成果</small></span>
+            <span class="module-arrow"><svg class="icon"><use href="#i-arrow"></use></svg></span>
+          </button>
+          <button class="module-card" type="button" data-service="tron" style="--accent: 117 189 178">
+            <span class="module-icon"><svg class="icon"><use href="#i-book"></use></svg></span>
+            <span class="module-copy"><strong>TronClass</strong><small>課程、教材、作業與測驗</small></span>
+            <span class="module-arrow"><svg class="icon"><use href="#i-arrow"></use></svg></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="section shortcuts-section" aria-labelledby="shortcutsHeading">
+        <div class="section-heading section-heading-actions">
+          <div><p class="section-kicker">PERSONALIZE</p><h2 id="shortcutsHeading">自訂捷徑</h2><p class="section-subtitle">釘選常用網頁，僅儲存在這台裝置的瀏覽器。</p></div>
+          <button type="button" class="glass-button" id="manageShortcuts"><svg class="icon"><use href="#i-plus"></use></svg> 新增 / 管理捷徑</button>
+        </div>
+        <div class="module-grid" id="shortcutGrid"></div>
+      </section>
+
+      <section class="section dashboard-section" aria-labelledby="scheduleHeading">
+        <div class="dashboard-grid">
+          <section class="dashboard-pane">
+            <div class="section-heading">
+              <div><p class="section-kicker">WEEKLY OVERVIEW</p><h2 id="scheduleHeading">本週課表</h2><p class="section-subtitle" id="scheduleMeta">示範課表 · 模擬資料</p></div>
+              <button class="glass-button refresh-button" type="button" id="refreshSchedule"><svg class="icon"><use href="#i-refresh"></use></svg> 更新</button>
+            </div>
+            <div class="panel schedule-panel">
+              <div class="schedule-scroll"><table class="schedule-table" id="scheduleTable" aria-label="示範週課表"></table></div>
+              <div class="panel-footer"><span class="sample-dot"></span> 示範資料，非真實課表</div>
+            </div>
+          </section>
+          <section class="dashboard-pane">
+            <div class="section-heading">
+              <div><p class="section-kicker">ATTENDANCE</p><h2>缺曠紀錄</h2><p class="section-subtitle" id="absenceMeta">模擬統計 · 本學期</p></div>
+              <button class="glass-button refresh-button" type="button" id="refreshAbsence"><svg class="icon"><use href="#i-refresh"></use></svg> 更新</button>
+            </div>
+            <div class="panel absence-panel">
+              <p class="panel-label">本學期示範紀錄</p>
+              <div class="absence-stats"><div><strong>0</strong><span>缺席</span></div><div><strong>1</strong><span>請假</span></div><div><strong>0</strong><span>遲到</span></div></div>
+              <div class="attendance-event"><span class="event-dot"></span><div><strong>已核准請假</strong><small>10/15 · 事假 · 1 節（範例）</small></div></div>
+              <div class="panel-footer"><span class="sample-dot"></span> 僅供功能展示</div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+    <footer class="footer"><span>NUTC Portal · Static interactive demo</span><span>Not affiliated with or connected to NUTC systems</span></footer>
+  </div>
+
+  <dialog id="serviceDialog" class="modal" aria-labelledby="serviceDialogTitle">
+    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">PORTAL PREVIEW</span><h2 id="serviceDialogTitle">服務展示</h2></div><button class="close-button" type="button" data-close="serviceDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <p class="modal-description" id="serviceDialogDescription"></p>
+    <div class="notice-inline"><svg class="icon"><use href="#i-shield"></use></svg> 這是公開展示，不會啟動真實的校務系統登入。</div>
+    <div class="modal-actions"><button type="button" class="primary-button" data-close="serviceDialog">了解</button></div>
+  </dialog>
+
+  <dialog id="settingsDialog" class="modal" aria-labelledby="settingsTitle">
+    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">APPEARANCE</span><h2 id="settingsTitle">外觀設定</h2></div><button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <div class="settings-group"><label for="brightness"><svg class="icon"><use href="#i-sun"></use></svg> 背景亮度 <output id="brightnessValue" for="brightness">75%</output></label><input id="brightness" type="range" min="20" max="140" value="75" step="5"><p class="field-help">調整背景亮度，並立即預覽效果。</p></div>
+    <div class="settings-group"><label class="switch-label" for="motionToggle"><span>捲動視差效果<small>背景隨頁面輕柔移動</small></span><input type="checkbox" id="motionToggle" checked></label></div>
+    <div class="modal-actions"><button type="button" class="secondary-button" id="resetAppearance">恢復預設</button><button type="button" class="primary-button" data-close="settingsDialog">完成</button></div>
+  </dialog>
+
+  <dialog id="shortcutDialog" class="modal" aria-labelledby="shortcutTitle">
+    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">PERSONALIZE</span><h2 id="shortcutTitle">新增 / 管理捷徑</h2></div><button class="close-button" type="button" data-close="shortcutDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <p class="modal-description">新增自己的常用連結。這些捷徑只保存在目前瀏覽器，與真正的 ePortal 資料無關。</p>
+    <form id="shortcutForm">
+      <label class="field-label" for="shortcutName">名稱</label><input class="text-input" id="shortcutName" name="name" placeholder="例如：我的常用網站" maxlength="48" required>
+      <label class="field-label" for="shortcutUrl">連結網址</label><input class="text-input" id="shortcutUrl" name="url" placeholder="https://example.com" inputmode="url" required>
+      <p class="form-error" id="shortcutError" role="alert" aria-live="polite"></p>
+      <div class="modal-actions"><button type="submit" class="primary-button"><svg class="icon"><use href="#i-plus"></use></svg> 新增捷徑</button></div>
+    </form>
+    <div class="manager-divider"></div><h3 class="manager-title">已釘選的捷徑</h3><div id="shortcutManagerList" class="manager-list"></div>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
