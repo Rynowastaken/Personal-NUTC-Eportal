@@ -8,16 +8,14 @@ custom shortcuts stored only in each visitor's browser.
 
 ## Publish on GitHub Pages
 
-This repository is public, but GitHub Pages may not have been enabled yet.
-Repository administrators must enable it once; the GitHub connector's
-repository-editing actions do not expose Pages settings.
+GitHub Pages is enabled for this repository, using **GitHub Actions**
+as its deployment source. The custom workflow deploys the sample-only `demo/`
+directory after each relevant push to `main`.
 
-1. Open [Repository Settings → Pages](https://github.com/Rynowastaken/Personal-NUTC-Eportal/settings/pages).
-2. Under **Build and deployment**, select **GitHub Actions** as Source.
-3. Open [Actions → Publish public demo (GitHub Pages)](https://github.com/Rynowastaken/Personal-NUTC-Eportal/actions/workflows/demo-pages.yml).
-4. Choose **Run workflow** and select **main**. Later changes to the demo
-   automatically publish when pushed to main.
-5. When the deployment finishes, the site will be at:
+1. Open [Actions → Publish public demo (GitHub Pages)](https://github.com/Rynowastaken/Personal-NUTC-Eportal/actions/workflows/demo-pages.yml) to inspect the latest deployment.
+2. Push changes to `demo/` or its workflow on `main` to publish automatically;
+   alternatively choose **Run workflow** on **main** for a manual redeploy.
+3. After the workflow's **Deploy to GitHub Pages** job succeeds, the site will be at:
 
    **https://rynowastaken.github.io/Personal-NUTC-Eportal/**
 
@@ -50,8 +48,7 @@ node --test test/demo-site.test.js
 
 Existing GitHub Actions builds and tests also run for pull requests.
 
-If you see a green validation check but no deployment, check that Pages
-has been enabled and that its Source is set to **GitHub Actions**. The
-deployment job is intentionally skipped until that one-time setting is
-enabled; it must not impersonate an administrator or claim a URL is live
-before GitHub reports a successful Pages deployment.
+If validation succeeds but deployment fails, check the `Deploy to GitHub Pages`
+job for environment and repository permissions. The workflow will never
+deploy pull requests, and the URL should only be described as live after GitHub
+reports a successful Pages deployment.
