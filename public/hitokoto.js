@@ -35,12 +35,12 @@ export function parseHitokoto(data) {
 }
 
 export async function requestHitokoto({ fetchImpl = fetch, signal } = {}) {
-  const response = await fetchImpl("https://v1.hitokoto.cn/?encode=json&max_length=100", {
+  const response = await fetchImpl("/api/hitokoto", {
     method: "GET",
     cache: "no-store",
     signal,
     headers: { Accept: "application/json" },
-    credentials: "omit",
+    credentials: "same-origin",
   });
   if (!response.ok) throw new Error("Hitokoto is temporarily unavailable.");
   return parseHitokoto(await response.json());
@@ -166,8 +166,13 @@ export function createHitokotoWidget({
       restoreDefault();
       return;
     }
-    if (!wasEnabled || !lastQuote) void refreshQuote({ force: true });
-    else if (current.language !== previousLanguage) {
+    if (!wasEnabled || !lastQuote) {
+      if (refresh.disabled) {
+        controller?.abort();
+        refresh.disabled = false;
+      }
+      void refreshQuote({ force: true });
+    } else if (current.language !== previousLanguage) {
       const id = ++requestId;
       status.textContent = "正在處理語言…";
       await renderQuote(id);
