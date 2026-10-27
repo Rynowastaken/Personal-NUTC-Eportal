@@ -1,6 +1,8 @@
 // Optional Hitokoto welcome quotes. No ePortal cookies or credentials are sent.
 // Hitokoto v1 returns original-language quotes and DOES NOT expose a language
-// filter. Translation is best-effort using the browser's local Translator API.
+// filter. The same-origin API converts Simplified Chinese to Taiwan
+// Traditional via OpenCC. English/Japanese translation remains best-effort
+// using the browser's local Translator API.
 export const HITOKOTO_LANGUAGES = Object.freeze(["original", "en", "ja"]);
 export const DEFAULT_HITOKOTO_SETTINGS = Object.freeze({
   enabled: false,
@@ -138,7 +140,7 @@ export function createHitokotoWidget({
     // Display the original and its credits immediately, even if translation
     // is slow, unsupported, or fails. Never block attribution on an AI model.
     subtitle.textContent = "「" + lastQuote.text + "」";
-    subtitle.lang = "zh";
+    subtitle.lang = "zh-Hant-TW";
     speaker.textContent = lastQuote.speaker || "未提供";
     source.textContent = lastQuote.source || "未提供";
     link.href = lastQuote.url;
@@ -161,7 +163,7 @@ export function createHitokotoWidget({
       subtitle.lang = language;
       status.textContent = "";
     } else {
-      status.textContent = "此瀏覽器無法翻譯為所選語言，現顯示原文。";
+      status.textContent = "此瀏覽器無法翻譯為所選語言，現顯示繁體中文。";
     }
   }
 
