@@ -84,6 +84,7 @@ test("Pages workflow deploys only public demo without publishing source or secre
   assert.match(workflow, /\bpath: demo\b/);
   assert.match(workflow, /pages: write/);
   assert.match(workflow, /id-token: write/);
-  assert.match(workflow, /github\.event\.repository\.has_pages == true/);
+  assert.match(workflow, /github\.event_name != 'pull_request'/);
+  assert.doesNotMatch(workflow, /github\.event\.repository\.has_pages == true/);
   assert.doesNotMatch(workflow, /path: \.\/?$/m);
 });
