@@ -151,6 +151,7 @@ export class DashboardPreferenceStore {
     this.value = {
       version: 1,
       academicProgram: "day",
+      hitokoto: { enabled: false, language: "original" },
       account: {
         initialized: false,
         username: "User",
@@ -180,6 +181,11 @@ export class DashboardPreferenceStore {
         academicProgram: ["day", "evening", "weekend"].includes(parsed?.academicProgram)
           ? parsed.academicProgram
           : "day",
+        hitokoto: {
+          enabled: parsed?.hitokoto?.enabled === true,
+          language: ["original", "en", "ja"].includes(parsed?.hitokoto?.language)
+            ? parsed.hitokoto.language : "original",
+        },
         account: {
           initialized: Boolean(parsed?.account?.initialized),
           username:
@@ -240,6 +246,7 @@ export class DashboardPreferenceStore {
 
     return {
       academicProgram: this.value.academicProgram,
+      hitokoto: { ...this.value.hitokoto },
       account: {
         initialized: this.value.account.initialized,
         username: this.value.account.username,
@@ -273,6 +280,23 @@ export class DashboardPreferenceStore {
     const pending = this.writeQueue.then(task, task);
     this.writeQueue = pending.catch(() => {});
     return pending;
+  }
+
+  async setHitokotoSettings(input) {
+    if (!input || typeof input !== "object" ||
+        typeof input.enabled !== "boolean" ||
+        !["original", "en", "ja"].includes(input.language)) {
+      throw Object.assign(new Error("Invalid Hitokoto settings."), { statusCode: 400 });
+    }
+    return this.enqueue(async () => {
+      this.value.hitokoto = {
+        enabled: input.enabled,
+        language: input.language,
+      };
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return this.get();
+    });
   }
 
   async setAcademicProgram(program) {

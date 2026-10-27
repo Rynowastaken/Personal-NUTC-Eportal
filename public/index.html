@@ -7,7 +7,7 @@
     <title>NUTC Portal</title>
     <script src="/theme-defaults.js?v=1"></script>
     <link rel="stylesheet" href="/generated/site.css?v=5" />
-    <link rel="stylesheet" href="/dashboard.css?v=3" />
+    <link rel="stylesheet" href="/dashboard.css?v=4" />
     <script src="/vendor/lucide-1.24.0.min.js"></script>
   </head>
   <body
@@ -170,7 +170,21 @@
         <h1 id="welcomeHeading" class="portal-welcome-title">
           Welcome: <span id="welcomeUsername">User</span>
         </h1>
-        <p class="portal-welcome-subtitle">你的校園日常，一眼掌握。</p>
+        <div class="portal-hitokoto">
+          <p id="welcomeSubtitle" class="portal-welcome-subtitle">你的校園日常，一眼掌握。</p>
+          <button id="hitokotoRefresh" type="button" hidden
+            class="portal-hitokoto-refresh"
+            aria-label="換一句一言"
+            title="換一句一言">
+            <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+          </button>
+        </div>
+        <div id="hitokotoDetails" class="portal-hitokoto-meta" hidden>
+          <span>角色／作者：<strong id="hitokotoSpeaker"></strong></span>
+          <span>出處：<strong id="hitokotoSource"></strong></span>
+          <a id="hitokotoLink" href="https://hitokoto.cn/" target="_blank" rel="noopener noreferrer">一言來源</a>
+        </div>
+        <p id="hitokotoStatus" class="portal-hitokoto-status" role="status" aria-live="polite"></p>
       </section>
 
       <section id="sessionWarning"
@@ -733,6 +747,32 @@
 
         <div class="mt-6 border-t border-white/[.10] pt-5">
           <div class="flex items-center gap-2">
+            <i data-lucide="quote" class="h-4 w-4 text-[var(--primary)]"></i>
+            <h3 class="text-sm font-semibold">歡迎語錄 · Hitokoto</h3>
+          </div>
+          <label class="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/[.12] bg-white/[.05] p-3">
+            <span class="grid gap-1">
+              <strong class="text-sm font-semibold">使用隨機一言</strong>
+              <small class="text-xs leading-5 text-[var(--muted)]">開啟後取代原本的副標題，顯示角色／作者和出處。</small>
+            </span>
+            <input id="hitokotoEnabled" type="checkbox" class="h-5 w-5 shrink-0 accent-[var(--primary)]" />
+          </label>
+          <label class="mt-4 grid gap-2 text-sm font-semibold" for="hitokotoLanguage">
+            <span>顯示語言</span>
+            <select id="hitokotoLanguage"
+              class="min-h-[46px] w-full rounded-xl border border-white/[.12] bg-[#29222e] px-3 text-sm font-medium text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]">
+              <option value="original">原文（中文為主）</option>
+              <option value="en">English（如瀏覽器支援翻譯）</option>
+              <option value="ja">日本語（如瀏覽器支援翻譯）</option>
+            </select>
+          </label>
+          <p class="mt-2 text-xs font-medium leading-5 text-[var(--muted)]">
+            一言 API 不提供語言篩選；英語和日語需瀏覽器的本機翻譯功能，不支援時將顯示原文。按 Apply 儲存至 Portal Server，所有裝置共用設定。
+          </p>
+        </div>
+
+        <div class="mt-6 border-t border-white/[.10] pt-5">
+          <div class="flex items-center gap-2">
             <i data-lucide="calendar-days" class="h-4 w-4 text-[var(--primary)]"></i>
             <h3 class="text-sm font-semibold">課表設定</h3>
           </div>
@@ -1004,7 +1044,7 @@
     <script src="/theme.js?v=5"></script>
     <script src="/backdrop-scroll.js?v=1"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=65" type="module"></script>
+    <script src="/app.js?v=66" type="module"></script>
     <script src="/generated/ui.js?v=1" type="module"></script>
   </body>
 </html>

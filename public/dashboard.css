@@ -354,3 +354,65 @@
     transform: none;
   }
 }
+
+
+/* Optional, attributed Hitokoto greeting below the personalized headline. */
+.portal-hitokoto {
+  display: flex;
+  align-items: flex-start;
+  gap: .6rem;
+  min-width: 0;
+}
+.portal-hitokoto .portal-welcome-subtitle {
+  margin: .8rem 0 0;
+  max-width: min(100%, 58rem);
+  overflow-wrap: anywhere;
+}
+.portal-hitokoto-refresh {
+  margin-top: .65rem;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  height: 34px;
+  width: 34px;
+  border-radius: 11px;
+  color: var(--primary);
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.055);
+}
+.portal-hitokoto-refresh:hover { background: rgba(255,255,255,.10); }
+.portal-hitokoto-refresh:disabled { opacity: .4; cursor: wait; }
+.portal-hitokoto-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem 1.2rem;
+  margin-top: .55rem;
+  font-size: .75rem;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.portal-hitokoto-meta strong {
+  color: var(--foreground);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.portal-hitokoto-meta a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.portal-hitokoto-status {
+  margin: .35rem 0 0;
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.6;
+}
+.portal-hitokoto-meta[hidden],
+.portal-hitokoto-refresh[hidden],
+.portal-hitokoto-status:empty {
+  display: none;
+}
+@media (max-width: 640px) {
+  .portal-hitokoto .portal-welcome-subtitle { margin-top: .55rem; }
+  .portal-hitokoto-refresh { margin-top: .4rem; }
+}
