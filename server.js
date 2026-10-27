@@ -34,6 +34,7 @@ import {
 } from "./src/login-bridge.js";
 import { createCloudflareAccessGuard } from "./src/cloudflare-access.js";
 import { DashboardPreferenceStore } from "./src/dashboard-preferences.js";
+import { createHitokotoService } from "./src/hitokoto-service.js";
 import { PreferenceStore } from "./src/preference-store.js";
 import { createServerUpdater } from "./src/server-update.js";
 import { stampHtmlAssetRevision, staticCacheControl } from "./src/static-assets.js";
@@ -58,6 +59,7 @@ let restartScheduled = false;
 let updateOperation = null;
 const preferenceStore = new PreferenceStore();
 const dashboardPreferenceStore = new DashboardPreferenceStore();
+const hitokotoService = createHitokotoService();
 const launchJobs = new Map();
 const staticAssetCache = new Map();
 const launchJobTtlMs = 2 * 60_000;
@@ -901,6 +903,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/modules") {
       sendJson(res, 200, { modules: publicModules() });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/hitokoto") {
+      const quote = await hitokotoService.getQuote();
+      sendJson(res, 200, quote, { "Cache-Control": "no-store" });
       return;
     }
 
