@@ -73,11 +73,17 @@ export function createServerUpdater({
         if (code === 0) {
           finish(null, { stdout: text, code });
         } else {
+          const lockMismatch = args.some((arg) => arg === "ci") &&
+            /(?:EUSAGE|can only install packages.*in sync|Missing: .* from lock file)/i.test(text);
+          const diagnostic = lockMismatch
+            ? "Committed npm lockfile and package.json are out of sync. " +
+              "Regenerate and commit the lockfile with 'npm install' before deploying."
+            : text.slice(0, 1800);
           finish(updateError(
             errorCode,
             command + " " + args.join(" ") + " failed" +
               (signal ? " (" + signal + ")" : " (exit " + code + ")") +
-              (text ? ": " + text : ""),
+              (diagnostic ? ": " + diagnostic : ""),
           ));
         }
       });
@@ -224,8 +230,35 @@ export function createServerUpdater({
         installedRevision.trim() !== revision;
       if (needsInstall) {
         emit("installing", "正在安裝前端依賴套件…");
-        const lockFile = await exists(path.join(rootDir, "package-lock.json"));
-        const npmArgs = lockFile
+        // A previous manual 'npm install' may have left an UNTRACKED
+        // package-lock.json in the checkout. That file can be older than
+        // package.json and makes npm ci fail with EUSAGE. Only treat lockfiles
+        // committed to Git as authoritative, never incidental local files.
+        const localLocks = ["npm-shrinkwrap.json", "package-lock.json"];
+        const hasLocalLock = (await Promise.all(localLocks.map((name) =>
+          exists(path.join(rootDir, name)),
+        ))).some(Boolean);
+        // Most installations have no local lockfile at all. Only look up
+        // tracked lockfile status when there is one in the working tree.
+        const trackedLocks = hasLocalLock
+          ? (await runCommand("git", [
+              "ls-files", "--cached", "--", ...localLocks,
+            ], {
+              errorCode: "SERVER_UPDATE_GIT_FAILED",
+              timeoutMs: 15_000,
+            })).stdout.split(/\r?\n/)
+          : [];
+        const committedLock = localLocks.find((name) =>
+          trackedLocks.includes(name),
+        );
+        if (committedLock && !(await exists(path.join(rootDir, committedLock)))) {
+          throw updateError(
+            "SERVER_UPDATE_LOCKFILE_MISSING",
+            "Committed npm lockfile " + committedLock +
+              " is missing from the checkout. Restore it from Git before updating.",
+          );
+        }
+        const npmArgs = committedLock
           ? ["ci", "--no-audit", "--no-fund"]
           : ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund"];
         await runNpmInstall(npmArgs, staged);

@@ -24,6 +24,13 @@ const git = (args, stdout = "", exitCode = 0) =>
 const install = () => ({ command: node, args: [
   npmCli, "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
 ] });
+const trackedLocks = (stdout = "") =>
+  git(["ls-files", "--cached", "--", "npm-shrinkwrap.json", "package-lock.json"], stdout);
+const ci = (exitCode = 0, stderr = "") => ({
+  command: node,
+  args: [npmCli, "ci", "--no-audit", "--no-fund"],
+  exitCode, stderr,
+});
 const build = (exitCode = 0, missing = false) =>
   ({ command: node, args: [viteCli, "build"], exitCode, build: true, missing });
 
@@ -292,5 +299,88 @@ test("a healthy installation rebuilds through Node/Vite even if npm later disapp
     assert.ok(tasks.calls.some(call => call.command === process.execPath &&
       call.args[0] === viteCli));
     assert.ok(!tasks.calls.some(call => call.command === "npm"));
+  })
+);
+
+test("untracked, outdated local package-lock never causes npm ci EUSAGE", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const localLock = path.join(rootDir, "package-lock.json");
+    const existing = JSON.stringify({
+      name: "local-stale-lock",
+      lockfileVersion: 3,
+      packages: { "": { dependencies: { "vite": "1.0.0" } } },
+    });
+    await fs.writeFile(localLock, existing);
+    const tasks = fakeQueue([
+      ...unchangedGit, trackedLocks(), install(), build(),
+    ]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+    }).updateServerFromGitPull();
+    assert.equal(result.dependenciesInstalled, true);
+    assert.equal(tasks.remaining(), 0);
+    assert.deepEqual(tasks.calls[4].args, install().args);
+    assert.equal(await fs.readFile(localLock, "utf8"), existing,
+      "updater must not rewrite or delete local files");
+    assert.equal(await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"),
+      "/* fresh CSS */");
+  })
+);
+
+test("committed, present lockfile uses reproducible npm ci", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    await fs.writeFile(path.join(rootDir, "package-lock.json"), "{\"lockfileVersion\":3}");
+    const tasks = fakeQueue([
+      ...unchangedGit, trackedLocks("package-lock.json"), ci(), build(),
+    ]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+    }).updateServerFromGitPull();
+    assert.equal(result.dependenciesInstalled, true);
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("committed, missing lockfile fails cleanly before npm", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    // npm-shrinkwrap exists in Git, but is missing from this checkout.
+    await fs.writeFile(path.join(rootDir, "package-lock.json"), "{}");
+    const tasks = fakeQueue([
+      ...unchangedGit, trackedLocks("npm-shrinkwrap.json"),
+    ]);
+    await assert.rejects(
+      createServerUpdater({
+        rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      }).updateServerFromGitPull(),
+      { code: "SERVER_UPDATE_LOCKFILE_MISSING" },
+    );
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("lock mismatch emits short actionable failure instead of dumping npm usage", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    await fs.writeFile(path.join(rootDir, "package-lock.json"), "{}");
+    const verboseError = "npm error code EUSAGE\n" +
+      "npm ci can only install packages when your package.json and package-lock.json are in sync.\n" +
+      "Missing: opencc-js@1.4.2 from lock file\n" +
+      "npm help ci\n".repeat(150);
+    const tasks = fakeQueue([
+      ...unchangedGit,
+      trackedLocks("package-lock.json"),
+      ci(1, verboseError),
+    ]);
+    await assert.rejects(
+      createServerUpdater({
+        rootDir, makeId, spawnCommand: tasks.spawnCommand,
+      }).updateServerFromGitPull(),
+      (err) => {
+        assert.equal(err.code, "SERVER_UPDATE_INSTALL_FAILED");
+        assert.match(err.message, /Regenerate and commit the lockfile/);
+        assert.ok(err.message.length < 650, "error output must be readable in settings");
+        return true;
+      },
+    );
+    assert.equal(tasks.remaining(), 0);
   })
 );
