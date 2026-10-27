@@ -235,12 +235,19 @@ export function createServerUpdater({
         // package.json and makes npm ci fail with EUSAGE. Only treat lockfiles
         // committed to Git as authoritative, never incidental local files.
         const localLocks = ["npm-shrinkwrap.json", "package-lock.json"];
-        const trackedLocks = (await runCommand("git", [
-          "ls-files", "--cached", "--", ...localLocks,
-        ], {
-          errorCode: "SERVER_UPDATE_GIT_FAILED",
-          timeoutMs: 15_000,
-        })).stdout.split(/\r?\n/);
+        const hasLocalLock = (await Promise.all(localLocks.map((name) =>
+          exists(path.join(rootDir, name)),
+        ))).some(Boolean);
+        // Most installations have no local lockfile at all. Only look up
+        // tracked lockfile status when there is one in the working tree.
+        const trackedLocks = hasLocalLock
+          ? (await runCommand("git", [
+              "ls-files", "--cached", "--", ...localLocks,
+            ], {
+              errorCode: "SERVER_UPDATE_GIT_FAILED",
+              timeoutMs: 15_000,
+            })).stdout.split(/\r?\n/)
+          : [];
         const committedLock = localLocks.find((name) =>
           trackedLocks.includes(name),
         );
