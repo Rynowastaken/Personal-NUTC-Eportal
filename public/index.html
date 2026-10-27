@@ -7,7 +7,7 @@
     <title>NUTC Portal</title>
     <script src="/theme-defaults.js?v=1"></script>
     <link rel="stylesheet" href="/generated/site.css?v=5" />
-    <link rel="stylesheet" href="/dashboard.css?v=4" />
+    <link rel="stylesheet" href="/dashboard.css?v=5" />
     <script src="/vendor/lucide-1.24.0.min.js"></script>
   </head>
   <body
@@ -180,8 +180,8 @@
           </button>
         </div>
         <div id="hitokotoDetails" class="portal-hitokoto-meta" hidden>
-          <span>角色／作者：<strong id="hitokotoSpeaker"></strong></span>
-          <span>出處：<strong id="hitokotoSource"></strong></span>
+          <span id="hitokotoSpeakerRow">角色／作者：<strong id="hitokotoSpeaker"></strong></span>
+          <span id="hitokotoSourceRow">出處／作品：<strong id="hitokotoSource"></strong></span>
           <a id="hitokotoLink" href="https://hitokoto.cn/" target="_blank" rel="noopener noreferrer">一言來源</a>
         </div>
         <p id="hitokotoStatus" class="portal-hitokoto-status" role="status" aria-live="polite"></p>
@@ -753,19 +753,65 @@
           <label class="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/[.12] bg-white/[.05] p-3">
             <span class="grid gap-1">
               <strong class="text-sm font-semibold">使用隨機一言</strong>
-              <small class="text-xs leading-5 text-[var(--muted)]">開啟後取代原本的副標題，顯示角色／作者和出處。</small>
+              <small class="text-xs leading-5 text-[var(--muted)]">開啟後取代原本的副標題。可另外設定顯示哪些來源資訊。</small>
             </span>
             <input id="hitokotoEnabled" type="checkbox" class="h-5 w-5 shrink-0 accent-[var(--primary)]" />
           </label>
-          <label class="mt-4 grid gap-2 text-sm font-semibold" for="hitokotoLanguage">
-            <span>顯示語言</span>
-            <select id="hitokotoLanguage"
-              class="min-h-[46px] w-full rounded-xl border border-white/[.12] bg-[#29222e] px-3 text-sm font-medium text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]">
-              <option value="original">原文（中文為主）</option>
-              <option value="en">English（如瀏覽器支援翻譯）</option>
-              <option value="ja">日本語（如瀏覽器支援翻譯）</option>
-            </select>
-          </label>
+          <span id="hitokotoLanguageLabel" class="mt-4 block text-sm font-semibold">顯示語言</span>
+          <div id="hitokotoLanguageDropdown" class="relative mt-2">
+            <button id="hitokotoLanguageSelect" type="button"
+              class="hitokoto-language-trigger"
+              aria-haspopup="listbox" aria-expanded="false" aria-controls="hitokotoLanguageOptions"
+              aria-labelledby="hitokotoLanguageLabel hitokotoLanguageValue">
+              <span id="hitokotoLanguageValue">原文（中文為主）</span>
+              <span id="hitokotoLanguageChevron" class="hitokoto-language-chevron" aria-hidden="true">
+                <i data-lucide="chevron-down" class="h-4 w-4"></i>
+              </span>
+            </button>
+            <div id="hitokotoLanguageOptions" class="hitokoto-language-menu"
+              role="listbox" aria-label="一言顯示語言" data-state="closed" aria-hidden="true" inert>
+              <button type="button" class="hitokoto-language-option" role="option"
+                data-hitokoto-language="original" aria-selected="true" tabindex="-1">
+                <span>原文（中文為主）</span>
+                <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
+                  <i data-lucide="check" class="h-4 w-4"></i>
+                </span>
+              </button>
+              <button type="button" class="hitokoto-language-option" role="option"
+                data-hitokoto-language="en" aria-selected="false" tabindex="-1">
+                <span>English（需瀏覽器支援翻譯）</span>
+                <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
+                  <i data-lucide="check" class="h-4 w-4"></i>
+                </span>
+              </button>
+              <button type="button" class="hitokoto-language-option" role="option"
+                data-hitokoto-language="ja" aria-selected="false" tabindex="-1">
+                <span>日本語（需瀏覽器支援翻譯）</span>
+                <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
+                  <i data-lucide="check" class="h-4 w-4"></i>
+                </span>
+              </button>
+            </div>
+          </div>
+          <fieldset class="mt-4 grid gap-2">
+            <legend class="mb-2 text-sm font-semibold">顯示來源資訊</legend>
+            <label class="hitokoto-attribution-option">
+              <span class="grid gap-1">
+                <strong>顯示角色／作者</strong>
+                <small>使用一言提供的 from_who 欄位</small>
+              </span>
+              <input id="hitokotoShowSpeaker" type="checkbox" checked
+                class="h-5 w-5 shrink-0 accent-[var(--primary)]">
+            </label>
+            <label class="hitokoto-attribution-option">
+              <span class="grid gap-1">
+                <strong>顯示作品／出處</strong>
+                <small>使用一言提供的 from 欄位</small>
+              </span>
+              <input id="hitokotoShowSource" type="checkbox" checked
+                class="h-5 w-5 shrink-0 accent-[var(--primary)]">
+            </label>
+          </fieldset>
           <p class="mt-2 text-xs font-medium leading-5 text-[var(--muted)]">
             一言 API 不提供語言篩選；英語和日語需瀏覽器的本機翻譯功能，不支援時將顯示原文。按 Apply 儲存至 Portal Server，所有裝置共用設定。
           </p>
@@ -1044,7 +1090,7 @@
     <script src="/theme.js?v=5"></script>
     <script src="/backdrop-scroll.js?v=1"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/app.js?v=66" type="module"></script>
+    <script src="/app.js?v=67" type="module"></script>
     <script src="/generated/ui.js?v=1" type="module"></script>
   </body>
 </html>

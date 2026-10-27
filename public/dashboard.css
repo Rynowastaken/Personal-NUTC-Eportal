@@ -416,3 +416,155 @@
   .portal-hitokoto .portal-welcome-subtitle { margin-top: .55rem; }
   .portal-hitokoto-refresh { margin-top: .4rem; }
 }
+
+/* Native select popups are painted by Android itself; use one portal-owned
+ * glass listbox so mobile and desktop share rounded corners and animation. */
+.hitokoto-language-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 46px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px 9px 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 14px;
+  background: rgba(255,255,255,.075);
+  background-clip: padding-box;
+  color: var(--foreground);
+  font-size: .875rem;
+  font-weight: 600;
+  text-align: left;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background-color .18s ease, border-color .18s ease;
+}
+.hitokoto-language-trigger:hover:not(:disabled) {
+  border-color: rgba(255,255,255,.24);
+  background: rgba(255,255,255,.10);
+}
+.hitokoto-language-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.hitokoto-language-trigger:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+.hitokoto-language-chevron {
+  display: grid;
+  flex: none;
+  height: 26px;
+  width: 26px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(255,255,255,.07);
+  color: var(--muted);
+  transition: transform .22s cubic-bezier(.22,1,.36,1);
+}
+.hitokoto-language-trigger[aria-expanded="true"] .hitokoto-language-chevron {
+  transform: rotate(180deg);
+}
+.hitokoto-language-menu {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + 7px);
+  z-index: 70;
+  padding: 6px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.17);
+  background: rgba(28,23,32,.98);
+  background-clip: padding-box;
+  box-shadow: 0 18px 38px rgba(0,0,0,.40);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate3d(0,-8px,0) scale(.985);
+  transform-origin: top center;
+  transition:
+    opacity .18s ease,
+    transform .24s cubic-bezier(.22,1,.36,1),
+    visibility 0s linear .24s;
+}
+.hitokoto-language-menu[data-state="open"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0,0,0) scale(1);
+  transition:
+    opacity .2s ease,
+    transform .24s cubic-bezier(.22,1,.36,1),
+    visibility 0s;
+}
+.hitokoto-language-option {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  font-size: .875rem;
+  font-weight: 500;
+  transition: background .16s ease, border-color .16s ease;
+}
+.hitokoto-language-option:hover,
+.hitokoto-language-option:focus-visible {
+  outline: none;
+  border-color: rgba(255,255,255,.11);
+  background: rgba(255,255,255,.085);
+}
+.hitokoto-language-option[aria-selected="true"] {
+  background: var(--primary-soft);
+  border-color: var(--primary-ring);
+  font-weight: 650;
+}
+.hitokoto-language-check {
+  display: grid;
+  flex: none;
+  height: 24px;
+  width: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.hitokoto-language-option[aria-selected="false"] .hitokoto-language-check {
+  visibility: hidden;
+}
+.hitokoto-attribution-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 13px;
+  background: rgba(255,255,255,.045);
+  font-size: .875rem;
+  font-weight: 600;
+}
+.hitokoto-attribution-option small {
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.hitokoto-attribution-option input:disabled {
+  opacity: .4;
+}
+.portal-hitokoto-meta [hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hitokoto-language-menu, .hitokoto-language-menu[data-state="open"],
+  .hitokoto-language-chevron {
+    transition: none;
+    transform: none;
+  }
+}

@@ -5,6 +5,8 @@ export const HITOKOTO_LANGUAGES = Object.freeze(["original", "en", "ja"]);
 export const DEFAULT_HITOKOTO_SETTINGS = Object.freeze({
   enabled: false,
   language: "original",
+  showSpeaker: true,
+  showSource: true,
 });
 
 export function normalizeHitokotoSettings(input) {
@@ -13,6 +15,9 @@ export function normalizeHitokotoSettings(input) {
     language: HITOKOTO_LANGUAGES.includes(input?.language)
       ? input.language
       : DEFAULT_HITOKOTO_SETTINGS.language,
+    // Missing values in older preference files preserve the existing behavior.
+    showSpeaker: input?.showSpeaker !== false,
+    showSource: input?.showSource !== false,
   };
 }
 
@@ -93,6 +98,8 @@ export function createHitokotoWidget({
   details,
   speaker,
   source,
+  speakerRow = speaker?.parentElement,
+  sourceRow = source?.parentElement,
   link,
   refresh,
   status,
@@ -107,11 +114,23 @@ export function createHitokotoWidget({
   let controller = null;
   let lastFetchAt = 0;
 
+  function renderAttribution() {
+    const showSpeaker = current.enabled && current.showSpeaker;
+    const showSource = current.enabled && current.showSource;
+    if (speakerRow) speakerRow.hidden = !showSpeaker;
+    if (sourceRow) sourceRow.hidden = !showSource;
+    link.hidden = !(showSpeaker || showSource);
+    details.hidden = !(showSpeaker || showSource);
+  }
+
   function restoreDefault() {
     refresh.hidden = !current.enabled;
     subtitle.textContent = fallback;
     subtitle.lang = "zh-Hant";
     details.hidden = true;
+    if (speakerRow) speakerRow.hidden = true;
+    if (sourceRow) sourceRow.hidden = true;
+    link.hidden = true;
     status.textContent = "";
   }
   async function renderQuote(id) {
@@ -123,7 +142,7 @@ export function createHitokotoWidget({
     speaker.textContent = lastQuote.speaker || "未提供";
     source.textContent = lastQuote.source || "未提供";
     link.href = lastQuote.url;
-    details.hidden = false;
+    renderAttribution();
     status.textContent = current.language === "original"
       ? ""
       : "正在檢查此瀏覽器的翻譯功能…";
@@ -180,6 +199,8 @@ export function createHitokotoWidget({
     const next = normalizeHitokotoSettings(input);
     const wasEnabled = current.enabled;
     const previousLanguage = current.language;
+    const attributionChanged = current.showSpeaker !== next.showSpeaker ||
+      current.showSource !== next.showSource;
     current = next;
     refresh.hidden = !current.enabled;
     if (!current.enabled) {
@@ -201,6 +222,8 @@ export function createHitokotoWidget({
       const id = ++requestId;
       status.textContent = "正在處理語言…";
       await renderQuote(id);
+    } else if (attributionChanged) {
+      renderAttribution();
     }
   }
 
