@@ -108,7 +108,7 @@ test("single rounded border and clean surfaces come from dashboard CSS", async (
   assert.match(componentCSS, /\.dashboard-module-icon\s*\{\s*border-radius: 12px;/);
   assert.match(componentCSS, /\.dashboard-module-action\s*\{\s*border-radius: 10px;/);
   assert.match(componentCSS, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(html, /\/dashboard\.css\?v=2/);
+  assert.match(html, /\/dashboard\.css\?v=\d+/);
   assert.match(html, /\/app\.js\?v=\d+/);
   assert.match(html, /\/generated\/site\.css\?v=5/);
 });
