@@ -940,6 +940,16 @@ const server = http.createServer(async (req, res) => {
 
     if (
       req.method === "POST" &&
+      url.pathname === "/api/preferences/hitokoto"
+    ) {
+      const body = await readJsonBody(req);
+      const saved = await dashboardPreferenceStore.setHitokotoSettings(body);
+      sendJson(res, 200, { ok: true, ...saved });
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
       url.pathname === "/api/preferences/academic-program"
     ) {
       const body = await readJsonBody(req);
