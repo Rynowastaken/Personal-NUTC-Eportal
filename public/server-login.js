@@ -24,6 +24,7 @@ const bridgeForm = document.querySelector("#bridgeForm");
 const errorCard = document.querySelector("#errorCard");
 const errorMessage = document.querySelector("#errorMessage");
 const errorTitle = document.querySelector("#errorTitle");
+const errorCode = document.querySelector("#errorCode");
 const closeButton = document.querySelector("#closeButton");
 const retryButton = document.querySelector("#retryButton");
 
@@ -602,6 +603,10 @@ function showError(message, code = "") {
   pageCard.classList.add("hidden");
   errorCard.classList.remove("hidden");
   errorMessage.textContent = message;
+  if (errorCode) {
+    errorCode.textContent = code ? `錯誤代碼：${code}` : "";
+    errorCode.classList.toggle("hidden", !code);
+  }
   void motion?.enter?.(errorCard, {
     duration: 260,
     y: 10,
@@ -696,10 +701,12 @@ closeButton.addEventListener("click", async () => {
       const state = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(
+        const error = new Error(
           state.error ||
             `Unable to start Login Bridge (${response.status}).`,
         );
+        error.code = state.code || "";
+        throw error;
       }
 
       if (state.complete) {
@@ -730,6 +737,6 @@ closeButton.addEventListener("click", async () => {
   } catch (error) {
     showError(error?.name === "AbortError"
       ? "啟動登入服務逾時。請按「重試登入」，或稍後再試。"
-      : error?.message || "無法啟動登入服務。");
+      : error?.message || "無法啟動登入服務。", error?.code);
   }
 })();

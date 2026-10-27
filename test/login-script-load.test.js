@@ -63,7 +63,7 @@ test("blocked Cloudflare analytics scripts do not trigger login errors", () => {
 
 test("missing login script shows a visible retryable error", () => {
   const page = runWatchdog();
-  page.triggerError("https://portal.example/server-login.js?v=15");
+  page.triggerError("https://portal.example/server-login.js?v=16");
   assert.equal(page.elements.get("errorCard").classList.contains("hidden"), false);
   assert.equal(page.elements.get("statusTitle").textContent, "登入介面無法啟動");
   assert.match(page.elements.get("errorMessage").textContent, /server-login\.js/);
@@ -90,6 +90,6 @@ test("login controller is a standalone script, not a module import chain", async
   assert.match(frontend, /window\.__nutcLoginBridgeBooted = true/);
   assert.match(frontend, /function loginRequestOptions\(search = ""\)/);
   assert.match(html, /src="\/login-script-watchdog\.js\?v=1"/);
-  assert.match(html, /src="\/server-login\.js\?v=15"/);
+  assert.match(html, /src="\/server-login\.js\?v=16"/);
   assert.doesNotMatch(html, /server-login\.js[^"]*"\s+type="module"/);
 });

@@ -37,6 +37,7 @@ import { DashboardPreferenceStore } from "./src/dashboard-preferences.js";
 import { createHitokotoService } from "./src/hitokoto-service.js";
 import { PreferenceStore } from "./src/preference-store.js";
 import { createServerUpdater } from "./src/server-update.js";
+import { describeLoginBridgeError } from "./src/login-bridge-error.js";
 import { stampHtmlAssetRevision, staticCacheControl } from "./src/static-assets.js";
 import {
   checkServerPortalStatus,
@@ -315,7 +316,17 @@ function handleBridgeError(res, error) {
     return true;
   }
 
-  return false;
+  // Leave input validation to the shared HTTP handler (400/413 etc.).
+  if (Number.isInteger(error?.statusCode) &&
+      error.statusCode >= 400 && error.statusCode < 500) return false;
+
+  // Unexpected Playwright errors, including bridge startup failures, must
+  // reach the browser as safe, actionable diagnostics rather than a bare 500.
+  // The original details stay server-side (see [login-bridge] startup logs).
+  console.error("[login-bridge] API request failed:", error?.code || "UNCLASSIFIED", error?.name || "Error");
+  const diagnostic = describeLoginBridgeError(error);
+  sendError(res, diagnostic.status, diagnostic.message, diagnostic.code);
+  return true;
 }
 
 function moduleForLaunch(moduleId) {
