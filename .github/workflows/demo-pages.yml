@@ -41,9 +41,9 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: validate
-    # Pages must be enabled once in Settings > Pages > Source: GitHub Actions.
-    # Without it, validate succeeds while deployment waits for setup.
-    if: github.event_name != 'pull_request' && github.event.repository.has_pages == true
+    # The repository Pages source is GitHub Actions. Deploy on each main
+    # push, and never publish unreviewed pull-request artifacts.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
