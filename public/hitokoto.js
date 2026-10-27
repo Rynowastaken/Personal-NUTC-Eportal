@@ -196,6 +196,8 @@ export function createHitokotoWidget({
       }
       void refreshQuote({ force: true });
     } else if (current.language !== previousLanguage) {
+      controller?.abort();
+      refresh.disabled = false;
       const id = ++requestId;
       status.textContent = "正在處理語言…";
       await renderQuote(id);
