@@ -71,7 +71,7 @@ test("quote UI keeps the existing language setting but shows Traditional Chinese
   assert.match(html, /繁體中文（OpenCC）/);
   assert.match(html, /data-hitokoto-language="original"/);
   assert.match(app, /original: "繁體中文（OpenCC）"/);
-  assert.match(html, /\/app\.js\?v=69/);
+  assert.match(html, /\/app\.js\?v=70/);
   assert.match(widget, /subtitle\.lang = "zh-Hant-TW"/);
   assert.match(widget, /現顯示繁體中文/);
 });

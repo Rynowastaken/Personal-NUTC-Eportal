@@ -17,6 +17,16 @@ const todayDate = $("#todayDate");
 const todayMeta = $("#todayMeta");
 
 const WEEKDAYS = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
+const STATUS_TITLES = {
+  login: "尚未登入",
+  loading: "載入中…",
+  error: "無法載入",
+};
+const ABSENCE_STATUS = {
+  login: "登入後顯示",
+  loading: "載入中…",
+  error: "無法載入，請見下方",
+};
 let scheduleDetail = null;
 let renderedClass = "";
 let renderedAbsences = "";
@@ -95,12 +105,15 @@ function renderNextClass() {
   if (!nextTile) return;
   const clock = taipeiClock();
 
+  // Status messages are sentences; the big slot gets a short state and the
+  // full sentence goes to the meta line, which may wrap.
   if (!scheduleDetail?.blocks) {
+    const kind = scheduleDetail?.kind;
     nextTile.classList.remove("live-tile--flood");
     setText(nextLabel, "下一堂");
     setText(nextWhen, "");
-    setText(nextName, scheduleDetail?.message || "登入後顯示課表");
-    setText(nextMeta, "本週課表載入後自動更新");
+    setText(nextName, STATUS_TITLES[kind] || (scheduleDetail ? "沒有課表" : "載入中…"));
+    setText(nextMeta, scheduleDetail?.message || "本週課表載入後自動更新");
     return;
   }
 
@@ -169,8 +182,10 @@ function renderToday() {
 function renderAbsences(detail) {
   if (!absenceTile) return;
   if (!detail || detail.message) {
+    // The small tile only names the state; the full hint is in the panel below.
     setText(absenceValue, "–");
-    setText(absenceMeta, detail?.message || "本學期紀錄");
+    setText(absenceMeta, ABSENCE_STATUS[detail?.kind] || detail?.message || "本學期紀錄");
+    absenceTile.setAttribute("aria-label", `缺曠紀錄：${detail?.message || "本學期紀錄"}`);
     return;
   }
   const total = String(Number(detail.total || 0));

@@ -136,15 +136,19 @@ a { text-underline-offset: .2em; }
   letter-spacing: -.04em;
   line-height: 1;
 }
+/* Meta lines carry full sentences (status and recovery hints): wrap to two
+ * lines rather than cutting the instruction off. */
 .live-tile-meta {
-  display: block;
+  display: -webkit-box;
   margin-top: .35rem;
   overflow: hidden;
   color: var(--muted);
   font-size: .8rem;
   line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .live-tile-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
 .live-tile-chip {

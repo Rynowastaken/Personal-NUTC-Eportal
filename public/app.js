@@ -2,7 +2,7 @@ const motion = window.NutcMotion;
 import { isSessionExpiredError, shouldAutoOpenLogin } from "./session-auth.js";
 import { moduleAccent, createDashboardModuleCard, legibleAccent } from "./dashboard-cards.js?v=3";
 import { createHitokotoWidget, normalizeHitokotoSettings } from "./hitokoto.js?v=1";
-import { initTodayTiles } from "./today-tiles.js?v=1";
+import { initTodayTiles } from "./today-tiles.js?v=3";
 
 initTodayTiles();
 
@@ -1236,7 +1236,7 @@ function setScheduleMessage(message, { kind = "info" } = {}) {
   scheduleGrid.append(card);
   renderIcons();
   document.dispatchEvent(new CustomEvent("nutc:schedule", {
-    detail: { message: kind === "loading" ? "載入課表中…" : message },
+    detail: { kind, message: kind === "loading" ? "載入課表中…" : message },
   }));
 }
 
@@ -1677,7 +1677,7 @@ function setAbsenceMessage(message, { kind = "info" } = {}) {
   document.dispatchEvent(new CustomEvent("nutc:absences", {
     detail: kind === "info"
       ? { total: 0, summary: {} }
-      : { message: kind === "loading" ? "載入中…" : message },
+      : { kind, message: kind === "loading" ? "載入中…" : message },
   }));
 }
 
