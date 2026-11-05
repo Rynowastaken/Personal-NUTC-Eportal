@@ -12,16 +12,16 @@
   min-width: 0;
   padding: clamp(1.25rem, 4vw, 3rem) 0 clamp(.5rem, 1.5vw, 1rem);
 }
-/* Giant light lowercase greeting, hard-clipped by the wall's right edge like a
- * pivot header. The name keeps the user's theme colour. */
+/* Large light lowercase greeting. Sized so a typical name fits the wall;
+ * only an unusually long name is clipped at the right edge. */
 .portal-welcome-title {
   margin: 0;
   max-width: 100%;
   color: var(--foreground);
-  font-size: clamp(4.5rem, 15vw, 12rem);
+  font-size: clamp(2.75rem, 7.5vw, 6.5rem);
   font-weight: 300;
   letter-spacing: -.04em;
-  line-height: .92;
+  line-height: 1.12;
   text-transform: lowercase;
   white-space: nowrap;
   overflow: hidden;
@@ -47,7 +47,7 @@
     padding: 1rem 0 .4rem;
   }
   .portal-welcome-title {
-    font-size: clamp(3.6rem, 18vw, 5rem);
+    font-size: clamp(2.4rem, 11vw, 3.25rem);
   }
   .portal-welcome-subtitle {
     margin-top: .55rem;

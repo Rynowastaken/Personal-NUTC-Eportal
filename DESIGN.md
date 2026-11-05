@@ -23,7 +23,7 @@ colors:
 typography:
   display:
     fontFamily: "Albert Sans, Noto Sans TC, PingFang TC, Microsoft JhengHei, Noto Sans CJK TC, system-ui, sans-serif"
-    fontSize: "clamp(4.5rem, 15vw, 12rem)"
+    fontSize: "clamp(2.75rem, 7.5vw, 6.5rem)"
     fontWeight: 300
     lineHeight: 0.92
     letterSpacing: "-0.04em"
@@ -168,7 +168,7 @@ Motion is limited to two signature moves: a press-tilt toward the pointer, and a
 
 **Key Characteristics:**
 - Flat tinted glass, 1px hairline edge, 6px tile shoulders, 4px inner radii.
-- A giant, light, lowercase greeting, hard-clipped by the container's right edge.
+- A large, light, lowercase greeting sized so the user's name fits; only an unusually long name clips at the right edge.
 - Three live tiles (next class, absences, today). Next class floods with the theme primary when a class is on now or later today.
 - Door tiles for the five ePortal modules and for user shortcuts, each tinted by its own palette colour (user-pinned).
 - Albert Sans Light for Latin, system CJK for Chinese, tabular numerals everywhere.
@@ -246,7 +246,7 @@ The page is a single centred column (max `container`) with gutters that grow fro
 - **The phone schedule:** day columns are at least 104px on phones (72px otherwise) inside a horizontal scroller. A 56px period column is sticky on the left and near-opaque. On load the scroller jumps to today's column when the week doesn't fit.
 - **Top bar:** identity (avatar tile, school name, product name) on the left. Status and the settings button on the right, both on a 42px control grid.
 
-**The Clip, Don't Shrink Rule.** The greeting is meant to run past the container and be hard-clipped there. Never scale it down to fit, and never let it wrap.
+**The Name Fits Rule.** The greeting is sized so a typical name shows in full on desktop and phone (user-pinned: the owner rejected a size that cut off their name). It never wraps; overflow clip is only a safety net for very long names, and line-height leaves room for descenders.
 
 ## Elevation & Depth
 

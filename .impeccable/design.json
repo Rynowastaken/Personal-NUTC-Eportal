@@ -24,7 +24,7 @@
       "canvas": { "role": "neutral", "displayName": "Plum Canvas", "canonical": "oklch(18.2% 0.017 307.4)", "tonalRamp": ["#0c0a0e", "#252328", "#423e45", "#605b64", "#807b85", "#a19ca6", "#c6c2cb", "#f0edf4"] }
     },
     "typographyMeta": {
-      "display": { "displayName": "Greeting", "purpose": "Lowercase greeting only; nowrap, hard-clipped by container. Phone: clamp(3.6rem, 18vw, 5rem)." },
+      "display": { "displayName": "Greeting", "purpose": "Lowercase greeting only; nowrap, sized so the name fits; clip only for very long names. Desktop clamp(2.75rem, 7.5vw, 6.5rem), phone clamp(2.4rem, 11vw, 3.25rem)." },
       "numeral": { "displayName": "Live Numeral", "purpose": "Absence total and today's date on live tiles." },
       "headline": { "displayName": "Live Value", "purpose": "Next-class course name, single line with ellipsis." },
       "title": { "displayName": "Pivot Heading", "purpose": "Section headings: large, light, left-aligned, no kicker." },
@@ -138,7 +138,7 @@
       "name": "Greeting",
       "kind": "custom",
       "refersTo": "display",
-      "description": "Giant light lowercase greeting, hard-clipped by its container; USER-PINNED accent username.",
+      "description": "Large light lowercase greeting sized so the name fits; USER-PINNED accent username.",
       "html": "<h1 class=\"ds-greet\">Welcome: <span>Ryno</span></h1>",
       "css": ".ds-greet { margin: 0; width: 100%; max-width: 640px; overflow: clip; white-space: nowrap; text-overflow: clip; text-transform: lowercase; color: #f7f1f6; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; font-size: 8rem; font-weight: 300; letter-spacing: -.04em; line-height: .92; } .ds-greet span { color: #f0a8c8; font-weight: 400; }"
     }
@@ -148,7 +148,7 @@
     "overview": "The day as a wall of flat, square-shouldered tinted-glass tiles over the owner's own background: Metro grammar in the incumbent glass material. One hairline edge, no sheen. Giant light lowercase type, data-first live tiles, uniform doors. The owner's theme controls drive the palette at runtime, so every colour is a default and the glass stays dark. Motion is limited to press-tilt and data-change flip, both off under reduced motion, with no entrance stagger.",
     "keyCharacteristics": [
       "Flat tinted glass, 1px hairline, 6px tiles, 4px inner radii",
-      "Giant light lowercase greeting, hard-clipped",
+      "Large light lowercase greeting, name fits",
       "Live tiles: next class (floods primary when now or later today), absences, today",
       "Door tiles for ePortal modules and shortcuts, per-module tint (user-pinned)",
       "Albert Sans Light with system CJK fallbacks, tabular numerals",
@@ -160,7 +160,7 @@
       { "name": "The Quiet Identity Rule", "body": "Course tints (12%/20%) and absence status dots identify; they never signal state or reach flood strength.", "section": "colors" },
       { "name": "The Light Giant Rule", "body": "Size carries hierarchy; display through title stay at weight 200–300.", "section": "typography" },
       { "name": "The Tabular Time Rule", "body": "Every time, date, count and range uses tabular numerals; ranges use an en dash.", "section": "typography" },
-      { "name": "The Clip, Don't Shrink Rule", "body": "The greeting is hard-clipped by its container, never scaled or wrapped to fit.", "section": "layout" },
+      { "name": "The Name Fits Rule", "body": "User-pinned: the greeting is sized so a typical name shows in full; it never wraps, and clip is only a safety net for very long names.", "section": "layout" },
       { "name": "The No-Sheen Rule", "body": "One tint, one 1px edge; no inner highlight, bevel, sheen pseudo-element or pane shadow.", "section": "elevation" }
     ],
     "dos": [
