@@ -160,7 +160,7 @@
       { "name": "The Quiet Identity Rule", "body": "Course tints (12%/20%) and absence status dots identify; they never signal state or reach flood strength.", "section": "colors" },
       { "name": "The Light Giant Rule", "body": "Size carries hierarchy; display through title stay at weight 200–300.", "section": "typography" },
       { "name": "The Tabular Time Rule", "body": "Every time, date, count and range uses tabular numerals; ranges use an en dash.", "section": "typography" },
-      { "name": "The Name Fits Rule", "body": "User-pinned: the greeting is sized so a typical name shows in full; it never wraps, and clip is only a safety net for very long names.", "section": "layout" },
+      { "name": "The Name Fits Rule", "body": "User-pinned: the greeting is sized so a typical name shows in full; one line on desktop with clip as a safety net; phones wrap with balanced lines so the name is never cut.", "section": "layout" },
       { "name": "The No-Sheen Rule", "body": "One tint, one 1px edge; no inner highlight, bevel, sheen pseudo-element or pane shadow.", "section": "elevation" }
     ],
     "dos": [

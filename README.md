@@ -15,6 +15,23 @@
 > [!NOTE]
 > 本專案為非官方個人專案，與國立臺中科技大學官方無關。
 
+## 畫面預覽
+
+以下截圖皆來自 [公開展示網站](https://rynowastaken.github.io/Personal-NUTC-Eportal/)，使用範例資料。
+
+![桌面版 Dashboard：歡迎標題、目前課程、缺曠與日期磚，以及校務系統入口](docs/screenshots/dashboard-desktop.webp)
+
+<table>
+  <tr>
+    <td width="68%"><img src="docs/screenshots/schedule-absences.webp" alt="本週課表與缺曠紀錄" /></td>
+    <td width="32%"><img src="docs/screenshots/dashboard-mobile.webp" alt="手機版 Dashboard" /></td>
+  </tr>
+  <tr>
+    <td align="center">本週課表與缺曠紀錄</td>
+    <td align="center">手機版</td>
+  </tr>
+</table>
+
 ## 公開互動展示（GitHub Pages）
 
 [**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 是使用範例資料的完整互動預覽。除了真正的 ePortal 登入、SSO、學生資料和伺服器操作外，提供與主站相應的帳戶頭像、課表學制、缺曠篩選、捷徑釘選／編輯、完整外觀與背景控制，以及可選的 Hitokoto／OpenCC 語錄（其餘設定儲存在目前瀏覽器）。**不會登入校方系統或使用私人的 ePortal 資料**。

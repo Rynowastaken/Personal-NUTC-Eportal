@@ -246,7 +246,7 @@ The page is a single centred column (max `container`) with gutters that grow fro
 - **The phone schedule:** day columns are at least 104px on phones (72px otherwise) inside a horizontal scroller. A 56px period column is sticky on the left and near-opaque. On load the scroller jumps to today's column when the week doesn't fit.
 - **Top bar:** identity (avatar tile, school name, product name) on the left. Status and the settings button on the right, both on a 42px control grid.
 
-**The Name Fits Rule.** The greeting is sized so a typical name shows in full on desktop and phone (user-pinned: the owner rejected a size that cut off their name). It never wraps; overflow clip is only a safety net for very long names, and line-height leaves room for descenders.
+**The Name Fits Rule.** The greeting is sized so a typical name shows in full on desktop and phone (user-pinned: the owner rejected a size that cut off their name). On desktop it stays on one line with clip as a safety net for very long names; on phones (≤640px) it wraps with balanced lines so the name is never cut. Line-height leaves room for descenders.
 
 ## Elevation & Depth
 
