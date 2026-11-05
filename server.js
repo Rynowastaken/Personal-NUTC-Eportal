@@ -222,6 +222,7 @@ function contentType(filePath) {
     case ".jpg":
     case ".jpeg": return "image/jpeg";
     case ".webp": return "image/webp";
+    case ".woff2": return "font/woff2";
     default: return "application/octet-stream";
   }
 }

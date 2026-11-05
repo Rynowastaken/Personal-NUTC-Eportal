@@ -10,6 +10,7 @@
     <title>登入 ePortal · NUTC Portal</title>
     <script src="/theme-defaults.js?v=1"></script>
     <link rel="stylesheet" href="/generated/site.css?v=1" />
+    <link rel="stylesheet" href="/tile-wall.css?v=2" />
     <script src="/vendor/lucide-1.24.0.min.js"></script>
   </head>
   <body
@@ -31,7 +32,7 @@
       <header class="flex min-h-14 items-center gap-3">
         <button
           id="closeButton"
-          class="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-white/[.12] bg-white/[.07] px-3 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+          class="inline-flex min-h-[42px] items-center gap-2 rounded-[5px] border border-white/[.12] bg-white/[.07] px-3 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
           type="button"
         >
           <i data-lucide="arrow-left" class="h-4 w-4"></i>
@@ -39,17 +40,14 @@
         </button>
 
         <div class="min-w-0">
-          <p class="text-[11px] font-semibold tracking-[0.08em] text-[var(--muted)]">
-            NUTC Portal
-          </p>
-          <h1 class="truncate text-xl font-semibold tracking-[-0.035em]">
+          <h1 class="truncate text-[28px] font-light leading-tight tracking-[-0.03em] sm:text-[34px]">
             登入 ePortal
           </h1>
         </div>
       </header>
 
       <section
-        class="flex min-h-[52px] items-center gap-3 rounded-[18px] border border-white/[.12] bg-[rgba(12,10,14,.34)] px-4 shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
+        class="flex min-h-[52px] items-center gap-3 rounded-[8px] border border-white/[.12] bg-[rgba(12,10,14,.34)] px-4 shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
       >
         <span
           id="statusDot"
@@ -60,11 +58,11 @@
 
       <section
         id="pageCard"
-        class="hidden rounded-[20px] border border-white/[.12] bg-[rgba(12,10,14,.34)] p-4 shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] sm:p-5"
+        class="hidden rounded-[8px] border border-white/[.12] bg-[rgba(12,10,14,.34)] p-4 shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%] sm:p-5"
       >
         <div class="flex items-center gap-3">
           <div
-            class="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
+            class="grid h-10 w-10 shrink-0 place-items-center rounded-[6px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
             aria-hidden="true"
           >
             <i data-lucide="key-round" class="h-5 w-5"></i>
@@ -85,10 +83,10 @@
 
       <section
         id="errorCard"
-        class="hidden rounded-[20px] border border-[#f07178]/20 bg-[rgba(12,10,14,.42)] p-5 text-center shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
+        class="hidden rounded-[8px] border border-[#f07178]/20 bg-[rgba(12,10,14,.42)] p-5 text-center shadow-[0_1px_2px_rgba(0,0,0,.18)] backdrop-blur-[18px] backdrop-saturate-[170%]"
       >
         <div
-          class="mx-auto grid h-11 w-11 place-items-center rounded-[14px] border border-[#f07178]/25 bg-[#f07178]/[.08] text-[#f4a0a5]"
+          class="mx-auto grid h-11 w-11 place-items-center rounded-[6px] border border-[#f07178]/25 bg-[#f07178]/[.08] text-[#f4a0a5]"
           aria-hidden="true"
         >
           <i data-lucide="triangle-alert" class="h-5 w-5"></i>
@@ -103,14 +101,14 @@
           <button
             id="retryButton"
             type="button"
-            class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] transition hover:bg-[var(--control-hover-bg)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+            class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[5px] border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] transition hover:bg-[var(--control-hover-bg)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
           >
             <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>
             重試登入
           </button>
           <a
             href="/"
-            class="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+            class="inline-flex min-h-[44px] items-center justify-center rounded-[5px] border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
           >
             回到首頁
           </a>

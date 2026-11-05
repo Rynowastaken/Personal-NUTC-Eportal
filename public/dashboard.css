@@ -10,90 +10,70 @@
 .portal-welcome {
   width: 100%;
   min-width: 0;
-  padding: clamp(1rem, 2.7vw, 2.25rem) 0 clamp(.65rem, 1.5vw, 1.25rem);
+  padding: clamp(1.25rem, 4vw, 3rem) 0 clamp(.5rem, 1.5vw, 1rem);
 }
+/* Giant light lowercase greeting, hard-clipped by the wall's right edge like a
+ * pivot header. The name keeps the user's theme colour. */
 .portal-welcome-title {
   margin: 0;
   max-width: 100%;
   color: var(--foreground);
-  font-size: clamp(2.15rem, 5.2vw, 3.5rem);
-  font-weight: 800;
-  letter-spacing: -.07em;
-  line-height: 1.16;
-  overflow-wrap: anywhere;
+  font-size: clamp(4.5rem, 15vw, 12rem);
+  font-weight: 300;
+  letter-spacing: -.04em;
+  line-height: .92;
+  text-transform: lowercase;
+  white-space: nowrap;
+  overflow: hidden;
+  overflow: clip;
+  text-overflow: clip;
 }
 .portal-welcome-title #welcomeUsername {
   color: #e6a4ad;
   color: var(--primary, #e6a4ad);
+  font-weight: 400;
 }
 .portal-welcome-subtitle {
-  margin: .8rem 0 0;
+  margin: .9rem 0 0;
+  max-width: 62ch;
   color: var(--muted);
-  font-size: clamp(.85rem, 1.4vw, .95rem);
-  font-weight: 500;
+  font-size: clamp(.9rem, 1.4vw, 1rem);
+  font-weight: 400;
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 @media (max-width: 640px) {
   .portal-welcome {
-    padding: 1.1rem 0 .55rem;
+    padding: 1rem 0 .4rem;
   }
   .portal-welcome-title {
-    font-size: clamp(1.9rem, 8.2vw, 2.35rem);
-    line-height: 1.18;
-    letter-spacing: -.06em;
+    font-size: clamp(3.6rem, 18vw, 5rem);
   }
   .portal-welcome-subtitle {
     margin-top: .55rem;
-    font-size: .85rem;
+    font-size: .9rem;
   }
 }
 /*
- * Share only the status pill's translucent, softly tinted glass material.
- * The buttons keep their original sizes, radii, icons and typography.
+ * Panel buttons share the flat tile glass: one hairline edge, one tint,
+ * no sheen or inset highlight. Hover lifts the tint, not the button.
  */
 .dashboard-tinted-glass {
   position: relative;
-  isolation: isolate;
-  border: 1px solid transparent;
-  background:
-    linear-gradient(135deg, rgba(245,235,242,.12), rgba(115,100,111,.16)) padding-box,
-    linear-gradient(140deg, rgba(255,255,255,.21), rgba(255,255,255,.08)) border-box;
+  border: 1px solid var(--glass-edge, rgba(255,255,255,.14));
+  background: var(--glass, rgba(18,15,22,.42));
   color: var(--foreground);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.075),
-    0 5px 16px -10px rgba(0,0,0,.30);
-  backdrop-filter: blur(18px) saturate(170%);
-  -webkit-backdrop-filter: blur(18px) saturate(170%);
-  transition:
-    transform 200ms cubic-bezier(.22, 1, .36, 1),
-    box-shadow 200ms ease;
-}
-.dashboard-tinted-glass::before {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  background: rgba(255,255,255,.075);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 200ms ease;
+  backdrop-filter: var(--glass-blur, blur(18px) saturate(160%));
+  -webkit-backdrop-filter: var(--glass-blur, blur(18px) saturate(160%));
+  transition: background-color 160ms ease, border-color 160ms ease;
 }
 .dashboard-tinted-glass:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.09),
-    0 8px 19px -10px rgba(0,0,0,.36);
-}
-.dashboard-tinted-glass:hover:not(:disabled)::before {
-  opacity: 1;
+  border-color: rgba(255,255,255,.24);
+  background: color-mix(in srgb, var(--foreground) 10%, var(--glass, rgba(18,15,22,.42)));
 }
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-tinted-glass,
-  .dashboard-tinted-glass::before {
+  .dashboard-tinted-glass {
     transition: none;
-  }
-  .dashboard-tinted-glass:hover:not(:disabled) {
-    transform: none;
   }
 }
 .dashboard-tinted-glass:focus-visible {
@@ -105,21 +85,12 @@
   opacity: .45;
 }
 
-/*
- * Schedule and absence panels should let the wallpaper show through
- * like the built-in module cards, without losing readable content.
- */
+/* Schedule and absence panels sit on the same flat glass as the tiles. */
 .dashboard-overview-glass {
-  background: rgba(41,36,45,.24);
-  background: linear-gradient(
-    115deg,
-    color-mix(in srgb, var(--primary) 8%, transparent) 0%,
-    rgba(255,255,255,.06) 42%,
-    rgba(12,10,14,.14) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.035),
-    0 1px 2px rgba(0,0,0,.18);
+  border-color: var(--glass-edge, rgba(255,255,255,.14)) !important;
+  border-radius: var(--tile-radius, 6px) !important;
+  background: var(--glass, rgba(18,15,22,.42));
+  box-shadow: none;
 }
 
 /* Custom shortcuts use filled, theme-aware controls instead of near-invisible overlays. */
@@ -290,26 +261,23 @@
 }
 
 /*
- * Module cards and shortcuts: a single border + one rounded clipping layer.
+ * Module tiles and shortcuts: flat, square-shouldered tinted glass.
  * Keep these rules in dashboard.css, not generated CSS, so they take effect
  * even if the server's compiled Tailwind bundle is cached or late to rebuild.
  */
 .dashboard-module-card {
-  border-radius: 20px;
+  border-radius: 6px;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid rgba(255,255,255,.13);
-  background: linear-gradient(110deg,
-    rgba(50,44,56,.72) 0%,
-    rgba(37,34,42,.74) 42%,
-    rgba(22,20,27,.82) 100%);
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(160deg,
+    color-mix(in srgb, var(--module-accent, var(--primary)) 26%, transparent) 0%,
+    color-mix(in srgb, var(--module-accent, var(--primary)) 10%, transparent) 55%,
+    rgba(18,15,22,.5) 100%);
   background-clip: padding-box;
-  box-shadow: 0 8px 24px -17px rgba(0,0,0,.42);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  transition:
-    transform 220ms cubic-bezier(.22, 1, .36, 1),
-    box-shadow 220ms ease;
+  box-shadow: none;
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
 }
 
 /* Override leftover sheen from previously cached generated CSS. This inner
@@ -320,41 +288,33 @@
 }
 
 .dashboard-module-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 25px -16px rgba(0,0,0,.48);
+  border-color: rgba(255,255,255,.24);
 }
-
 .dashboard-module-icon {
-  border-radius: 12px;
+  border-radius: 4px;
 }
 .dashboard-module-action {
-  border-radius: 10px;
+  border-radius: 4px;
 }
 .dashboard-module-icon,
 .dashboard-module-action {
   background-clip: padding-box;
   box-shadow: none;
-  transition: transform 200ms cubic-bezier(.22, 1, .36, 1);
-}
-.dashboard-module-card:hover .dashboard-module-icon {
-  transform: translateY(-1px);
+  transition: transform 260ms cubic-bezier(.16, 1, .3, 1), color 200ms ease;
 }
 .dashboard-module-card:hover .dashboard-module-action {
-  transform: translateX(2px);
+  color: var(--foreground) !important;
+  transform: translate(2px, -2px);
 }
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-module-card,
   .dashboard-module-icon,
   .dashboard-module-action {
     transition: none;
   }
-  .dashboard-module-card:hover,
-  .dashboard-module-card:hover .dashboard-module-icon,
   .dashboard-module-card:hover .dashboard-module-action {
     transform: none;
   }
 }
-
 
 /* Optional, attributed Hitokoto greeting below the personalized headline. */
 .portal-hitokoto {
@@ -375,7 +335,7 @@
   flex: none;
   height: 34px;
   width: 34px;
-  border-radius: 11px;
+  border-radius: 4px;
   color: var(--primary);
   border: 1px solid rgba(255,255,255,.14);
   background: rgba(255,255,255,.055);
@@ -428,7 +388,7 @@
   gap: 12px;
   padding: 9px 12px 9px 14px;
   border: 1px solid rgba(255,255,255,.14);
-  border-radius: 14px;
+  border-radius: 6px;
   background: rgba(255,255,255,.075);
   background-clip: padding-box;
   color: var(--foreground);
@@ -457,7 +417,7 @@
   height: 26px;
   width: 26px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 4px;
   background: rgba(255,255,255,.07);
   color: var(--muted);
   transition: transform .22s cubic-bezier(.22,1,.36,1);
@@ -471,7 +431,7 @@
   top: calc(100% + 7px);
   z-index: 70;
   padding: 6px;
-  border-radius: 16px;
+  border-radius: 6px;
   border: 1px solid rgba(255,255,255,.17);
   background: rgba(28,23,32,.98);
   background-clip: padding-box;
@@ -507,7 +467,7 @@
   gap: 12px;
   padding: 9px 12px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 5px;
   background: transparent;
   color: var(--foreground);
   text-align: left;
@@ -546,7 +506,7 @@
   gap: 12px;
   padding: 12px;
   border: 1px solid rgba(255,255,255,.12);
-  border-radius: 13px;
+  border-radius: 5px;
   background: rgba(255,255,255,.045);
   font-size: .875rem;
   font-weight: 600;
@@ -568,3 +528,4 @@
     transform: none;
   }
 }
+

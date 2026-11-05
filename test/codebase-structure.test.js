@@ -43,7 +43,7 @@ test("dashboard-only styling lives in dedicated CSS with no duplicate inline blo
 test("shared card factory is imported rather than duplicated in dashboard controller", async () => {
   const app = await read("public/app.js");
   const cards = await read("public/dashboard-cards.js");
-  assert.match(app, /import \{ moduleAccent, createDashboardModuleCard \} from "\.\/dashboard-cards\.js\?v=2";/);
+  assert.match(app, /import \{ moduleAccent, createDashboardModuleCard, legibleAccent \} from "\.\/dashboard-cards\.js\?v=3";/);
   assert.doesNotMatch(app, /^function createDashboardModuleCard\(/m);
   assert.match(cards, /export function createDashboardModuleCard\(/);
   assert.match(cards, /export function moduleAccent\(/);

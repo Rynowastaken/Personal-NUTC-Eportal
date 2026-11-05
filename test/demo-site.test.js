@@ -22,7 +22,7 @@ test("GitHub Pages demo has local, base-path-safe assets", async () => {
 });
 
 test("preview clearly labels sample data and never relies on live university APIs", () => {
-  assert.match(html, /DEMO MODE/);
+  assert.match(html, /DEMO<span class="demo-pill-wide"> MODE<\/span>/);
   assert.match(html, /沒有真實登入、學籍資料或學校系統連線/);
   assert.match(html, /示範課表/);
   assert.match(html, /模擬統計/);
@@ -70,9 +70,9 @@ test("custom links reject unsafe URLs and accept https/http addresses", () => {
 });
 
 test("responsive glass cards have explicit rounded outlines without duplicate edge layers", () => {
-  assert.match(css, /\.module-card\s*\{[\s\S]*?border-radius: 21px;[\s\S]*?border: 1px solid rgba/);
-  assert.match(css, /\.module-icon\s*\{[^\}]*border-radius: 13px;/);
-  assert.match(css, /\.module-arrow\s*\{[^\}]*border-radius: 11px;/);
+  assert.match(css, /\.module-card\s*\{[\s\S]*?border-radius: 6px;[\s\S]*?border: 1px solid rgba/);
+  assert.match(css, /\.module-icon\s*\{[^\}]*border-radius: 4px;/);
+  assert.match(css, /\.module-arrow\s*\{[^\}]*border-radius: 4px;/);
   assert.match(css, /background-clip: padding-box/);
   assert.doesNotMatch(css, /\.module-card::before/);
   assert.match(css, /@media\(max-width: 600px\)/);

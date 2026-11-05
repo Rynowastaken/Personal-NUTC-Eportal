@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-05T15:10:00+08:00",
+  "title": "Design System: NUTC Portal",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Theme Primary (default pink)", "canonical": "oklch(80.9% 0.093 351.1)", "runtime": "Set by theme.js applyPalette from the user's background/colour/saturation/brightness; value here is the default.", "tonalRamp": ["#1a020e", "#391628", "#5c2f44", "#814963", "#a76684", "#c789a5", "#eab1ca", "#ffdff3"] },
+      "primary-soft": { "role": "primary", "displayName": "Primary Soft", "derivedFrom": "primary @ 14% alpha" },
+      "primary-ring": { "role": "primary", "displayName": "Primary Ring", "derivedFrom": "primary @ 42% alpha" },
+      "accent": { "role": "secondary", "displayName": "Warm Honey", "canonical": "oklch(81.0% 0.108 77.4)", "tonalRamp": ["#180600", "#371e00", "#583900", "#7b560c", "#a07426", "#c09755", "#e3be85", "#ffe9ba"] },
+      "secondary": { "role": "secondary", "displayName": "Deep Plum", "canonical": "oklch(36.2% 0.060 335.1)", "note": "Lifted by legibleAccent before use as tint or glyph.", "tonalRamp": ["#130611", "#301c2c", "#4f3649", "#715269", "#94708b", "#b492ac", "#d8b9d0", "#ffe5f9"] },
+      "danger": { "role": "tertiary", "displayName": "Alert Coral", "canonical": "oklch(70.1% 0.157 18.6)", "tonalRamp": ["#250001", "#4a010f", "#721a26", "#9c343e", "#c84f58", "#e9777c", "#ffa3a5", "#ffd3d4"] },
+      "danger-text": { "role": "tertiary", "displayName": "Coral Text" },
+      "foreground": { "role": "neutral", "displayName": "Rose White", "canonical": "oklch(96.4% 0.009 330.9)", "tonalRamp": ["#0c0a0c", "#262325", "#423e41", "#605c60", "#817b80", "#a29da1", "#c7c2c6", "#f1edf0"] },
+      "muted": { "role": "neutral", "displayName": "Muted", "derivedFrom": "foreground @ 56% alpha" },
+      "faint": { "role": "neutral", "displayName": "Faint", "derivedFrom": "foreground @ 38% alpha" },
+      "control-text": { "role": "neutral", "displayName": "Ink", "runtime": "readableText(primary)" },
+      "glass": { "role": "neutral", "displayName": "Tinted Glass" },
+      "glass-edge": { "role": "neutral", "displayName": "Glass Hairline" },
+      "glass-edge-hover": { "role": "neutral", "displayName": "Glass Hairline (hover)" },
+      "hairline": { "role": "neutral", "displayName": "Grid Hairline" },
+      "period-column": { "role": "neutral", "displayName": "Opaque Period Column" },
+      "overlay-surface": { "role": "neutral", "displayName": "Overlay Surface" },
+      "canvas": { "role": "neutral", "displayName": "Plum Canvas", "canonical": "oklch(18.2% 0.017 307.4)", "tonalRamp": ["#0c0a0e", "#252328", "#423e45", "#605b64", "#807b85", "#a19ca6", "#c6c2cb", "#f0edf4"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Greeting", "purpose": "Lowercase greeting only; nowrap, hard-clipped by container. Phone: clamp(3.6rem, 18vw, 5rem)." },
+      "numeral": { "displayName": "Live Numeral", "purpose": "Absence total and today's date on live tiles." },
+      "headline": { "displayName": "Live Value", "purpose": "Next-class course name, single line with ellipsis." },
+      "title": { "displayName": "Pivot Heading", "purpose": "Section headings: large, light, left-aligned, no kicker." },
+      "door-title": { "displayName": "Door Title", "purpose": "Module and shortcut names; 19px on phones." },
+      "body": { "displayName": "Body", "purpose": "Greeting subtitle and Hitokoto quote, max 62ch." },
+      "label": { "displayName": "Tile Label", "purpose": "Live-tile label row, muted." },
+      "meta": { "displayName": "Meta", "purpose": "Tile/row metadata joined with ' · '." },
+      "mono": { "displayName": "Raw Detail", "purpose": "Collapsed raw error pre and error codes only." }
+    },
+    "materials": [
+      { "name": "glass-pane", "value": "border: 1px solid var(--glass-edge); border-radius: var(--tile-radius); background: var(--glass); backdrop-filter: blur(20px) saturate(160%)", "purpose": "Every tile and panel. One tint, one hairline, no sheen." },
+      { "name": "door-tint", "value": "linear-gradient(160deg, accent@26% 0%, accent@10% 55%, rgba(18,15,22,.5) 100%)", "purpose": "USER-PINNED per-module door tint; accent = legibleAccent(palette[[0,1,2,3,1][i]])." },
+      { "name": "flood", "value": "background: color-mix(in srgb, var(--primary) 78%, rgba(18,15,22,.6)); border-color: color-mix(in srgb, var(--primary) 70%, transparent)", "purpose": "Next-class tile when a class is now or later today." }
+    ],
+    "shadows": [
+      { "name": "none", "value": "none", "purpose": "All tiles, doors, panels, schedule blocks." },
+      { "name": "overlay", "value": "0 24px 80px rgba(0,0,0,.46)", "purpose": "Dialogs floating above the wall." },
+      { "name": "menu", "value": "0 18px 38px rgba(0,0,0,.40)", "purpose": "Custom listbox popup." }
+    ],
+    "motion": [
+      { "name": "tilt-ease", "value": "cubic-bezier(.16, 1, .3, 1)", "purpose": "Press-tilt release (320ms), flip (620ms), door arrow nudge (260ms)." },
+      { "name": "press-tilt", "value": "perspective(700px) rotateX/rotateY up to 7deg (4deg on tiles wider than 420px), scale .985, 90ms while pressed", "purpose": "Signature move 1. Disabled under prefers-reduced-motion." },
+      { "name": "tile-flip", "value": "620ms rotateX 0 -> 88deg -> -88deg -> 0", "purpose": "Signature move 2, only when real data replaces real data. Disabled under prefers-reduced-motion." },
+      { "name": "soft-out", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Overlay open/close and menu transitions." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "640px" },
+      { "name": "wall-two-column", "value": "900px" },
+      { "name": "lg", "value": "1024px" }
+    ],
+    "userPinnedExceptions": [
+      "Per-module door tints and coloured icon chips (dashboard-cards.js, legibleAccent).",
+      "Accent-coloured username in the greeting.",
+      "Accent-filled settings button."
+    ]
+  },
+  "components": [
+    {
+      "name": "Live Tile",
+      "kind": "card",
+      "refersTo": "live-tile",
+      "description": "Data-first glass tile: label row on top, big light value and meta below.",
+      "html": "<button class=\"ds-live-tile\"><span class=\"ds-live-label\"><span>缺曠</span></span><span><strong class=\"ds-live-number\">3</strong><span class=\"ds-live-meta\">曠課 1 · 遲到 1 · 病假 1</span></span></button>",
+      "css": ".ds-live-tile { display: flex; flex-direction: column; justify-content: space-between; gap: 1rem; min-height: 148px; width: 260px; padding: 1rem 1.05rem; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: rgba(18,15,22,.46); backdrop-filter: blur(20px) saturate(160%); color: #f7f1f6; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; transition: transform 320ms cubic-bezier(.16,1,.3,1), border-color 200ms ease; } .ds-live-tile:hover { border-color: rgba(255,255,255,.24); } .ds-live-tile:active { transform: perspective(700px) rotateX(2deg) scale(.985); transition-duration: 90ms; } .ds-live-tile:focus-visible { outline: 2px solid #f0a8c8; outline-offset: 2px; } .ds-live-label { display: flex; justify-content: space-between; color: rgba(247,241,246,.56); font-size: .78rem; font-weight: 500; letter-spacing: .01em; } .ds-live-number { display: block; font-size: 3.2rem; font-weight: 200; letter-spacing: -.04em; line-height: 1; } .ds-live-meta { display: block; margin-top: .35rem; color: rgba(247,241,246,.56); font-size: .8rem; }"
+    },
+    {
+      "name": "Live Tile (Flood)",
+      "kind": "card",
+      "refersTo": "live-tile-flood",
+      "description": "Next-class tile when a class is now or later today; the one flooded tile.",
+      "html": "<button class=\"ds-flood\"><span class=\"ds-flood-label\"><span>現在</span><span>14:00–14:59</span></span><span><strong class=\"ds-flood-value\">作業系統</strong><span class=\"ds-flood-meta\">資訊2203 · 黃建華</span></span></button>",
+      "css": ".ds-flood { display: flex; flex-direction: column; justify-content: space-between; gap: 1rem; min-height: 148px; width: 520px; max-width: 100%; padding: 1rem 1.05rem; border: 1px solid color-mix(in srgb, #f0a8c8 70%, transparent); border-radius: 6px; background: color-mix(in srgb, #f0a8c8 78%, rgba(18,15,22,.6)); color: #17121b; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; } .ds-flood:focus-visible { outline: 2px solid #f7f1f6; outline-offset: 2px; } .ds-flood-label { display: flex; justify-content: space-between; color: color-mix(in srgb, #17121b 72%, transparent); font-size: .78rem; font-weight: 500; } .ds-flood-value { display: block; font-size: 2.4rem; font-weight: 300; letter-spacing: -.03em; line-height: 1.05; } .ds-flood-meta { display: block; margin-top: .35rem; color: color-mix(in srgb, #17121b 72%, transparent); font-size: .8rem; }"
+    },
+    {
+      "name": "Door Tile",
+      "kind": "custom",
+      "refersTo": "door-tile",
+      "description": "ePortal module or pinned shortcut door; USER-PINNED per-module tint and tinted icon chip.",
+      "html": "<button class=\"ds-door\" style=\"--tint: 232 184 109\"><span class=\"ds-door-icon\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"m3 7 9 6 9-6\"/></svg></span><span><span class=\"ds-door-title\">WebMail</span><span class=\"ds-door-desc\">校務信箱與通知</span></span><span class=\"ds-door-arrow\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M5 12h14M13 5l7 7-7 7\"/></svg></span></button>",
+      "css": ".ds-door { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 1rem; min-height: 148px; width: 208px; padding: 16px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: linear-gradient(160deg, rgb(var(--tint) / .26) 0%, rgb(var(--tint) / .10) 55%, rgba(18,15,22,.5) 100%); backdrop-filter: blur(20px) saturate(160%); color: #f7f1f6; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; text-align: left; cursor: pointer; transition: transform 320ms cubic-bezier(.16,1,.3,1), border-color 200ms ease; } .ds-door:hover { border-color: rgba(255,255,255,.24); } .ds-door:active { transform: perspective(700px) rotateX(3deg) rotateY(-3deg) scale(.985); transition-duration: 90ms; } .ds-door:focus-visible { outline: 2px solid #f0a8c8; outline-offset: 2px; } .ds-door-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 4px; border: 1px solid rgb(var(--tint) / .3); background: rgb(var(--tint) / .16); color: rgb(var(--tint)); } .ds-door-title { display: block; font-size: 22px; font-weight: 400; letter-spacing: -.02em; line-height: 1.25; } .ds-door-desc { display: block; margin-top: 4px; color: rgba(247,241,246,.56); font-size: 12px; line-height: 20px; } .ds-door-arrow { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 4px; color: rgba(247,241,246,.56); transition: transform 260ms cubic-bezier(.16,1,.3,1), color 200ms ease; } .ds-door:hover .ds-door-arrow { color: #f7f1f6; transform: translate(2px,-2px); }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid theme primary with ink text; honey hover. Used for 重試 and confirmations.",
+      "html": "<button class=\"ds-btn-primary\">重試</button>",
+      "css": ".ds-btn-primary { min-height: 42px; padding: 0 16px; border-radius: 5px; border: 1px solid rgba(240,168,200,.72); background: #f0a8c8; color: #17121b; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; font-size: .875rem; font-weight: 600; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease; } .ds-btn-primary:hover { background: #e8b86d; border-color: rgba(232,184,109,.78); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(240,168,200,.42); }"
+    },
+    {
+      "name": "Settings Button",
+      "kind": "button",
+      "refersTo": "button-settings",
+      "description": "USER-PINNED accent-filled 42px settings control in the top bar.",
+      "html": "<button class=\"ds-btn-settings\" aria-label=\"外觀設定\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z\"/></svg></button>",
+      "css": ".ds-btn-settings { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 5px; border: 1px solid rgba(240,168,200,.72); background: #f0a8c8; color: #17121b; cursor: pointer; transition: background-color 150ms ease; } .ds-btn-settings:hover { background: #e8b86d; } .ds-btn-settings:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(240,168,200,.42); }"
+    },
+    {
+      "name": "Glass Button",
+      "kind": "button",
+      "refersTo": "button-glass",
+      "description": "Secondary action on the flat glass: 回到首頁, 更新.",
+      "html": "<button class=\"ds-btn-glass\">回到首頁</button>",
+      "css": ".ds-btn-glass { min-height: 36px; padding: 0 12px; border-radius: 5px; border: 1px solid rgba(255,255,255,.12); background: rgba(18,15,22,.46); backdrop-filter: blur(20px) saturate(160%); color: #f7f1f6; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; font-size: .75rem; font-weight: 600; cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease; } .ds-btn-glass:hover { border-color: rgba(255,255,255,.24); background: color-mix(in srgb, #f7f1f6 10%, rgba(18,15,22,.46)); } .ds-btn-glass:focus-visible { outline: 2px solid #f0a8c8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Absence Row",
+      "kind": "custom",
+      "refersTo": "absence-row",
+      "description": "Hairline-divided list row with a 6px palette status dot. Never side stripes or nested cards.",
+      "html": "<ul class=\"ds-absence\"><li><strong>作業系統</strong><p class=\"ds-absence-meta\">資訊2203 · 黃建華 · 3 學分</p><p class=\"ds-absence-status\"><span class=\"ds-dot\"></span><span>11/03 第 2 節 曠課</span></p></li><li><strong>資料庫系統</strong><p class=\"ds-absence-meta\">資訊2203 · 林怡君</p><p class=\"ds-absence-status\"><span class=\"ds-dot\" style=\"background:#e8b86d\"></span><span>10/28 第 5 節 遲到</span></p></li></ul>",
+      "css": ".ds-absence { list-style: none; margin: 0; padding: 0; width: 320px; border-top: 1px solid rgba(255,255,255,.08); color: #f7f1f6; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; font-variant-numeric: tabular-nums; } .ds-absence li { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.08); } .ds-absence strong { display: block; font-size: .875rem; font-weight: 600; line-height: 20px; } .ds-absence-meta { margin: 2px 0 0; color: rgba(247,241,246,.56); font-size: 11px; font-weight: 500; line-height: 16px; } .ds-absence-status { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 0; font-size: .75rem; font-weight: 500; line-height: 20px; } .ds-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: #f0a8c8; transform: translateY(-1px); }"
+    },
+    {
+      "name": "Schedule Block",
+      "kind": "custom",
+      "refersTo": "schedule-block",
+      "description": "Course block in the weekly grid; quiet hashed tint, or primary flood when in progress.",
+      "html": "<div class=\"ds-sched\"><article class=\"ds-block\" style=\"--tint: 232 184 109\"><strong>資料庫系統</strong><span>資訊2203 · 林怡君</span></article><article class=\"ds-block ds-block-now\"><strong>作業系統 <em>現在</em></strong><span>資訊2203 · 黃建華</span></article></div>",
+      "css": ".ds-sched { display: grid; grid-template-columns: repeat(2, 104px); gap: 6px; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; } .ds-block { display: flex; flex-direction: column; justify-content: flex-end; min-height: 86px; padding: 10px; border-radius: 4px; border: 1px solid rgb(var(--tint, 240 168 200) / .2); background: rgb(var(--tint, 240 168 200) / .12); color: #f7f1f6; transition: border-color 150ms ease; } .ds-block:hover { border-color: rgba(255,255,255,.28); } .ds-block strong { font-size: 13px; font-weight: 500; line-height: 20px; letter-spacing: -.01em; } .ds-block span { margin-top: 4px; color: rgba(247,241,246,.56); font-size: 10px; line-height: 16px; } .ds-block-now { background: rgba(240,168,200,.82); border-color: #f0a8c8; color: #17121b; } .ds-block-now span { color: inherit; } .ds-block-now em { font-style: normal; margin-left: 4px; padding: 2px 6px; border-radius: 3px; background: #17121b; color: #f0a8c8; font-size: 9px; font-weight: 600; }"
+    },
+    {
+      "name": "Error Panel",
+      "kind": "card",
+      "refersTo": "error-panel",
+      "description": "Named error, zh-Hant recovery copy, raw detail collapsed in a mono pre, two actions.",
+      "html": "<div class=\"ds-error\" role=\"alert\"><strong class=\"ds-error-title\">無法開啟</strong><p class=\"ds-error-msg\">伺服器回傳了未預期的錯誤。請展開下方的技術細節，或檢查伺服器日誌。</p><details class=\"ds-error-raw\"><summary>技術細節</summary><pre>EPORTAL_BRIDGE_TIMEOUT\\n  at launch (bridge.js:118)</pre></details><div class=\"ds-error-actions\"><button class=\"ds-e-primary\">重試</button><button class=\"ds-e-glass\">回到首頁</button></div></div>",
+      "css": ".ds-error { width: 380px; padding: 16px; border-radius: 6px; border: 1px solid rgba(240,113,120,.25); background: rgba(240,113,120,.08); color: #f7f1f6; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; } .ds-error-title { color: #f4a0a5; font-size: .875rem; font-weight: 600; } .ds-error-msg { margin: 4px 0 0; font-size: .875rem; font-weight: 500; line-height: 24px; } .ds-error-raw { margin-top: 12px; color: rgba(247,241,246,.56); } .ds-error-raw summary { cursor: pointer; font-size: .75rem; font-weight: 600; } .ds-error-raw pre { margin: 8px 0 0; max-height: 10rem; overflow: auto; white-space: pre-wrap; padding: 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.25); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 20px; } .ds-error-actions { display: flex; gap: 8px; margin-top: 12px; } .ds-e-primary, .ds-e-glass { min-height: 42px; padding: 0 16px; border-radius: 5px; font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; } .ds-e-primary { border: 1px solid rgba(240,168,200,.72); background: #f0a8c8; color: #17121b; } .ds-e-primary:hover { background: #e8b86d; } .ds-e-glass { border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); color: #f7f1f6; } .ds-e-glass:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.18); } .ds-e-primary:focus-visible, .ds-e-glass:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(240,168,200,.42); }"
+    },
+    {
+      "name": "Greeting",
+      "kind": "custom",
+      "refersTo": "display",
+      "description": "Giant light lowercase greeting, hard-clipped by its container; USER-PINNED accent username.",
+      "html": "<h1 class=\"ds-greet\">Welcome: <span>Ryno</span></h1>",
+      "css": ".ds-greet { margin: 0; width: 100%; max-width: 640px; overflow: clip; white-space: nowrap; text-overflow: clip; text-transform: lowercase; color: #f7f1f6; font-family: 'Albert Sans', 'Noto Sans TC', system-ui, sans-serif; font-size: 8rem; font-weight: 300; letter-spacing: -.04em; line-height: .92; } .ds-greet span { color: #f0a8c8; font-weight: 400; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Tinted Glass Wall",
+    "overview": "The day as a wall of flat, square-shouldered tinted-glass tiles over the owner's own background: Metro grammar in the incumbent glass material. One hairline edge, no sheen. Giant light lowercase type, data-first live tiles, uniform doors. The owner's theme controls drive the palette at runtime, so every colour is a default and the glass stays dark. Motion is limited to press-tilt and data-change flip, both off under reduced motion, with no entrance stagger.",
+    "keyCharacteristics": [
+      "Flat tinted glass, 1px hairline, 6px tiles, 4px inner radii",
+      "Giant light lowercase greeting, hard-clipped",
+      "Live tiles: next class (floods primary when now or later today), absences, today",
+      "Door tiles for ePortal modules and shortcuts, per-module tint (user-pinned)",
+      "Albert Sans Light with system CJK fallbacks, tabular numerals",
+      "zh-Hant UI chrome"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "The theme primary alone marks live state: now, today, focused, connected.", "section": "colors" },
+      { "name": "The User-Pinned Tint Exceptions", "body": "Per-module door tints and coloured icon chips (dashboard-cards.js, legibleAccent), the accent-coloured greeting username, and the accent-filled settings button are deliberate. The owner pinned the tinted-glass theme; do not 'fix' them.", "section": "colors" },
+      { "name": "The Quiet Identity Rule", "body": "Course tints (12%/20%) and absence status dots identify; they never signal state or reach flood strength.", "section": "colors" },
+      { "name": "The Light Giant Rule", "body": "Size carries hierarchy; display through title stay at weight 200–300.", "section": "typography" },
+      { "name": "The Tabular Time Rule", "body": "Every time, date, count and range uses tabular numerals; ranges use an en dash.", "section": "typography" },
+      { "name": "The Clip, Don't Shrink Rule", "body": "The greeting is hard-clipped by its container, never scaled or wrapped to fit.", "section": "layout" },
+      { "name": "The No-Sheen Rule", "body": "One tint, one 1px edge; no inner highlight, bevel, sheen pseudo-element or pane shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do read every colour from the theme variables so the owner's theme controls drive the page.",
+      "Do reserve flood strength for now and later-today only.",
+      "Do pass palette tints through legibleAccent.",
+      "Do keep press-tilt and data-change flip as the only dashboard motion, both disabled under reduced motion.",
+      "Do write UI chrome in zh-Hant. Every failure state gets a named error, recovery copy, collapsed raw detail, and the actions 重試 and 回到首頁.",
+      "Do keep phone schedule columns at least 104px, with a sticky opaque period column and auto-scroll to today."
+    ],
+    "donts": [
+      "Don't 'fix' the user-pinned door tints, icon chips, accent username or accent settings button.",
+      "Don't use side stripes or nested cards in the absence list.",
+      "Don't add page-load entrance staggers to the dashboard wall.",
+      "Don't add sheen, bevels, inner highlights or drop shadows to panes.",
+      "Don't shrink or wrap the greeting.",
+      "Don't put tracked uppercase eyebrows or kickers above headings.",
+      "Don't let any non-primary hue mark today, now, focus or connected."
+    ]
+  }
+}

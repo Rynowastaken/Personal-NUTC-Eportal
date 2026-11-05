@@ -339,6 +339,16 @@
     table.append(thead, tbody);
     const label = { day: "日間部", evening: "進修部夜間班", weekend: "進修部假日班" }[academicProgram];
     $("scheduleMeta").textContent = label + " · 示範資料 · 更新 " + taipeiClock() + "（台灣時間）";
+    // Feed the shared live tiles the same sample blocks, in Monday-based days.
+    const offset = academicProgram === "weekend" ? 5 : 0;
+    const blocks = Object.entries(COURSES).map(([key, [name, detail]]) => {
+      const [day, period] = key.split("-").map(Number);
+      const [room = "", teacher = ""] = String(detail).split(" · ");
+      return { dayIndex: day + offset, name, room, teacher,
+        startTime: PERIODS[period][0], endTime: PERIODS[period][1] };
+    });
+    document.dispatchEvent(new CustomEvent("nutc:schedule", { detail: { blocks, today: dayIndex } }));
+    document.dispatchEvent(new CustomEvent("nutc:absences", { detail: { total: 1, summary: { 事假: 1 } } }));
   }
 
   function refreshButton(button, callback) {

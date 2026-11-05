@@ -1,7 +1,10 @@
 const motion = window.NutcMotion;
 import { isSessionExpiredError, shouldAutoOpenLogin } from "./session-auth.js";
-import { moduleAccent, createDashboardModuleCard } from "./dashboard-cards.js?v=2";
+import { moduleAccent, createDashboardModuleCard, legibleAccent } from "./dashboard-cards.js?v=3";
 import { createHitokotoWidget, normalizeHitokotoSettings } from "./hitokoto.js?v=1";
+import { initTodayTiles } from "./today-tiles.js?v=1";
+
+initTodayTiles();
 
 const moduleGrid = document.querySelector("#moduleGrid");
 const sessionWarning = document.querySelector("#sessionWarning");
@@ -561,7 +564,7 @@ function renderThemeSchemes() {
     button.role = "radio";
     button.dataset.themeScheme = scheme.id;
     button.className =
-      "min-h-[46px] rounded-xl border px-3 py-2 text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.09] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
+      "min-h-[46px] rounded-[5px] border px-3 py-2 text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.09] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
     button.textContent = scheme.name;
     button.addEventListener("click", () => {
       stagedThemeSettings.colorScheme = scheme.id;
@@ -1128,8 +1131,7 @@ function scheduleCourseTheme(course) {
 
   return {
     accent,
-    background:
-      `linear-gradient(120deg, ${rgba(accent, 0.1)} 0%, rgba(255,255,255,.025) 72%)`,
+    background: rgba(accent, 0.12),
     border: rgba(accent, 0.2),
     glow: rgba(accent, 0.1),
   };
@@ -1233,6 +1235,9 @@ function setScheduleMessage(message, { kind = "info" } = {}) {
   card.append(icon, text);
   scheduleGrid.append(card);
   renderIcons();
+  document.dispatchEvent(new CustomEvent("nutc:schedule", {
+    detail: { message: kind === "loading" ? "載入課表中…" : message },
+  }));
 }
 
 function renderScheduleGrid() {
@@ -1295,22 +1300,27 @@ function renderScheduleGrid() {
   scheduleGrid.replaceChildren();
 
   const grid = document.createElement("div");
-  const fitsWithoutScroll = dayIndices.length <= 5;
+  // Phones get readable day columns and scroll sideways to today instead of
+  // squeezing five days into 55px slivers.
+  const narrow = window.matchMedia?.("(max-width: 639px)").matches;
+  const fitsWithoutScroll = dayIndices.length <= 5 && !narrow;
+  const dayMin = narrow ? 104 : 72;
+  // overflow-clip (not hidden) keeps the period column sticky in the scroller.
   grid.className =
-    "relative grid w-full overflow-hidden rounded-[18px] border border-white/[.08] bg-white/[.018] backdrop-blur-[14px]";
+    "relative grid w-full overflow-clip";
   grid.style.gridTemplateColumns = fitsWithoutScroll
     ? `clamp(56px, 15%, 76px) repeat(${dayIndices.length}, minmax(0, 1fr))`
-    : `64px repeat(${dayIndices.length}, minmax(72px, 1fr))`;
+    : `56px repeat(${dayIndices.length}, minmax(${dayMin}px, 1fr))`;
   grid.style.minWidth = fitsWithoutScroll
     ? "100%"
-    : `${64 + dayIndices.length * 72}px`;
+    : `${56 + dayIndices.length * dayMin}px`;
   const hasCalendarLabels = dayIndices.some((dayIndex) => calendarForDay(dayIndex)?.label);
   grid.style.gridTemplateRows =
     `${hasCalendarLabels ? "minmax(78px, auto)" : "clamp(58px, 13vw, 70px)"} repeat(${periodIndices.length}, minmax(clamp(68px, 16vw, 82px), auto))`;
 
   const corner = document.createElement("div");
   corner.className =
-    "sticky left-0 z-30 border-b border-r border-white/[.08] bg-[rgba(16,13,19,.72)] backdrop-blur-[18px]";
+    "sticky left-0 z-30 border-b border-r border-white/[.08] bg-[rgba(16,13,19,.94)] backdrop-blur-[18px]";
   corner.style.gridColumn = "1";
   corner.style.gridRow = "1";
   grid.append(corner);
@@ -1325,15 +1335,15 @@ function renderScheduleGrid() {
     header.style.gridColumn = String(dayColumn.get(dayIndex));
     header.style.gridRow = "1";
     header.style.background = isToday
-      ? `linear-gradient(180deg, ${rgba(primary, 0.12)}, rgba(255,255,255,.045))`
-      : "rgba(255,255,255,.025)";
+      ? rgba(primary, 0.22)
+      : "rgba(255,255,255,.02)";
     if (isToday) {
-      header.style.boxShadow = `inset 0 -3px 0 ${rgba(primary, 0.8)}`;
+      header.style.boxShadow = `inset 0 -2px 0 ${primary}`;
     }
 
     const day = document.createElement("strong");
     day.className =
-      "text-[14px] font-semibold tracking-[-0.02em] text-[var(--foreground)] sm:text-[17px]";
+      "text-[16px] font-light tracking-[-0.02em] text-[var(--foreground)] sm:text-[22px]";
     day.textContent = String(label).replace("週", "");
 
     const date = document.createElement("span");
@@ -1346,8 +1356,8 @@ function renderScheduleGrid() {
     if (calendarInfo?.label) {
       const notice = document.createElement("span");
       notice.className = calendarInfo.noClass
-        ? "mt-1 max-w-full truncate rounded-full border border-[#f4a0a5]/25 bg-[#f07178]/[.10] px-1.5 py-0.5 text-[9px] font-semibold text-[#f4a0a5]"
-        : "mt-1 max-w-full truncate rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
+        ? "mt-1 max-w-full truncate rounded-[3px] border border-[#f4a0a5]/25 bg-[#f07178]/[.10] px-1.5 py-0.5 text-[9px] font-semibold text-[#f4a0a5]"
+        : "mt-1 max-w-full truncate rounded-[3px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
       notice.textContent = calendarInfo.noClass
         ? `${calendarInfo.label} · 停課`
         : calendarInfo.label;
@@ -1363,13 +1373,13 @@ function renderScheduleGrid() {
 
     const periodLabel = document.createElement("div");
     periodLabel.className =
-      "sticky left-0 z-30 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.08] bg-[rgba(16,13,19,.72)] px-0.5 text-center backdrop-blur-[18px] sm:px-1";
+      "sticky left-0 z-30 flex min-w-0 flex-col items-center justify-center border-b border-r border-white/[.08] bg-[rgba(16,13,19,.94)] px-0.5 text-center backdrop-blur-[18px] sm:px-1";
     periodLabel.style.gridColumn = "1";
     periodLabel.style.gridRow = String(periodRow.get(periodIndex));
 
     const slot = document.createElement("strong");
     slot.className =
-      "text-base font-semibold leading-none text-[var(--foreground)] sm:text-lg";
+      "text-lg font-light leading-none text-[var(--foreground)] sm:text-xl";
     slot.textContent = period.slot;
 
     const time = document.createElement("span");
@@ -1389,7 +1399,7 @@ function renderScheduleGrid() {
       cell.style.background = calendarForDay(dayIndex)?.noClass
         ? rgba(primary, 0.045)
         : dayIndex === today
-          ? rgba(primary, 0.018)
+          ? rgba(primary, 0.06)
           : "rgba(255,255,255,.012)";
       grid.append(cell);
     });
@@ -1416,16 +1426,14 @@ function renderScheduleGrid() {
 
     const card = document.createElement("article");
     card.className =
-      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col justify-center overflow-hidden rounded-[14px] border p-3 text-left text-[var(--foreground)] shadow-sm backdrop-blur-[12px] transition duration-150 hover:-translate-y-px hover:bg-white/[.04] sm:m-[3px]";
+      "z-10 m-[2px] flex min-h-0 min-w-0 flex-col justify-end overflow-hidden rounded-[4px] border p-2.5 text-left text-[var(--foreground)] transition-colors duration-150 hover:border-white/[.28] sm:m-[3px] sm:p-3";
     card.style.gridColumn = String(compactColumn);
     card.style.gridRow = `${compactStartRow} / ${compactEndRow + 1}`;
-    card.style.background = theme.background;
-    card.style.borderColor = isNow
-      ? rgba(primary, 0.42)
-      : theme.border;
-    card.style.boxShadow = isNow
-      ? `0 0 0 1px ${rgba(primary, 0.42)}, 0 8px 24px ${theme.glow}`
-      : `0 4px 14px ${theme.glow}`;
+    // The class in progress is the one flooded tile; the rest stay tinted glass.
+    card.style.background = isNow ? rgba(primary, 0.82) : theme.background;
+    card.style.borderColor = isNow ? primary : theme.border;
+    card.style.boxShadow = "none";
+    if (isNow) card.style.color = "var(--control-text)";
     card.title = [
       block.name,
       block.room,
@@ -1447,7 +1455,7 @@ function renderScheduleGrid() {
 
     const title = document.createElement("strong");
     title.className =
-      "min-w-0 line-clamp-3 break-words text-[13px] font-semibold leading-5 tracking-[-0.015em] text-[var(--foreground)] sm:text-sm";
+      "min-w-0 line-clamp-3 break-words text-[13px] font-medium leading-5 tracking-[-0.01em] text-inherit sm:text-sm";
     title.textContent = block.name || "未命名課程";
 
     titleRow.append(title);
@@ -1455,7 +1463,7 @@ function renderScheduleGrid() {
     if (isNow) {
       const badge = document.createElement("span");
       badge.className =
-        "shrink-0 rounded-full border border-[var(--primary-ring)] bg-[var(--primary-soft)] px-2 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
+        "shrink-0 rounded-[3px] bg-[var(--control-text)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--primary)]";
       badge.textContent = "現在";
       titleRow.append(badge);
     }
@@ -1464,6 +1472,7 @@ function renderScheduleGrid() {
     meta.className =
       "mt-1 line-clamp-2 break-words text-[10px] font-medium leading-4 text-[var(--muted)] sm:text-[11px]";
     meta.textContent = [block.room, block.teacher].filter(Boolean).join(" · ");
+    if (isNow) meta.style.color = "inherit";
 
     card.append(titleRow);
     if (meta.textContent) card.append(meta);
@@ -1472,6 +1481,18 @@ function renderScheduleGrid() {
   });
 
   scheduleGrid.append(grid);
+  const scroller = scheduleGrid.parentElement;
+  const todayColumn = dayIndices.indexOf(today);
+  if (!fitsWithoutScroll && scroller && todayColumn > 0) {
+    scroller.scrollLeft = todayColumn * dayMin;
+  }
+  document.dispatchEvent(new CustomEvent("nutc:schedule", {
+    detail: {
+      blocks,
+      today,
+      noClassDays: dayIndices.filter((dayIndex) => calendarForDay(dayIndex)?.noClass),
+    },
+  }));
 }
 
 function updateScheduleMeta(data) {
@@ -1622,7 +1643,7 @@ function absenceItemAccent(item, index) {
     hash = (hash * 31 + char.charCodeAt(0)) | 0;
   }
 
-  return usable[Math.abs(hash) % Math.max(1, usable.length)] || "#f0a8c8";
+  return legibleAccent(usable[Math.abs(hash) % Math.max(1, usable.length)] || "#f0a8c8");
 }
 
 function setAbsenceMessage(message, { kind = "info" } = {}) {
@@ -1653,6 +1674,11 @@ function setAbsenceMessage(message, { kind = "info" } = {}) {
   card.append(icon, text);
   absenceListContent.append(card);
   renderIcons();
+  document.dispatchEvent(new CustomEvent("nutc:absences", {
+    detail: kind === "info"
+      ? { total: 0, summary: {} }
+      : { message: kind === "loading" ? "載入中…" : message },
+  }));
 }
 
 function renderAbsenceList() {
@@ -1669,7 +1695,6 @@ function renderAbsenceList() {
     return;
   }
 
-  const rgba = window.NutcTheme?.rgba || ((color) => color);
   absenceListContent.setAttribute("aria-busy", "false");
   absenceListContent.replaceChildren();
 
@@ -1677,40 +1702,31 @@ function renderAbsenceList() {
     ([, count]) => Number(count) > 0,
   );
 
+  // One inline summary line, then hairline-divided rows: no boxes in boxes.
   if (summaryEntries.length) {
-    const summary = document.createElement("div");
+    const summary = document.createElement("p");
     summary.className =
-      "mb-3 flex flex-wrap gap-1.5 rounded-[14px] border border-white/[.08] bg-white/[.025] p-2.5";
-
+      "pb-3 text-xs font-medium leading-5 text-[var(--muted)]";
     summaryEntries.forEach(([label, count], index) => {
-      const accent = absenceItemAccent(
-        { status: label, course: label },
-        index,
-      );
-      const chip = document.createElement("span");
-      chip.className =
-        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold";
-      chip.style.color = accent;
-      chip.style.borderColor = rgba(accent, 0.28);
-      chip.style.backgroundColor = rgba(accent, 0.1);
-      chip.textContent = `${label} ${count}`;
-      summary.append(chip);
+      if (index) summary.append(" · ");
+      const value = document.createElement("strong");
+      value.className = "font-semibold tabular-nums text-[var(--foreground)]";
+      value.textContent = String(count);
+      summary.append(`${label} `, value);
     });
-
     absenceListContent.append(summary);
   }
 
-  const list = document.createElement("div");
-  list.className = "grid gap-2.5";
+  const list = document.createElement("ul");
+  list.className = "divide-y divide-white/[.08] border-t border-white/[.08]";
 
   items.forEach((item, index) => {
     const accent = absenceItemAccent(item, index);
-    const row = document.createElement("article");
-    row.className =
-      "rounded-[16px] border p-3 shadow-sm backdrop-blur-[12px]";
-    row.style.borderColor = rgba(accent, 0.18);
-    row.style.background =
-      `linear-gradient(115deg, ${rgba(accent, 0.07)} 0%, rgba(255,255,255,.025) 78%)`;
+    const row = document.createElement("li");
+    row.className = "py-3";
+
+    const body = document.createElement("div");
+    body.className = "min-w-0";
 
     const course = document.createElement("strong");
     course.className =
@@ -1719,7 +1735,7 @@ function renderAbsenceList() {
 
     const meta = document.createElement("p");
     meta.className =
-      "mt-1 text-[11px] font-medium leading-4 text-[var(--muted)]";
+      "mt-0.5 text-[11px] font-medium leading-4 text-[var(--muted)]";
     meta.textContent = [
       item.className,
       item.teacher,
@@ -1729,8 +1745,8 @@ function renderAbsenceList() {
       .filter(Boolean)
       .join(" · ");
 
-    row.append(course);
-    if (meta.textContent) row.append(meta);
+    body.append(course);
+    if (meta.textContent) body.append(meta);
 
     const statuses = Array.isArray(item.statusLines) && item.statusLines.length
       ? item.statusLines
@@ -1739,34 +1755,28 @@ function renderAbsenceList() {
         : [];
 
     if (statuses.length) {
-      const statusWrap = document.createElement("div");
-      statusWrap.className = "mt-2.5 flex flex-wrap gap-1.5";
-
-      statuses.forEach((statusText, statusIndex) => {
-        const statusAccent = absenceItemAccent(
-          {
-            ...item,
-            status: statusText,
-          },
-          index + statusIndex,
-        );
-        const badge = document.createElement("span");
-        badge.className =
-          "inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold leading-none";
-        badge.style.color = statusAccent;
-        badge.style.borderColor = rgba(statusAccent, 0.32);
-        badge.style.backgroundColor = rgba(statusAccent, 0.11);
-        badge.textContent = statusText;
-        statusWrap.append(badge);
-      });
-
-      row.append(statusWrap);
+      const statusWrap = document.createElement("p");
+      statusWrap.className =
+        "mt-1.5 flex items-baseline gap-2 text-xs font-medium leading-5 text-[var(--foreground)] [overflow-wrap:anywhere]";
+      const dot = document.createElement("span");
+      dot.className = "inline-block h-1.5 w-1.5 shrink-0 -translate-y-px rounded-full";
+      dot.style.background = accent;
+      dot.setAttribute("aria-hidden", "true");
+      const statusText = document.createElement("span");
+      statusText.className = "min-w-0";
+      statusText.textContent = statuses.join(" · ");
+      statusWrap.append(dot, statusText);
+      body.append(statusWrap);
     }
 
+    row.append(body);
     list.append(row);
   });
 
   absenceListContent.append(list);
+  document.dispatchEvent(new CustomEvent("nutc:absences", {
+    detail: { total: items.length, summary: absenceListData.summary || {} },
+  }));
 }
 
 function updateAbsenceMeta(data) {
@@ -1890,17 +1900,8 @@ function renderModules(modules, { animate = false } = {}) {
     moduleGrid.append(button);
   });
 
+  // Doors appear at rest; tilt and flip are the wall's only motion.
   renderIcons();
-
-  if (animate) {
-    void motion?.stagger?.(moduleGrid.children, {
-      step: 48,
-      duration: 340,
-      y: 10,
-      scale: 0.98,
-      maxDelay: 220,
-    });
-  }
 }
 
 // Shortcuts only navigate in the user's own browser; the server never fetches them.
@@ -1925,7 +1926,7 @@ function renderCustomLinks() {
 
   if (!pinned.length) {
     const empty = document.createElement("p");
-    empty.className = "rounded-2xl border border-dashed border-white/[.12] bg-white/[.025] p-4 text-sm text-[var(--muted)] sm:col-span-2";
+    empty.className = "rounded-[6px] border border-dashed border-white/[.12] bg-white/[.025] p-4 text-sm text-[var(--muted)] col-span-full";
     empty.textContent = "尚未釘選捷徑。點選「新增 / 管理捷徑」加入常用網頁。";
     customLinksGrid.append(empty);
     return;
@@ -1971,7 +1972,7 @@ function customLinkAction(label, handler, { tone = "neutral", icon = "" } = {}) 
   button.type = "button";
   button.disabled = customLinkBusy;
   button.className =
-    "custom-link-control inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold" +
+    "custom-link-control inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-[5px] px-3 text-xs font-semibold" +
     (tone === "accent" ? " custom-link-control--accent" : "") +
     (tone === "danger" ? " custom-link-control--danger" : "");
 
@@ -1995,7 +1996,7 @@ function renderCustomLinksManager() {
   customLinksManager.replaceChildren();
   if (!customLinksCache.length) {
     const empty = document.createElement("p");
-    empty.className = "rounded-xl bg-white/[.035] p-3 text-sm text-[var(--muted)]";
+    empty.className = "rounded-[5px] bg-white/[.035] p-3 text-sm text-[var(--muted)]";
     empty.textContent = "尚無自訂捷徑（最多 30 個）。";
     customLinksManager.append(empty);
     return;
@@ -2003,7 +2004,7 @@ function renderCustomLinksManager() {
 
   for (const link of customLinksCache) {
     const row = document.createElement("div");
-    row.className = "custom-link-item rounded-xl border border-white/[.12] bg-white/[.055] p-3";
+    row.className = "custom-link-item rounded-[5px] border border-white/[.12] bg-white/[.055] p-3";
 
     const details = document.createElement("div");
     details.className = "custom-link-details";
@@ -2132,7 +2133,7 @@ function showLoadError(message) {
 
   const card = document.createElement("div");
   card.className =
-    "rounded-[20px] border border-white/[.12] bg-[rgba(12,10,14,.34)] p-4 text-sm font-medium text-[var(--muted)] shadow-sm backdrop-blur-[18px] backdrop-saturate-[170%]";
+    "rounded-[8px] border border-white/[.12] bg-[rgba(12,10,14,.34)] p-4 text-sm font-medium text-[var(--muted)] shadow-sm backdrop-blur-[18px] backdrop-saturate-[170%]";
   card.textContent = message || "校務系統載入失敗。";
   moduleGrid.append(card);
 }

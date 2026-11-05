@@ -16,9 +16,9 @@ export const buttonVariants = cva(
         glass: "shadcn-dashboard-glass text-[var(--foreground)] hover:-translate-y-px",
       },
       size: {
-        default: "min-h-[42px] rounded-xl px-3.5",
-        sm: "min-h-[36px] rounded-xl px-3 text-xs",
-        icon: "h-[42px] w-[42px] rounded-xl",
+        default: "min-h-[42px] rounded-[5px] px-3.5",
+        sm: "min-h-[36px] rounded-[5px] px-3 text-xs",
+        icon: "h-[42px] w-[42px] rounded-[5px]",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

@@ -189,8 +189,8 @@ async function loadImages(images, inline = false) {
 
       const image = document.createElement("img");
       image.className = inline
-        ? "h-10 w-auto max-w-[104px] rounded-lg border border-white/[.12] bg-white p-1 object-contain shadow-sm"
-        : "max-h-40 max-w-full rounded-xl border border-white/[.12] bg-white p-1 object-contain shadow-sm";
+        ? "h-10 w-auto max-w-[104px] rounded-[4px] border border-white/[.12] bg-white p-1 object-contain shadow-sm"
+        : "max-h-40 max-w-full rounded-[5px] border border-white/[.12] bg-white p-1 object-contain shadow-sm";
       image.src = url;
       image.alt = item.alt || "ePortal verification image";
       image.width = item.width || 0;
@@ -231,7 +231,7 @@ function makeField(control) {
   if (control.type === "checkbox" || control.type === "radio") {
     const label = document.createElement("label");
     label.className =
-      "flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border border-white/[.12] bg-white/[.06] px-3 py-2.5 text-sm font-semibold transition hover:border-white/[.18] hover:bg-white/[.09]";
+      "flex min-h-[48px] cursor-pointer items-center gap-3 rounded-[5px] border border-white/[.12] bg-white/[.06] px-3 py-2.5 text-sm font-semibold transition hover:border-white/[.18] hover:bg-white/[.09]";
 
     const input = document.createElement("input");
     input.type = control.type;
@@ -286,7 +286,7 @@ function makeField(control) {
   }
 
   input.className +=
-    " min-h-12 w-full rounded-xl border border-white/[.12] bg-black/20 px-3 py-2.5 text-base font-semibold text-[var(--foreground)] outline-none transition placeholder:text-white/35 focus:border-[var(--primary)] focus:ring-4 focus:ring-[var(--primary-soft)] disabled:cursor-not-allowed disabled:opacity-50";
+    " min-h-12 w-full rounded-[5px] border border-white/[.12] bg-black/20 px-3 py-2.5 text-base font-semibold text-[var(--foreground)] outline-none transition placeholder:text-white/35 focus:border-[var(--primary)] focus:ring-4 focus:ring-[var(--primary-soft)] disabled:cursor-not-allowed disabled:opacity-50";
   input.id = `bridge-${control.key}`;
   input.dataset.bridgeKey = control.key;
   input.disabled = Boolean(control.disabled);
@@ -325,8 +325,8 @@ function makeAction(control, index) {
 
   button.className =
     index === 0
-      ? "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50"
-      : "min-h-[46px] rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50";
+      ? "min-h-[46px] rounded-[5px] border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50"
+      : "min-h-[46px] rounded-[5px] border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold text-[var(--foreground)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50";
 
   button.addEventListener("click", () => submitAction(control.key));
   return button;
@@ -452,7 +452,7 @@ function render(state) {
 
     const item = document.createElement("div");
     item.className =
-      "rounded-xl border border-white/[.10] bg-white/[.06] px-3 py-2.5 text-sm font-medium leading-6 text-[var(--muted)]";
+      "rounded-[5px] border border-white/[.10] bg-white/[.06] px-3 py-2.5 text-sm font-medium leading-6 text-[var(--muted)]";
     item.textContent = message;
     messageList.append(item);
   }
@@ -510,7 +510,7 @@ function render(state) {
     const enter = document.createElement("button");
     enter.type = "submit";
     enter.className =
-      "min-h-[46px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
+      "min-h-[46px] rounded-[5px] border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] shadow-sm transition duration-150 hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] hover:text-[var(--control-hover-text)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
     enter.textContent = "繼續";
     actionList.append(enter);
   }

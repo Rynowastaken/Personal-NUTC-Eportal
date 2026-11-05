@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  // Library mode leaves React's process.env checks in the browser bundle.
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
   resolve: {
     alias: { "@": path.resolve("frontend/src") },
   },

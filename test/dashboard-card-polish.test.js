@@ -68,12 +68,12 @@ test("built-in modules and pinned links share smooth card rendering", async () =
   for (const card of [native, custom]) {
     // Simulate a mobile device with an older Tailwind stylesheet. Even with
     // missing arbitrary rounded-* utilities, the renderer rounds each surface.
-    assert.equal(card.style.borderRadius, "20px");
+    assert.equal(card.style.borderRadius, "6px");
     assert.equal(card.style.overflow, "hidden");
     assert.equal(card.style.backgroundClip, "padding-box");
-    assert.equal(card.style.border, "1px solid rgba(255,255,255,.13)");
-    assert.equal(card.children[0].style.borderRadius, "12px");
-    assert.equal(card.children[2].style.borderRadius, "10px");
+    assert.equal(card.style.border, "1px solid rgba(255,255,255,.12)");
+    assert.equal(card.children[0].style.borderRadius, "4px");
+    assert.equal(card.children[2].style.borderRadius, "4px");
     assert.equal(card.children[0].style.backgroundClip, "padding-box");
     assert.equal(card.children[2].style.backgroundClip, "padding-box");
   }
@@ -96,17 +96,17 @@ test("single rounded border and clean surfaces come from dashboard CSS", async (
   const componentCSS = css.slice(start);
   assert.ok(start >= 0, "dashboard stylesheet must own the card chrome");
   assert.doesNotMatch(generated, /\.dashboard-module-card\s*\{/);
-  assert.match(componentCSS, /border-radius: 20px;/);
+  assert.match(componentCSS, /border-radius: 6px;/);
   assert.match(componentCSS, /overflow: hidden;/);
   assert.match(componentCSS, /background-clip: padding-box;/);
   const cardRule = componentCSS.slice(0, componentCSS.indexOf("}"));
   assert.ok(cardRule.indexOf("background-clip: padding-box;") >
     cardRule.indexOf("background: linear-gradient("),
     "background-clip must follow the shorthand, even without JS");
-  assert.match(componentCSS, /border: 1px solid rgba\(255,255,255,\.13\);/);
+  assert.match(componentCSS, /border: 1px solid rgba\(255,255,255,\.12\);/);
   assert.match(componentCSS, /\.dashboard-module-card::before\s*\{[\s\S]*?content: none;/);
-  assert.match(componentCSS, /\.dashboard-module-icon\s*\{\s*border-radius: 12px;/);
-  assert.match(componentCSS, /\.dashboard-module-action\s*\{\s*border-radius: 10px;/);
+  assert.match(componentCSS, /\.dashboard-module-icon\s*\{\s*border-radius: 4px;/);
+  assert.match(componentCSS, /\.dashboard-module-action\s*\{\s*border-radius: 4px;/);
   assert.match(componentCSS, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(html, /\/dashboard\.css\?v=\d+/);
   assert.match(html, /\/app\.js\?v=\d+/);
@@ -119,8 +119,8 @@ test("glass action buttons match shadcn version and preserve existing dimensions
   const dashboardCss = await read("public/dashboard.css");
   assert.match(css, /\.shadcn-dashboard-glass\s*\{[\s\S]*?border: 1px solid transparent;/);
   assert.match(css, /\.shadcn-dashboard-glass::before[\s\S]*?transition: opacity/);
-  assert.match(dashboardCss, /\.dashboard-tinted-glass\s*\{[\s\S]*?border: 1px solid transparent;/);
-  assert.match(dashboardCss, /\.dashboard-tinted-glass::before[\s\S]*?transition: opacity/);
+  assert.match(dashboardCss, /\.dashboard-tinted-glass\s*\{[\s\S]*?border: 1px solid var\(--glass-edge/);
+  assert.doesNotMatch(dashboardCss, /\.dashboard-tinted-glass::before/);
   assert.match(html, /id="scheduleRefreshButton"[\s\S]*?min-h-\[36px\]/);
   assert.match(html, /id="absenceRefreshButton"[\s\S]*?min-h-\[36px\]/);
   assert.match(html, /id="manageCustomLinks"[\s\S]*?min-h-\[42px\]/);

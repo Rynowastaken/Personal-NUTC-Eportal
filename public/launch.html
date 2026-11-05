@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Opening system · NUTC Portal</title>
+    <title>開啟系統 · NUTC Portal</title>
     <script src="/theme-defaults.js?v=1"></script>
     <link rel="stylesheet" href="/generated/site.css?v=1" />
+    <link rel="stylesheet" href="/tile-wall.css?v=2" />
     <script src="/vendor/lucide-1.24.0.min.js"></script>
   </head>
   <body
@@ -24,12 +25,12 @@
 
     <main class="mx-auto flex min-h-screen w-full max-w-2xl items-center px-4 py-8 sm:px-6">
       <section
-        class="w-full rounded-[22px] border border-white/[.12] bg-[rgba(12,10,14,.46)] p-5 shadow-[0_20px_70px_rgba(0,0,0,.36)] backdrop-blur-[22px] backdrop-saturate-[170%] sm:p-6"
+        class="w-full rounded-[8px] border border-white/[.12] bg-[rgba(12,10,14,.46)] p-5 shadow-[0_20px_70px_rgba(0,0,0,.36)] backdrop-blur-[22px] backdrop-saturate-[170%] sm:p-6"
       >
         <header class="flex items-start gap-4">
           <div
             id="launchSpinner"
-            class="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
+            class="grid h-12 w-12 shrink-0 place-items-center rounded-[6px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
             aria-hidden="true"
           >
             <svg
@@ -42,24 +43,32 @@
             >
               <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
             </svg>
+            <svg
+              viewBox="0 0 24 24"
+              class="launch-failed-icon hidden h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>
+            </svg>
           </div>
 
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-start justify-between gap-2">
               <div class="min-w-0">
-                <p class="text-[11px] font-semibold tracking-[0.08em] text-[var(--muted)]">
-                  NUTC PORTAL · SSO LAUNCH
-                </p>
                 <h1
                   id="launchTitle"
-                  class="mt-1 truncate text-xl font-semibold tracking-[-0.035em] sm:text-2xl"
+                  class="truncate text-[26px] font-light leading-tight tracking-[-0.03em] sm:text-[32px]"
                 >
-                  Preparing system…
+                  準備開啟…
                 </h1>
               </div>
               <span
                 id="launchElapsed"
-                class="rounded-lg border border-white/[.10] bg-white/[.05] px-2 py-1 text-[11px] font-semibold tabular-nums text-[var(--muted)]"
+                class="rounded-[4px] border border-white/[.10] bg-white/[.05] px-2 py-1 text-[11px] font-semibold tabular-nums text-[var(--muted)]"
               >0.0s</span>
             </div>
 
@@ -67,74 +76,78 @@
               id="launchDescription"
               class="mt-2 text-sm font-medium leading-6 text-[var(--muted)]"
             >
-              Creating a secure server-side ePortal handoff for this browser.
+              正在為這個瀏覽器建立安全的 ePortal 單一登入交接。
             </p>
           </div>
         </header>
 
-        <div class="mt-5 rounded-[16px] border border-white/[.10] bg-white/[.04] p-4">
+        <div class="mt-5 rounded-[6px] border border-white/[.10] bg-white/[.04] p-4">
           <div class="flex items-center justify-between gap-3">
-            <span class="text-xs font-semibold text-[var(--muted)]">Current stage</span>
+            <span class="text-xs font-semibold text-[var(--muted)]">目前階段</span>
             <span
               id="launchStage"
               class="text-xs font-semibold text-[var(--accent)]"
-            >initializing</span>
+            >初始化</span>
           </div>
           <p
             id="launchDetail"
-            class="mt-2 text-sm font-medium leading-6 text-[var(--foreground)]"
+            class="mt-2 text-sm font-medium leading-6 text-[var(--foreground)] [overflow-wrap:anywhere]"
           >
-            Loading the launch bridge…
+            載入啟動橋接…
           </p>
         </div>
 
         <div class="mt-4">
           <div class="mb-2 flex items-center justify-between gap-3">
-            <span class="text-xs font-semibold text-[var(--muted)]">Live progress</span>
+            <span class="text-xs font-semibold text-[var(--muted)]">進度</span>
             <span id="launchTarget" class="text-[11px] font-medium text-[var(--faint)]"></span>
           </div>
           <ol
             id="launchLog"
-            class="grid max-h-64 gap-2 overflow-y-auto rounded-[16px] border border-white/[.10] bg-black/10 p-3"
+            class="grid max-h-64 gap-2 overflow-y-auto rounded-[6px] border border-white/[.10] bg-black/10 p-3"
             aria-live="polite"
           ></ol>
         </div>
 
         <div
           id="launchError"
-          class="mt-4 hidden rounded-[16px] border border-[#f07178]/25 bg-[#f07178]/[.08] p-4"
+          class="mt-4 hidden rounded-[6px] border border-[#f07178]/25 bg-[#f07178]/[.08] p-4"
           role="alert"
         >
-          <strong class="text-sm font-semibold text-[#f4a0a5]">Launch failed</strong>
-          <p id="launchErrorMessage" class="mt-1 text-sm font-medium leading-6 text-[var(--muted)]"></p>
+          <strong id="launchErrorTitle" class="text-sm font-semibold text-[#f4a0a5]">無法開啟</strong>
+          <p id="launchErrorMessage" class="mt-1 text-sm font-medium leading-6 text-[var(--foreground)] [overflow-wrap:anywhere]"></p>
+          <details id="launchErrorRaw" class="mt-3 hidden text-[var(--muted)]">
+            <summary class="cursor-pointer text-xs font-semibold">技術細節</summary>
+            <pre id="launchErrorRawText" class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-[4px] border border-white/[.08] bg-black/25 p-3 font-mono text-[11px] leading-5 [overflow-wrap:anywhere]"></pre>
+          </details>
           <div class="mt-3 flex flex-wrap gap-2">
             <button
               id="launchRetry"
-              class="min-h-[42px] rounded-xl border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] transition hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+              class="min-h-[42px] rounded-[5px] border border-[var(--control-border)] bg-[var(--control-bg)] px-4 text-sm font-semibold text-[var(--control-text)] transition hover:-translate-y-px hover:border-[var(--control-hover-border)] hover:bg-[var(--control-hover-bg)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
               type="button"
             >
-              Retry
+              重試
             </button>
             <button
               id="launchLogin"
-              class="hidden min-h-[42px] rounded-xl border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold transition hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+              class="hidden min-h-[42px] rounded-[5px] border border-white/[.12] bg-white/[.07] px-4 text-sm font-semibold transition hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
               type="button"
             >
               登入 Server ePortal
             </button>
             <button
               id="launchBack"
-              class="min-h-[42px] rounded-xl border border-white/[.12] bg-white/[.05] px-4 text-sm font-semibold text-[var(--muted)] transition hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.09] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+              class="min-h-[42px] rounded-[5px] border border-white/[.12] bg-white/[.05] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.09] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
               type="button"
             >
-              返回 Dashboard
+              回到首頁
             </button>
           </div>
         </div>
 
         <noscript>
           <p class="mt-4 text-sm font-medium text-[#f4a0a5]">
-            JavaScript is required to prepare the secure SSO handoff.
+            需要啟用 JavaScript 才能建立安全的單一登入交接。
           </p>
         </noscript>
       </section>
@@ -142,6 +155,6 @@
 
     <script src="/theme.js?v=4"></script>
     <script src="/motion.js?v=1"></script>
-    <script src="/launch.js?v=1" type="module"></script>
+    <script src="/launch.js?v=3" type="module"></script>
   </body>
 </html>

@@ -232,7 +232,7 @@ test("main page exposes caption toggle, language options and attribution", async
   assert.match(html, /data-hitokoto-language="original"/);
   assert.match(html, /data-hitokoto-language="en"/);
   assert.match(html, /data-hitokoto-language="ja"/);
-  assert.match(html, /\/dashboard\.css\?v=5/);
+  assert.match(html, /\/dashboard\.css\?v=6/);
   assert.doesNotMatch(html, /<select id="hitokotoLanguage"/);
   assert.match(app, /createHitokotoWidget/);
   assert.match(app, /\/api\/preferences\/hitokoto/);
@@ -249,7 +249,7 @@ test("custom language menu uses animated rounded glass and keyboard accessibilit
   assert.match(html, /id="hitokotoLanguageOptions"[^>]*[\s\S]*?role="listbox"/);
   assert.match(css, /\.hitokoto-language-menu\[data-state="open"\]/);
   assert.match(css, /transform: translate3d\(0,-8px,0\) scale\(\.985\)/);
-  assert.match(css, /\.hitokoto-language-menu[^{]*\{[\s\S]*?border-radius: 16px;/);
+  assert.match(css, /\.hitokoto-language-menu[^{]*\{[\s\S]*?border-radius: 6px;/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(app, /function setHitokotoLanguageMenuOpen\(/);
   assert.match(app, /function moveHitokotoLanguageFocus\(/);

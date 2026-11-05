@@ -8,7 +8,10 @@ const launchLog = document.querySelector("#launchLog");
 const launchTarget = document.querySelector("#launchTarget");
 const launchSpinner = document.querySelector("#launchSpinner");
 const launchError = document.querySelector("#launchError");
+const launchErrorTitle = document.querySelector("#launchErrorTitle");
 const launchErrorMessage = document.querySelector("#launchErrorMessage");
+const launchErrorRaw = document.querySelector("#launchErrorRaw");
+const launchErrorRawText = document.querySelector("#launchErrorRawText");
 const launchRetry = document.querySelector("#launchRetry");
 const launchLogin = document.querySelector("#launchLogin");
 const launchBack = document.querySelector("#launchBack");
@@ -38,6 +41,33 @@ const stageLabels = {
   ready: "ready",
   error: "error",
 };
+
+// Same named failures and recovery copy as the server login page; the raw
+// Playwright text is kept for the collapsed technical detail only.
+function describeLaunchError(message, code) {
+  if (/Executable doesn't exist|playwright install|browser executable[^\n]*not found/i.test(message)) {
+    return {
+      code: "EPORTAL_BROWSER_NOT_INSTALLED",
+      title: "伺服器缺少 Chromium",
+      message: "登入服務缺少 Playwright Chromium。請在伺服器的專案目錄執行 npx playwright install chromium，再按「重試」。",
+    };
+  }
+  if (/Host system is missing dependencies|error while loading shared libraries/i.test(message)) {
+    return {
+      code: "EPORTAL_BROWSER_DEPENDENCIES_MISSING",
+      title: "伺服器缺少 Chromium 函式庫",
+      message: "登入服務缺少 Chromium 系統函式庫。請由伺服器管理員安裝 Playwright 的系統依賴（npx playwright install-deps chromium）。",
+    };
+  }
+  if (code === "EPORTAL_LOGIN_REQUIRED") {
+    return { code, title: "需要登入 Server ePortal", message };
+  }
+  return { code, title: "無法開啟", message };
+}
+
+function isRawError(message) {
+  return message.length > 160 || /\n|╔|Executable doesn't exist|at .+:\d+:\d+/.test(message);
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,7 +123,7 @@ function appendLog(stage, detail, elapsedMs = null) {
 
   const item = document.createElement("li");
   item.className =
-    "grid grid-cols-[auto_1fr] gap-3 rounded-xl border border-white/[.08] bg-white/[.035] px-3 py-2.5";
+    "grid grid-cols-[auto_1fr] gap-3 rounded-[5px] border border-white/[.08] bg-white/[.035] px-3 py-2.5";
 
   const time = document.createElement("span");
   time.className =
@@ -114,7 +144,7 @@ function appendLog(stage, detail, elapsedMs = null) {
 
   const copy = document.createElement("span");
   copy.className =
-    "mt-0.5 block text-[11px] font-medium leading-5 text-[var(--muted)]";
+    "mt-0.5 block text-[11px] font-medium leading-5 text-[var(--muted)] [overflow-wrap:anywhere]";
   copy.textContent = detail;
 
   body.append(name, copy);
@@ -131,39 +161,53 @@ function appendLog(stage, detail, elapsedMs = null) {
 
 function renderJob(job) {
   if (job.module) {
-    launchTitle.textContent = `Opening ${job.module.shortName}`;
+    launchTitle.textContent = `開啟 ${job.module.shortName}`;
     launchDescription.textContent =
       job.module.description ||
       "Creating a secure server-side ePortal handoff for this browser.";
-    document.title = `Opening ${job.module.shortName} · NUTC Portal`;
+    document.title = `開啟 ${job.module.shortName} · NUTC Portal`;
   }
 
   launchStage.textContent = stageLabels[job.stage] || job.stage;
-  launchDetail.textContent =
-    job.detail || "Server-side launch work is in progress.";
-
-  if (job.target) {
-    launchTarget.textContent = `Target: ${job.target}`;
-  }
-
-  appendLog(job.stage, job.detail || "", job.elapsedMs);
-
   if (job.state === "error") {
     showError(
       job.error?.message || job.detail || "Module launch failed.",
       job.error?.code || "",
     );
+    return;
   }
+  launchDetail.textContent =
+    job.detail || "Server-side launch work is in progress.";
+
+  if (job.target) {
+    launchTarget.textContent = `目標：${job.target}`;
+  }
+
+  appendLog(job.stage, job.detail || "", job.elapsedMs);
 }
 
-function showError(message, code = "") {
+function showError(rawMessage, rawCode = "") {
+  if (stopped) return;
   stopped = true;
+  const raw = String(rawMessage || "");
+  const { code, title, message } = describeLaunchError(raw, rawCode);
+  const showRaw = message === raw ? isRawError(raw) : true;
   stopElapsedClock();
   launchSpinner.querySelector("svg")?.classList.remove("animate-spin");
-  launchStage.textContent = "error";
+  launchSpinner.querySelector("svg:not(.launch-failed-icon)")?.classList.add("hidden");
+  launchSpinner.querySelector(".launch-failed-icon")?.classList.remove("hidden");
+  launchSpinner.classList.add("border-[#f07178]/30", "bg-[#f07178]/[.10]", "text-[#f4a0a5]");
+  launchStage.textContent = "錯誤";
   launchStage.classList.remove("text-[var(--accent)]");
   launchStage.classList.add("text-[#f4a0a5]");
-  launchErrorMessage.textContent = message;
+  launchErrorTitle.textContent = title;
+  launchErrorMessage.textContent = message === raw && showRaw
+    ? "伺服器回傳了未預期的錯誤。請展開下方的技術細節，或檢查伺服器日誌。"
+    : message;
+  launchErrorRawText.textContent = showRaw ? raw : "";
+  launchErrorRaw.classList.toggle("hidden", !showRaw);
+  launchErrorRaw.open = false;
+  launchDetail.textContent = title + "。";
   launchError.classList.remove("hidden");
   launchLogin.classList.toggle(
     "hidden",
@@ -216,9 +260,13 @@ async function startLaunch() {
   lastStageKey = "";
   launchLog.replaceChildren();
   launchError.classList.add("hidden");
+  launchErrorRaw.classList.add("hidden");
   launchLogin.classList.add("hidden");
   launchStage.classList.remove("text-[#f4a0a5]");
   launchStage.classList.add("text-[var(--accent)]");
+  launchSpinner.querySelector(".launch-failed-icon")?.classList.add("hidden");
+  launchSpinner.querySelector("svg:not(.launch-failed-icon)")?.classList.remove("hidden");
+  launchSpinner.classList.remove("border-[#f07178]/30", "bg-[#f07178]/[.10]", "text-[#f4a0a5]");
   launchSpinner.querySelector("svg")?.classList.add("animate-spin");
   launchTarget.textContent = "";
   startElapsedClock();

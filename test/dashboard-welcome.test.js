@@ -31,12 +31,13 @@ test("existing account profile updates the hero username using safe textContent"
 test("welcome headline matches demo typography while remaining mobile-safe", async () => {
   const css = await read("public/dashboard.css");
   const demoCss = await read("demo/styles.css");
-  assert.match(demoCss, /\.welcome h1 \{ font-size: clamp\(31px/);
-  assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?font-size: clamp\(2\.15rem, 5\.2vw, 3\.5rem\);/);
-  assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?font-weight: 800;/);
-  assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?letter-spacing: -\.07em;/);
+  assert.match(demoCss, /\.welcome h1 \{ font-size: clamp\(72px/);
+  assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?font-size: clamp\(4\.5rem, 15vw, 12rem\);/);
+  assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?font-weight: 300;/);
+  assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?letter-spacing: -\.04em;/);
   assert.match(css, /#welcomeUsername\s*\{[\s\S]*?color: var\(--primary, #e6a4ad\);/);
   assert.match(css, /overflow-wrap: anywhere;/);
   assert.match(css, /@media \(max-width: 640px\)/);
-  assert.match(css, /font-size: clamp\(1\.9rem, 8\.2vw, 2\.35rem\)/);
+  assert.match(css, /font-size: clamp\(3\.6rem, 18vw, 5rem\)/);
+  assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?overflow: clip;/);
 });

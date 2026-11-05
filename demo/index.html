@@ -9,6 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='17' fill='%2325222b'/%3E%3Cpath d='m13 24 19-10 19 10-19 10-19-10zm7 8v12c9 7 15 7 24 0V32' fill='none' stroke='%23dd909b' stroke-width='4' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./features.css">
+  <script type="module" src="./today.js"></script>
   <script type="module" src="./app.js"></script>
   <script type="module" src="./features.js"></script>
   <script type="module" src="./dropdowns.js"></script>
@@ -45,7 +46,7 @@
         <span><strong>NUTC Portal</strong><small>Personal Campus Dashboard</small></span>
       </a>
       <div class="header-actions">
-        <button type="button" class="demo-pill demo-status-trigger" id="demoServerButton" aria-label="開啟模擬 Server 狀態"><span class="status-dot"></span> DEMO MODE</button>
+        <button type="button" class="demo-pill demo-status-trigger" id="demoServerButton" aria-label="開啟模擬 Server 狀態"><span class="status-dot"></span> DEMO<span class="demo-pill-wide"> MODE</span></button>
         <button type="button" class="avatar-button" id="demoAccountButton" aria-label="編輯示範使用者" title="帳戶設定"><span id="demoAvatarInitial">D</span><img id="demoAvatarImage" alt="" hidden></button>
         <button type="button" class="icon-button" id="settingsButton" aria-label="開啟外觀設定" title="外觀設定">
           <svg class="icon"><use href="#i-settings"></use></svg>
@@ -55,7 +56,6 @@
 
     <main>
       <section class="welcome" aria-label="歡迎">
-        <div class="eyebrow"><svg class="icon"><use href="#i-shield"></use></svg> 互動展示環境 · PUBLIC PREVIEW</div>
         <h1>Welcome: <span id="demoUsername">Demo User</span></h1>
         <div class="demo-quote-row"><p id="demoWelcomeSubtitle" lang="zh-Hant">你的校園日常，一眼掌握。</p>
           <button type="button" id="demoQuoteRefresh" class="mini-icon-button" hidden title="換一句一言" aria-label="換一句一言"><svg class="icon"><use href="#i-refresh"></use></svg></button></div>
@@ -71,12 +71,27 @@
         </div>
       </section>
 
+      <section id="todayWall" class="tile-wall section" aria-label="今天">
+        <button id="nextClassTile" type="button" class="live-tile live-tile--wide glass-pane" aria-describedby="nextClassMeta">
+          <span class="live-tile-face live-tile-label"><span id="nextClassLabel">下一堂</span><span id="nextClassWhen"></span></span>
+          <span class="live-tile-face"><strong id="nextClassName" class="live-tile-value">載入示範課表</strong><span id="nextClassMeta" class="live-tile-meta">示範資料</span></span>
+        </button>
+        <button id="absenceCountTile" type="button" class="live-tile glass-pane" aria-describedby="absenceCountMeta">
+          <span class="live-tile-label"><span>缺曠</span><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg></span>
+          <span class="live-tile-face"><strong id="absenceCountValue" class="live-tile-number">–</strong><span id="absenceCountMeta" class="live-tile-meta">模擬統計</span></span>
+        </button>
+        <div id="todayTile" class="live-tile glass-pane" role="group" aria-label="今天日期">
+          <span class="live-tile-label"><span id="todayWeekday">今天</span><svg class="icon" aria-hidden="true"><use href="#i-calendar"></use></svg></span>
+          <span><strong id="todayDate" class="live-tile-number">–</strong><span id="todayMeta" class="live-tile-meta">今日課程</span></span>
+        </div>
+      </section>
+
       <section class="section" aria-labelledby="servicesHeading">
         <div class="section-heading">
-          <div><p class="section-kicker">PORTAL</p><h2 id="servicesHeading">校務系統</h2></div>
+          <div><h2 id="servicesHeading">校務系統</h2></div>
           <span class="section-hint">常用系統 · Demo preview</span>
         </div>
-        <div class="module-grid">
+        <div class="module-grid tile-wall tile-wall--doors tile-wall--fill">
           <button class="module-card" type="button" data-service="student" style="--accent: 218 184 125">
             <span class="module-icon"><svg class="icon"><use href="#i-cap"></use></svg></span>
             <span class="module-copy"><strong>學生管理</strong><small>課表、學籍與學生資訊</small></span>
@@ -107,17 +122,17 @@
 
       <section class="section shortcuts-section" aria-labelledby="shortcutsHeading">
         <div class="section-heading section-heading-actions">
-          <div><p class="section-kicker">PERSONALIZE</p><h2 id="shortcutsHeading">自訂捷徑</h2><p class="section-subtitle">釘選常用網頁，僅儲存在這台裝置的瀏覽器。</p></div>
+          <div><h2 id="shortcutsHeading">自訂捷徑</h2><p class="section-subtitle">釘選常用網頁，僅儲存在這台裝置的瀏覽器。</p></div>
           <button type="button" class="glass-button" id="manageShortcuts"><svg class="icon"><use href="#i-plus"></use></svg> 新增 / 管理捷徑</button>
         </div>
-        <div class="module-grid" id="shortcutGrid"></div>
+        <div class="module-grid tile-wall tile-wall--doors" id="shortcutGrid"></div>
       </section>
 
       <section class="section dashboard-section" aria-labelledby="scheduleHeading">
         <div class="dashboard-grid">
           <section class="dashboard-pane">
             <div class="section-heading">
-              <div><p class="section-kicker">WEEKLY OVERVIEW</p><h2 id="scheduleHeading">本週課表</h2><p class="section-subtitle" id="scheduleMeta">示範課表 · 模擬資料</p><p id="demoCalendarNote" class="calendar-note">示範校曆 · <span id="demoProgramLabel">日間部</span></p></div>
+              <div><h2 id="scheduleHeading">本週課表</h2><p class="section-subtitle" id="scheduleMeta">示範課表 · 模擬資料</p><p id="demoCalendarNote" class="calendar-note">示範校曆 · <span id="demoProgramLabel">日間部</span></p></div>
               <button class="glass-button refresh-button" type="button" id="refreshSchedule"><svg class="icon"><use href="#i-refresh"></use></svg> 更新</button>
             </div>
             <div class="panel schedule-panel">
@@ -127,7 +142,7 @@
           </section>
           <section class="dashboard-pane">
             <div class="section-heading">
-              <div><p class="section-kicker">ATTENDANCE</p><h2>缺曠紀錄</h2><p class="section-subtitle" id="absenceMeta">模擬統計 · 本學期</p></div>
+              <div><h2>缺曠紀錄</h2><p class="section-subtitle" id="absenceMeta">模擬統計 · 本學期</p></div>
               <button class="glass-button refresh-button" type="button" id="refreshAbsence"><svg class="icon"><use href="#i-refresh"></use></svg> 更新</button>
             </div>
             <div class="panel absence-panel">
@@ -144,14 +159,14 @@
   </div>
 
   <dialog id="serviceDialog" class="modal" aria-labelledby="serviceDialogTitle">
-    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">PORTAL PREVIEW</span><h2 id="serviceDialogTitle">服務展示</h2></div><button class="close-button" type="button" data-close="serviceDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <div class="modal-head"><div class="modal-heading"><h2 id="serviceDialogTitle">服務展示</h2></div><button class="close-button" type="button" data-close="serviceDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p class="modal-description" id="serviceDialogDescription"></p>
     <div class="notice-inline"><svg class="icon"><use href="#i-shield"></use></svg> 這是公開展示，不會啟動真實的校務系統登入。</div>
     <div class="modal-actions"><button type="button" class="primary-button" data-close="serviceDialog">了解</button></div>
   </dialog>
 
   <dialog id="settingsDialog" class="modal" aria-labelledby="settingsTitle">
-    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">APPEARANCE</span><h2 id="settingsTitle">外觀設定</h2></div><button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <div class="modal-head"><div class="modal-heading"><h2 id="settingsTitle">外觀設定</h2></div><button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p id="demoFeatureStatus" class="form-error" role="status" aria-live="polite"></p>
     <div class="settings-group"><h3>Color scheme</h3><div id="demoColorSchemeOptions" class="color-scheme-grid" role="radiogroup" aria-label="Color scheme"></div><div id="demoColorPreview" class="color-preview" aria-label="主題配色預覽"></div></div>
     <div class="settings-group"><label for="demoColorfulness">Colorfulness <output id="demoColorfulnessValue" for="demoColorfulness">1.00</output></label><input id="demoColorfulness" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
@@ -169,7 +184,7 @@
   </dialog>
 
   <dialog id="shortcutDialog" class="modal" aria-labelledby="shortcutTitle">
-    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">PERSONALIZE</span><h2 id="shortcutTitle">新增 / 管理捷徑</h2></div><button class="close-button" type="button" data-close="shortcutDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <div class="modal-head"><div class="modal-heading"><h2 id="shortcutTitle">新增 / 管理捷徑</h2></div><button class="close-button" type="button" data-close="shortcutDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p class="modal-description">新增自己的常用連結。這些捷徑只保存在目前瀏覽器，與真正的 ePortal 資料無關。</p>
     <form id="shortcutForm">
       <label class="field-label" for="shortcutName">名稱</label><input class="text-input" id="shortcutName" name="name" placeholder="例如：我的常用網站" maxlength="48" required>
@@ -180,14 +195,14 @@
     <div class="manager-divider"></div><h3 class="manager-title">已釘選的捷徑</h3><div id="shortcutManagerList" class="manager-list"></div>
   </dialog>
   <dialog id="demoAccountDialog" class="modal" aria-labelledby="demoAccountTitle">
-    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">ACCOUNT PREVIEW</span><h2 id="demoAccountTitle">個人資料</h2></div><button class="close-button" type="button" data-close="demoAccountDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <div class="modal-head"><div class="modal-heading"><h2 id="demoAccountTitle">個人資料</h2></div><button class="close-button" type="button" data-close="demoAccountDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p class="modal-description">顯示名稱與頭像只保存在目前的瀏覽器，不會寫入任何真實學生資料。</p>
     <form id="demoAccountForm"><label class="field-label" for="demoUsernameInput">顯示名稱</label><input class="text-input" type="text" id="demoUsernameInput" maxlength="40" required>
     <label class="field-label" for="demoAvatarFile">上傳頭像（最大 2 MB）</label><input class="text-input" id="demoAvatarFile" type="file" accept="image/png,image/jpeg,image/webp">
     <div class="modal-actions"><button class="secondary-button" type="button" id="demoRemoveAvatar">移除頭像</button><button class="primary-button" type="submit">儲存</button></div></form>
   </dialog>
   <dialog id="demoServerDialog" class="modal" aria-labelledby="demoServerTitle">
-    <div class="modal-head"><div class="modal-heading"><span class="modal-eyebrow">SERVER PREVIEW</span><h2 id="demoServerTitle">Server 控制台</h2></div><button class="close-button" type="button" data-close="demoServerDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
+    <div class="modal-head"><div class="modal-heading"><h2 id="demoServerTitle">Server 控制台</h2></div><button class="close-button" type="button" data-close="demoServerDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <div class="notice-inline"><svg class="icon"><use href="#i-info"></use></svg> 此為靜態展示。登入、SSO、登出、更新與重新啟動均不會操作真正的伺服器。</div>
     <div class="demo-server-details"><span>Server ePortal</span><strong>Demo mode · 模擬已連線</strong><span>版本與部署</span><strong>GitHub Pages · Static preview</strong></div>
     <p id="demoServerProgress" class="form-error" role="status" aria-live="polite"></p>

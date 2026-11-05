@@ -1,0 +1,195 @@
+/*
+ * Tile wall system, shared by the dashboard and the public demo.
+ * Flat panes of tinted glass over the user's own background: one 1px edge,
+ * 6px shoulders, no bevels or inner highlights. The user's theme colour
+ * (--primary) owns every live state; everything else stays glass.
+ */
+@font-face {
+  font-family: "Albert Sans";
+  src: url("./fonts/albert-sans.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+:root {
+  --tile-radius: 6px;
+  --tile-gap: clamp(.5rem, 1.2vw, .75rem);
+  --glass: rgba(18,15,22,.46);
+  --glass-edge: rgba(255,255,255,.12);
+  --glass-blur: blur(20px) saturate(160%);
+}
+body {
+  font-family: "Albert Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+::selection {
+  background: color-mix(in srgb, var(--primary) 45%, transparent);
+  color: var(--foreground);
+}
+html {
+  scrollbar-color: color-mix(in srgb, var(--foreground) 22%, transparent) transparent;
+  caret-color: var(--primary);
+  accent-color: var(--primary);
+}
+a { text-underline-offset: .2em; }
+
+/* Pivot-style section headings: large, light, left-aligned. */
+.wall-heading {
+  margin: 0;
+  color: var(--foreground);
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  font-weight: 300;
+  letter-spacing: -.025em;
+  line-height: 1.15;
+}
+.wall-heading-meta {
+  margin-top: .3rem;
+  color: var(--faint);
+  font-size: .75rem;
+  font-weight: 400;
+}
+
+/* The wall: a shared four-column rhythm for live tiles and doors. */
+.tile-wall {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--tile-gap);
+}
+.tile-wall + .tile-wall { margin-top: var(--tile-gap); }
+@media (max-width: 900px) {
+  .tile-wall { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.tile-wall > [role="status"] { grid-column: 1 / -1; }
+/* Doors (ePortal systems, shortcuts) fill one row on desktop whatever their count. */
+.tile-wall--doors {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 176px), 1fr));
+}
+/* The fixed set of ePortal doors always fills its row; user shortcuts don't. */
+.tile-wall--fill {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr));
+}
+@media (max-width: 900px) {
+  .tile-wall--doors,
+  .tile-wall--fill { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.glass-pane {
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--tile-radius);
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* Live tiles: data first, flooded with the theme colour when it matters. */
+.live-tile {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 148px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  overflow: hidden;
+  padding: 1rem 1.05rem;
+  color: var(--foreground);
+  text-align: left;
+  text-decoration: none;
+}
+.live-tile > span, .live-tile-face { display: block; min-width: 0; }
+.live-tile .icon { width: 16px; height: 16px; }
+.live-tile--wide { grid-column: span 2; }
+.live-tile--flood {
+  border-color: color-mix(in srgb, var(--primary) 70%, transparent);
+  background: color-mix(in srgb, var(--primary) 78%, rgba(18,15,22,.6));
+  color: var(--control-text);
+}
+.live-tile--flood .live-tile-label,
+.live-tile--flood .live-tile-meta { color: color-mix(in srgb, var(--control-text) 72%, transparent); }
+.live-tile > .live-tile-label, .live-tile-face.live-tile-label { display: flex; }
+.live-tile-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 500;
+  letter-spacing: .01em;
+}
+.live-tile-value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(1.6rem, 3.4vw, 2.6rem);
+  font-weight: 300;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-tile-number {
+  display: block;
+  font-size: clamp(2.6rem, 5vw, 3.6rem);
+  font-weight: 200;
+  letter-spacing: -.04em;
+  line-height: 1;
+}
+.live-tile-meta {
+  display: block;
+  margin-top: .35rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-tile-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.live-tile-chip {
+  border: 1px solid var(--glass-edge);
+  border-radius: 3px;
+  padding: .1rem .4rem;
+  color: var(--muted);
+  font-size: .7rem;
+}
+button.live-tile { cursor: pointer; font: inherit; }
+.live-tile:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.live-tile--flood:focus-visible { outline-color: var(--foreground); }
+@media (max-width: 900px) {
+  .live-tile--wide { grid-column: 1 / -1; }
+}
+
+/* Signature move 1: tiles tilt toward the pointer while pressed. */
+.wall-tile, .live-tile {
+  transform: perspective(700px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) scale(var(--tilt-s, 1));
+  transition: transform 320ms cubic-bezier(.16, 1, .3, 1), border-color 200ms ease, background-color 200ms ease;
+  will-change: transform;
+}
+.wall-tile[data-pressed="true"], .live-tile[data-pressed="true"] {
+  transition-duration: 90ms;
+}
+
+/* Signature move 2: a live tile flips over when its data changes. */
+@keyframes tile-flip {
+  0% { transform: perspective(700px) rotateX(0deg); }
+  45% { transform: perspective(700px) rotateX(88deg); opacity: .25; }
+  55% { transform: perspective(700px) rotateX(-88deg); opacity: .25; }
+  100% { transform: perspective(700px) rotateX(0deg); opacity: 1; }
+}
+.live-tile-face[data-flip="true"] {
+  animation: tile-flip 620ms cubic-bezier(.16, 1, .3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wall-tile, .live-tile {
+    transform: none !important;
+    transition: none;
+  }
+  .live-tile-face[data-flip="true"] { animation: none; }
+}
+
