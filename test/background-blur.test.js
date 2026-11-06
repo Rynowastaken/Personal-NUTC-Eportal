@@ -61,54 +61,60 @@ function overlayOpacities(backgroundImage) {
   return [Number(match[1]), Number(match[2])];
 }
 
-test("background brightness defaults to the original image darkness", async () => {
+test("background blur defaults to a sharp image with the original overlay", async () => {
   const { theme, backdrop } = createThemeRuntime();
   await theme.init();
-  assert.equal(theme.settings().backgroundBrightness, 100);
+  assert.equal(theme.settings().backgroundBlur, 0);
+  assert.equal(backdrop.style.filter, "");
+  assert.equal(backdrop.style.inset, "");
   assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.68, 0.88]);
   assert.ok(backdrop.style.backgroundImage.includes("https://example.com/background.jpg"));
 });
 
-test("live preview changes only the image overlay, not saved settings", async () => {
+test("live preview blurs only the image layer, not saved settings", async () => {
   const { theme, backdrop, storage } = createThemeRuntime();
   await theme.init();
-  theme.previewBackgroundBrightness(0);
-  assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.98, 0.99]);
-  theme.previewBackgroundBrightness(200);
-  assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.1, 0.2]);
-  assert.equal(theme.settings().backgroundBrightness, 100);
-  assert.equal(storage.has("nutc-portal-background-brightness-v1"), false);
+  theme.previewBackgroundBlur(50);
+  assert.equal(backdrop.style.filter, "blur(12px)");
+  assert.equal(backdrop.style.inset, "-24px");
+  theme.previewBackgroundBlur(100);
+  assert.equal(backdrop.style.filter, "blur(24px)");
+  assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.68, 0.88]);
+  assert.equal(theme.settings().backgroundBlur, 0);
+  assert.equal(storage.has("nutc-portal-background-blur-v1"), false);
 
   // Cancel should restore the saved appearance.
-  theme.previewBackgroundBrightness(theme.settings().backgroundBrightness);
-  assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.68, 0.88]);
+  theme.previewBackgroundBlur(theme.settings().backgroundBlur);
+  assert.equal(backdrop.style.filter, "");
+  assert.equal(backdrop.style.inset, "");
 });
 
-test("Apply saves image brightness without changing theme palette brightness", async () => {
+test("Apply saves the blur without changing theme palette brightness", async () => {
   const storage = new Map();
   const original = createThemeRuntime(storage);
   await original.theme.init();
   original.theme.applySettings({
     ...original.theme.settings(),
-    backgroundBrightness: 150,
+    backgroundBlur: 25,
   });
   assert.equal(original.theme.settings().brightness, 1);
-  assert.equal(original.theme.settings().backgroundBrightness, 150);
-  assert.equal(storage.get("nutc-portal-background-brightness-v1"), "150");
-  assert.deepEqual(overlayOpacities(original.backdrop.style.backgroundImage), [0.39, 0.54]);
+  assert.equal(original.theme.settings().backgroundBlur, 25);
+  assert.equal(storage.get("nutc-portal-background-blur-v1"), "25");
+  assert.equal(original.backdrop.style.filter, "blur(6px)");
 
   const reloaded = createThemeRuntime(storage);
   await reloaded.theme.init();
-  assert.equal(reloaded.theme.settings().backgroundBrightness, 150);
-  assert.deepEqual(overlayOpacities(reloaded.backdrop.style.backgroundImage), [0.39, 0.54]);
+  assert.equal(reloaded.theme.settings().backgroundBlur, 25);
+  assert.equal(reloaded.backdrop.style.filter, "blur(6px)");
 });
 
-test("image brightness is clamped and 0% remains a valid saved value", async () => {
+test("background blur is clamped to 0-100%", async () => {
   const { theme, backdrop } = createThemeRuntime();
   await theme.init();
-  theme.applySettings({ ...theme.settings(), backgroundBrightness: -100 });
-  assert.equal(theme.settings().backgroundBrightness, 0);
-  assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.98, 0.99]);
-  theme.applySettings({ ...theme.settings(), backgroundBrightness: 500 });
-  assert.equal(theme.settings().backgroundBrightness, 200);
+  theme.applySettings({ ...theme.settings(), backgroundBlur: -100 });
+  assert.equal(theme.settings().backgroundBlur, 0);
+  assert.equal(backdrop.style.filter, "");
+  theme.applySettings({ ...theme.settings(), backgroundBlur: 500 });
+  assert.equal(theme.settings().backgroundBlur, 100);
+  assert.equal(backdrop.style.filter, "blur(24px)");
 });

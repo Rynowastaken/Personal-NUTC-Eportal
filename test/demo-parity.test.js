@@ -16,7 +16,7 @@ test("public demo mirrors all non-authenticated dashboard feature sections", () 
     "demoUpdateServer", "demoRestartServer", "demoServerProgress",
     "demoColorSchemeOptions", "demoColorPreview", "demoColorfulness",
     "demoThemeBrightness", "demoBackgroundFile", "demoBackgroundDropzone",
-    "demoRemoveBackground", "brightness", "motionToggle",
+    "demoRemoveBackground", "backgroundBlur", "motionToggle",
     "demoHitokotoEnabled", "demoHitokotoLanguage", "demoHitokotoSpeaker",
     "demoHitokotoSource", "demoQuoteSpeaker", "demoQuoteSource", "demoQuoteRefresh",
     "demoAcademicProgram", "demoCalendarNote", "scheduleTable", "demoAbsenceEvents",
