@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal TronClass Theme
 // @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
-// @version      0.1.1
+// @version      0.1.2
 // @description  Restyle NUTC TronClass (tc.nutc.edu.tw) in the NUTC Portal dark tile look, exam pages included.
 // @author       Rynowastaken
 // @match        https://tc.nutc.edu.tw/*
@@ -143,7 +143,7 @@ hr { border-color: var(--tcx-edge) !important; }
   color: var(--tcx-soft) !important;
 }
 .card .card, .user-menu .menu, .exam-activity-box .card { border: 0 !important; background: transparent !important; }
-.course-header-container, .course-activity-tabs-container, .course-info {
+.course-header-container, .course-activity-tabs-container, .course-activity-tabs, .course-info {
   background: transparent !important;
   border-color: var(--tcx-edge) !important;
 }
@@ -554,7 +554,11 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
     new MutationObserver((records) => {
       for (const record of records) record.addedNodes.forEach(queue);
     }).observe(document.body, { childList: true, subtree: true });
-    // Late stylesheets change what still renders white; sweep once more.
+    // TronClass keeps loading stylesheets after its markup is on screen, so a
+    // panel can turn white after it was swept; sweep again as each one lands.
+    document.addEventListener("load", (event) => {
+      if (event.target instanceof HTMLLinkElement && event.target.rel === "stylesheet") queue(document.body);
+    }, true);
     window.addEventListener("load", () => queue(document.body), { once: true });
   };
   if (document.readyState === "loading") {
