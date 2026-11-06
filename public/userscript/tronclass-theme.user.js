@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal TronClass Theme
 // @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
-// @version      0.3.1
+// @version      0.3.2
 // @description  Dark NUTC Portal theme for TronClass (tc.nutc.edu.tw) itself, including exam pages. The rebuilt TronClass pages now live in NUTC Portal at /tronclass.
 // @author       Rynowastaken
 // @match        https://tc.nutc.edu.tw/*
@@ -224,6 +224,17 @@ li.course .course-name, li.course .course-name a, .visited-course .name { color:
 
 /* Buttons. */
 .button, .ivu-btn, button.button {
+  /* TronClass sizes buttons with line heights and padding tuned for its old
+     font, which leaves this theme's label sitting low. Centre it with flex
+     instead. display stays unforced so TronClass can still hide buttons. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 1.2 !important;
+  vertical-align: middle;
   background: var(--tcx-raised) !important;
   border: 1px solid var(--tcx-edge-strong) !important;
   border-radius: 5px !important;
@@ -343,6 +354,9 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
 }
 .simditor-viewer img, .rich-edited img { border-radius: var(--tcx-radius-sm); background: #fff; }
 .simditor-viewer table td, .rich-edited table td { border: 1px solid var(--tcx-edge-strong) !important; }
+/* Teacher text pasted with a dark colour (often from Word) that now sits on the
+   dark page; the sweep sets --tcx-ink to a readable version of that colour. */
+.tcx-rich-ink { color: var(--tcx-ink, var(--tcx-text)) !important; }
 .simditor .simditor-body, [contenteditable="true"] { background: var(--tcx-sunken) !important; color: var(--tcx-text) !important; }
 .simditor .simditor-toolbar { background: var(--tcx-raised) !important; border-color: var(--tcx-edge) !important; }
 .simditor .simditor-toolbar a { color: var(--tcx-muted) !important; }
@@ -506,7 +520,42 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
   const SKIP = "img, video, canvas, iframe, svg, picture, water-mark, .simditor-viewer, .rich-edited, [contenteditable], .simditor, .mathjax-process, #nutc-portal-tronclass-theme";
   const channels = (value) => (value.match(/[\d.]+/g) || []).map(Number);
 
+  // Relative luminance (0 black, 1 white) of r, g, b in 0-255.
+  function luminance(r, g, b) {
+    const lin = (c) => (c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  }
+  // The first solid background behind an element, after this theme's CSS.
+  function backdropOf(element) {
+    for (let node = element; node && node !== document.documentElement; node = node.parentElement) {
+      const [r, g, b, a = 1] = channels(getComputedStyle(node).backgroundColor);
+      if (a > 0.5) return [r, g, b];
+    }
+    return null;
+  }
+  // Read-only teacher text is never restyled, except that text too dark to
+  // read on the dark page gets a lighter version of its own colour. The
+  // student's own answers (editors) are left alone.
+  const RICH = ".simditor-viewer, .rich-edited";
+  const EDITOR = "[contenteditable], .simditor";
+  function inkRichText(element) {
+    if (!element.closest(RICH) || element.closest(EDITOR) || element.classList.contains("tcx-rich-ink")) return;
+    const [r, g, b, a = 1] = channels(getComputedStyle(element).color);
+    if (a < 0.5 || luminance(r, g, b) >= 0.18) return;
+    const backdrop = backdropOf(element);
+    if (backdrop && luminance(...backdrop) > 0.4) return; // still on a light fill
+    if (Math.max(r, g, b) - Math.min(r, g, b) >= 40) {
+      // Keep a coloured highlight's hue: mix it with white until it reads.
+      let mix = 0.3;
+      const tint = (c) => Math.round(c + (255 - c) * mix);
+      while (mix < 0.9 && luminance(tint(r), tint(g), tint(b)) < 0.3) mix += 0.1;
+      element.style.setProperty("--tcx-ink", `rgb(${tint(r)}, ${tint(g)}, ${tint(b)})`);
+    }
+    element.classList.add("tcx-rich-ink");
+  }
+
   function classify(element) {
+    inkRichText(element);
     if (element.closest(SKIP)) return;
     const style = getComputedStyle(element);
     const [r, g, b, a = 1] = channels(style.backgroundColor);
