@@ -12,7 +12,7 @@ One person: the owner, a National Taichung University of Science and Technology 
 
 ## Purpose
 
-Put the weekly AIS class schedule, absence records, and the five ePortal subsystems (學生管理, WebMail, 活動報名, EP 學習歷程, TronClass) on one page. A server-side headless Chromium keeps the ePortal session alive; the server only bridges the SSO token, and the user's own browser completes sign-in to each subsystem.
+Put the weekly AIS class schedule, absence records, and the five ePortal subsystems (學生管理, WebMail, 活動報名, EP 學習歷程, TronClass) on one page. A server-side headless Chromium keeps the ePortal session alive; the server only bridges the SSO token, and the user's own browser completes sign-in to each subsystem. TronClass is the exception: the server follows its handoff itself and relays TronClass's JSON API to the portal's rebuilt pages at /tronclass, while exam taking still opens TronClass so its anti-cheat applies.
 
 ## Capabilities to preserve
 

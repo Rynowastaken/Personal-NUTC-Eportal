@@ -58,15 +58,18 @@ export const MODULES = Object.freeze([
     sourceColor: "#a742ae",
     icon: "book-open-check",
     serverHandoff: true,
+    // The portal's own rebuilt TronClass pages; /go/tronclass still opens
+    // TronClass itself.
+    appPath: "/tronclass",
   },
 ]);
 
 const MODULES_BY_ID = new Map(MODULES.map((module) => [module.id, module]));
 const PUBLIC_MODULES = Object.freeze(
-  MODULES.map(({ path, ...module }) =>
+  MODULES.map(({ path, appPath, ...module }) =>
     Object.freeze({
       ...module,
-      launchPath: `/go/${module.id}`,
+      launchPath: appPath || `/go/${module.id}`,
     }),
   ),
 );

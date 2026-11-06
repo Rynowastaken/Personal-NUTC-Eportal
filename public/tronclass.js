@@ -1,25 +1,36 @@
-// NUTC Portal TronClass app: a rebuilt student interface for tc.nutc.edu.tw.
+// NUTC Portal TronClass: the rebuilt student interface for TronClass, served
+// by the portal under /tronclass.
 //
-// Loaded through @require by tronclass-theme.user.js, so it runs first, at
-// document-start. On the pages it owns (home, courses, a course, its
-// materials, videos, homework and exam overviews) it stops TronClass from
-// loading and draws its own page from TronClass's JSON API, using the
-// student's existing session. Every other page, including the exam take page
-// with its anti-cheat checks, is left to TronClass and the theme.
+// Pages mirror TronClass's own addresses under /tronclass (TronClass's
+// /course/1/content is /tronclass/course/1/content here), and every API call
+// goes through the portal's server, which holds the TronClass session it got
+// from ePortal. Anything not rebuilt, including exam taking with its
+// anti-cheat checks, opens on TronClass itself.
 (() => {
   "use strict";
 
-  const CLASSIC_KEY = "tcx-classic-once";
+  const BASE = "/tronclass";
+  const TRONCLASS = "https://tc.nutc.edu.tw";
   const USER_KEY = "tcx-user";
   const STYLE_ID = "tcx-app-style";
-  const FONT_URL =
-    "https://cdn.jsdelivr.net/gh/Rynowastaken/Personal-NUTC-Eportal@main/public/fonts/albert-sans.woff2";
+  const FONT_URL = "/fonts/albert-sans.woff2";
 
   // ---------------------------------------------------------------------------
   // Routing
 
+  // A TronClass path ("/course/1/content") as a page of this app.
+  const P = (path) => BASE + path;
+  // The same page on TronClass itself.
+  const tcHref = (href) => {
+    const url = new URL(href, location.origin);
+    const path = url.pathname.startsWith(BASE) ? url.pathname.slice(BASE.length) || "/user/index" : url.pathname;
+    return TRONCLASS + path + url.search + url.hash;
+  };
+  const classicHref = () => tcHref(location.href);
+
   function matchRoute(url) {
-    const path = url.pathname.replace(/\/+$/, "") || "/";
+    if (url.pathname !== BASE && !url.pathname.startsWith(BASE + "/")) return null;
+    const path = url.pathname.slice(BASE.length).replace(/\/+$/, "") || "/user/index";
     const hash = url.hash;
     if (path === "/user/index") return { name: "home" };
     if (path === "/user/courses") return { name: "courses" };
@@ -36,30 +47,6 @@
     }
     return null;
   }
-
-  function classicRequested() {
-    let wanted = null;
-    try {
-      wanted = sessionStorage.getItem(CLASSIC_KEY);
-      if (wanted) sessionStorage.removeItem(CLASSIC_KEY);
-    } catch {}
-    return wanted && wanted === location.pathname + location.search;
-  }
-
-  const initialRoute = classicRequested() ? null : matchRoute(location);
-  window.__tcxApp = { active: Boolean(initialRoute) };
-  if (!initialRoute) return;
-
-  // Stop TronClass's own page before any of its scripts run, and start from
-  // an empty document.
-  window.stop();
-  const root = document.createElement("html");
-  root.lang = "zh-Hant";
-  root.innerHTML =
-    '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
-    '<meta name="color-scheme" content="dark"><title>TronClass</title></head><body></body>';
-  if (document.documentElement) document.replaceChild(root, document.documentElement);
-  else document.appendChild(root);
 
   // ---------------------------------------------------------------------------
   // Styles
@@ -135,9 +122,10 @@ svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
 .nav a:hover { color: var(--text); background: rgba(255,255,255,.05); }
 .nav a[aria-current="page"] { color: var(--text); background: var(--primary-soft); }
 .bar-end { margin-left: auto; position: relative; }
-.user-btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 6px; border: 0; border-radius: var(--radius); background: transparent; cursor: pointer; color: var(--soft); }
+.user-btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 5px; border: 0; border-radius: var(--radius); background: transparent; cursor: pointer; color: var(--soft); }
 .user-btn:hover { background: rgba(255,255,255,.05); }
 .avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-size: 12px; font-weight: 700; }
+.avatar svg { width: 15px; height: 15px; }
 .menu {
   position: absolute; right: 0; top: 44px; min-width: 220px; padding: 6px;
   background: var(--raised); border: 1px solid var(--edge-strong); border-radius: var(--radius);
@@ -294,7 +282,6 @@ button.row:first-child { border-top: 0; }
 @media (max-width: 640px) {
   main { padding-top: 24px; }
   .brand-text { display: none; }
-  .user-name { display: none; }
   .course-head { grid-template-columns: 1fr; }
   .row { gap: 12px; padding: 12px; }
   .hide-sm { display: none !important; }
@@ -315,6 +302,10 @@ button.row:first-child { border-top: 0; }
   // Small DOM helpers
 
   function h(tag, attrs, ...children) {
+    if (attrs && attrs["data-classic"] != null) {
+      attrs.target = "_blank";
+      attrs.rel = "noopener";
+    }
     const el = document.createElement(tag);
     if (attrs) {
       for (const [key, value] of Object.entries(attrs)) {
@@ -334,6 +325,7 @@ button.row:first-child { border-top: 0; }
 
   // Lucide icon paths (ISC licence), drawn at one stroke weight.
   const ICONS = {
+    user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
     play: '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
@@ -373,6 +365,8 @@ button.row:first-child { border-top: 0; }
         const name = attr.name.toLowerCase();
         const badUrl = (name === "href" || name === "src") && /^\s*javascript:/i.test(attr.value);
         if (name.startsWith("on") || name === "style" || name === "class" || badUrl) el.removeAttribute(attr.name);
+        else if ((name === "href" || name === "src") && /^\/api\//.test(attr.value)) el.setAttribute(attr.name, BASE + attr.value);
+        else if ((name === "href" || name === "src") && /^\/(?!\/)/.test(attr.value)) el.setAttribute(attr.name, TRONCLASS + attr.value);
       }
       if (el.tagName === "A") {
         el.setAttribute("target", "_blank");
@@ -427,10 +421,19 @@ button.row:first-child { border-top: 0; }
     }
   }
 
+  // The portal answers 401 with EPORTAL_LOGIN_REQUIRED when its own ePortal
+  // sign-in has lapsed; that is the only sign-in the student has to redo.
+  async function failure(res) {
+    const data = await res.json().catch(() => ({}));
+    if (data.code === "EPORTAL_LOGIN_REQUIRED") return new ApiError("Portal 的 ePortal 登入已過期，重新登入後就能回到這裡。", "auth");
+    if (res.status === 401 || res.status === 403) return new ApiError("TronClass 拒絕了這次的登入，請稍後再試。", "http");
+    return new ApiError(data.error || `TronClass 回應錯誤（${res.status}），請稍後再試。`, "http");
+  }
+
   async function request(path, { method = "GET", body } = {}) {
     let res;
     try {
-      res = await fetch(path, {
+      res = await fetch(BASE + path, {
         method,
         credentials: "same-origin",
         headers: body ? { "Content-Type": "application/json", Accept: "application/json" } : { Accept: "application/json" },
@@ -439,10 +442,9 @@ button.row:first-child { border-top: 0; }
     } catch {
       throw new ApiError("連不上 TronClass，請檢查網路後再試一次。", "network");
     }
-    if (res.status === 401 || res.status === 403) throw new ApiError("登入已過期，請重新登入 TronClass。", "auth");
-    if (!res.ok) throw new ApiError(`TronClass 回應錯誤（${res.status}），請稍後再試。`, "http");
+    if (!res.ok) throw await failure(res);
     const type = res.headers.get("content-type") || "";
-    if (!type.includes("json")) throw new ApiError("登入已過期，請重新登入 TronClass。", "auth");
+    if (!type.includes("json")) throw new ApiError("TronClass 回傳了無法讀取的內容，請稍後再試。", "http");
     const text = await res.text();
     return text ? JSON.parse(text) : {};
   }
@@ -477,25 +479,10 @@ button.row:first-child { border-top: 0; }
       if (saved && saved.id) return (userPromise = Promise.resolve(saved));
     } catch {}
     userPromise = (async () => {
-      const res = await fetch("/user/index", { credentials: "same-origin" });
-      if (!res.ok || !res.body) throw new ApiError("登入已過期，請重新登入 TronClass。", "auth");
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let text = "";
-      let user = null;
-      while (!user) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        text += decoder.decode(value, { stream: true });
-        const start = text.indexOf("globalData");
-        if (start === -1) continue;
-        const block = text.slice(start, start + 600);
-        const id = block.match(/\bid:\s*(\d+)/);
-        const name = block.match(/\bname:\s*["']([^"']*)["']/);
-        if (id && name) user = { id: +id[1], name: name[1] };
-      }
-      reader.cancel().catch(() => {});
-      if (!user) throw new ApiError("登入已過期，請重新登入 TronClass。", "auth");
+      const res = await fetch(P("/me"), { credentials: "same-origin" });
+      if (!res.ok) throw await failure(res);
+      const { user } = await res.json();
+      if (!user || !user.id) throw new ApiError("讀不到 TronClass 帳號。", "http");
       try {
         sessionStorage.setItem(USER_KEY, JSON.stringify(user));
       } catch {}
@@ -600,7 +587,7 @@ button.row:first-child { border-top: 0; }
   }
 
   const itemHref = (courseId, item) =>
-    item.kind === "exam" ? `/course/${courseId}/learning-activity#/exam/${item.id}` : `/course/${courseId}/learning-activity#/${item.id}`;
+    item.kind === "exam" ? `${BASE}/course/${courseId}/learning-activity#/exam/${item.id}` : `${BASE}/course/${courseId}/learning-activity#/${item.id}`;
 
   const KIND = {
     material: { label: "教材", icon: "file" },
@@ -613,20 +600,14 @@ button.row:first-child { border-top: 0; }
   // ---------------------------------------------------------------------------
   // Navigation
 
+  // Pages that are not rebuilt open on TronClass itself.
   function openClassic(href) {
-    const url = new URL(href, location.origin);
-    try {
-      sessionStorage.setItem(CLASSIC_KEY, url.pathname + url.search);
-    } catch {}
-    const samePage = url.pathname === location.pathname && url.search === location.search;
-    location.assign(url.href);
-    if (samePage) location.reload();
+    location.assign(tcHref(href));
   }
 
   function navigate(href, { replace = false } = {}) {
     const url = new URL(href, location.origin);
-    if (url.origin !== location.origin) return location.assign(url.href);
-    if (!matchRoute(url)) return openClassic(url.href);
+    if (url.origin !== location.origin || !matchRoute(url)) return location.assign(url.href);
     history[replace ? "replaceState" : "pushState"](null, "", url.pathname + url.search + url.hash);
     render();
   }
@@ -636,10 +617,9 @@ button.row:first-child { border-top: 0; }
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (link.target === "_blank" || link.hasAttribute("download")) return;
     const url = new URL(link.href, location.origin);
-    if (url.origin !== location.origin) return;
+    if (url.origin !== location.origin || !matchRoute(url)) return;
     event.preventDefault();
-    if (link.dataset.classic != null) openClassic(url.href);
-    else navigate(url.href);
+    navigate(url.href);
   });
   window.addEventListener("popstate", () => render());
   window.addEventListener("hashchange", () => render());
@@ -648,14 +628,15 @@ button.row:first-child { border-top: 0; }
   // Shell
 
   const menu = h("div", { class: "menu", hidden: true, role: "menu" });
-  const userName = h("span", { class: "user-name" }, "");
-  const avatar = h("span", { class: "avatar" }, "");
+  // The account button shows an icon only, never the student's name.
+  const avatar = h("span", { class: "avatar" }, icon("user"));
   const userButton = h(
     "button",
     {
       class: "user-btn",
       type: "button",
       "aria-haspopup": "menu",
+      "aria-label": "選單",
       "aria-expanded": "false",
       onclick: (event) => {
         event.stopPropagation();
@@ -665,7 +646,6 @@ button.row:first-child { border-top: 0; }
       },
     },
     avatar,
-    userName,
   );
   document.addEventListener("click", (event) => {
     if (!menu.hidden && !menu.contains(event.target)) {
@@ -681,8 +661,8 @@ button.row:first-child { border-top: 0; }
     }
   });
 
-  const navHome = h("a", { href: "/user/index" }, "首頁");
-  const navCourses = h("a", { href: "/user/courses" }, "課程");
+  const navHome = h("a", { href: P("/user/index") }, "首頁");
+  const navCourses = h("a", { href: P("/user/courses") }, "課程");
   const main = h("main", { id: "main" });
 
   document.body.append(
@@ -692,7 +672,7 @@ button.row:first-child { border-top: 0; }
       h(
         "div",
         { class: "bar-in" },
-        h("a", { class: "brand", href: "/user/index", "aria-label": "TronClass 首頁" }, h("span", { class: "brand-mark", "aria-hidden": "true" }, h("i"), h("i"), h("i"), h("i")), h("span", { class: "brand-text" }, "TronClass")),
+        h("a", { class: "brand", href: P("/user/index"), "aria-label": "TronClass 首頁" }, h("span", { class: "brand-mark", "aria-hidden": "true" }, h("i"), h("i"), h("i"), h("i")), h("span", { class: "brand-text" }, "TronClass")),
         h("nav", { class: "nav", "aria-label": "主要" }, navHome, navCourses),
         h("div", { class: "bar-end" }, userButton, menu),
       ),
@@ -702,18 +682,11 @@ button.row:first-child { border-top: 0; }
 
   function renderMenu() {
     menu.replaceChildren(
-      h("div", { class: "menu-note" }, "這是重新設計的 TronClass。"),
-      h("a", { href: location.href, "data-classic": "", role: "menuitem" }, icon("external"), "用原版開啟此頁"),
-      h("a", { href: "/logout", role: "menuitem", "data-classic": "" }, icon("logout"), "登出"),
+      h("div", { class: "menu-note" }, "這是 Portal 重新設計的 TronClass。"),
+      h("a", { href: "/", role: "menuitem" }, icon("home"), "回到 Portal"),
+      h("a", { href: classicHref(), "data-classic": "", role: "menuitem" }, icon("external"), "在 TronClass 開啟此頁"),
     );
   }
-
-  currentUser()
-    .then((user) => {
-      userName.textContent = user.name;
-      avatar.textContent = user.name.slice(-1);
-    })
-    .catch(() => {});
 
   // ---------------------------------------------------------------------------
   // Views
@@ -734,6 +707,7 @@ button.row:first-child { border-top: 0; }
 
     const route = matchRoute(location);
     if (!route) return openClassic(location.href);
+    if (location.pathname === BASE || location.pathname === BASE + "/") history.replaceState(null, "", P("/user/index"));
     for (const [link, name] of [[navHome, "home"], [navCourses, "courses"]]) {
       if (route.name === name) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
@@ -769,9 +743,9 @@ button.row:first-child { border-top: 0; }
         "div",
         { class: "actions" },
         auth
-          ? h("a", { class: "btn primary", href: location.href, "data-classic": "" }, "重新登入")
+          ? h("a", { class: "btn primary", href: "/server-login/" }, "登入 Server ePortal")
           : h("button", { class: "btn primary", type: "button", onclick: () => render() }, icon("refresh"), "重試"),
-        h("a", { class: "btn ghost", href: location.href, "data-classic": "" }, "用原版開啟"),
+        h("a", { class: "btn ghost", href: classicHref(), "data-classic": "" }, "在 TronClass 開啟"),
       ),
     );
   }
@@ -799,7 +773,7 @@ button.row:first-child { border-top: 0; }
           { class: "list" },
           due.map((t) => {
             const kind = kindOf(t.type);
-            const href = t.type === "exam" ? `/course/${t.course_id}/learning-activity#/exam/${t.id}` : `/course/${t.course_id}/learning-activity#/${t.id}`;
+            const href = t.type === "exam" ? `${BASE}/course/${t.course_id}/learning-activity#/exam/${t.id}` : `${BASE}/course/${t.course_id}/learning-activity#/${t.id}`;
             return h(
               "a",
               { class: "row", href },
@@ -818,7 +792,7 @@ button.row:first-child { border-top: 0; }
       h(
         "section",
         { class: "section", "aria-labelledby": "courses-h" },
-        h("div", { class: "section-head" }, h("h2", { id: "courses-h" }, "本學期課程", h("span", { class: "count num" }, current.length)), h("a", { class: "btn ghost small", href: "/user/courses" }, "所有課程", icon("arrow"))),
+        h("div", { class: "section-head" }, h("h2", { id: "courses-h" }, "本學期課程", h("span", { class: "count num" }, current.length)), h("a", { class: "btn ghost small", href: P("/user/courses") }, "所有課程", icon("arrow"))),
         current.length ? h("div", { class: "tiles" }, current.map(courseTile)) : h("div", { class: "list" }, h("div", { class: "empty" }, h("strong", null, "目前沒有進行中的課程"))),
       ),
     ];
@@ -827,7 +801,7 @@ button.row:first-child { border-top: 0; }
   function courseTile(course) {
     return h(
       "a",
-      { class: "tile", href: `/course/${course.id}/content` },
+      { class: "tile", href: `${BASE}/course/${course.id}/content` },
       h("span", { class: "tile-name" }, course.name),
       h("span", { class: "meta" }, [course.teachers, course.klass].filter(Boolean).join(" · ")),
       course.progress == null
@@ -858,7 +832,7 @@ button.row:first-child { border-top: 0; }
           ? shown.map((c) =>
               h(
                 "a",
-                { class: "row", href: `/course/${c.id}/content` },
+                { class: "row", href: `${BASE}/course/${c.id}/content` },
                 h("span", { class: "row-icon" }, icon("book")),
                 h("span", { style: "min-width:0" }, h("div", { class: "row-title" }, c.name), h("div", { class: "row-sub" }, [c.teachers, c.klass, c.course_code].filter(Boolean).join(" · "))),
                 h(
@@ -913,7 +887,7 @@ button.row:first-child { border-top: 0; }
     const known = Boolean(KIND[item.kind]);
     return h(
       "a",
-      { class: "row", href: itemHref(courseId, item), "data-classic": known ? null : "" },
+      { class: "row", href: known ? itemHref(courseId, item) : tcHref(itemHref(courseId, item)), "data-classic": known ? null : "" },
       h("span", { class: `row-icon ${item.kind}` }, icon(kind.icon)),
       h("span", { style: "min-width:0" }, h("div", { class: "row-title" }, item.title), h("div", { class: "row-sub num" }, sub)),
       h(
@@ -953,7 +927,7 @@ button.row:first-child { border-top: 0; }
     select("content");
 
     return [
-      h("a", { class: "back", href: "/user/courses" }, icon("left"), "課程"),
+      h("a", { class: "back", href: P("/user/courses") }, icon("left"), "課程"),
       h(
         "div",
         { class: "course-head" },
@@ -1014,7 +988,7 @@ button.row:first-child { border-top: 0; }
     const kind = kindOf(item.kind);
     setTitle(item.title, bundle.course.name);
     return [
-      h("a", { class: "back", href: `/course/${courseId}/content` }, icon("left"), bundle.course.name),
+      h("a", { class: "back", href: `${BASE}/course/${courseId}/content` }, icon("left"), bundle.course.name),
       h("h1", null, item.title),
       h("div", { class: "meta-row" }, h("span", { class: `chip ${item.kind === "exam" ? "accent" : ""}` }, kind.label), extra),
     ];
@@ -1058,7 +1032,7 @@ button.row:first-child { border-top: 0; }
   }
 
   function classicFooter() {
-    return h("div", { class: "footer-link" }, h("a", { class: "btn ghost small", href: location.href, "data-classic": "" }, icon("external"), "用原版開啟此頁"));
+    return h("div", { class: "footer-link" }, h("a", { class: "btn ghost small", href: classicHref(), "data-classic": "" }, icon("external"), "在 TronClass 開啟此頁"));
   }
 
   function fileSize(bytes) {
@@ -1091,17 +1065,13 @@ button.row:first-child { border-top: 0; }
             { class: "row-end" },
             canPreview ? h("button", { class: "btn small", type: "button", onclick: () => onPreview(upload) }, icon("eye"), "預覽") : null,
             download
-              ? h("a", { class: "btn small ghost", href: `/api/uploads/reference/${ref}/blob`, download: upload.name, "aria-label": `下載 ${upload.name}`, onclick: () => activityId && logRead(activityId, { upload_id: upload.id }) }, icon("download"), h("span", { class: "hide-sm" }, "下載"))
+              ? h("a", { class: "btn small ghost", href: `${BASE}/api/uploads/reference/${ref}/blob`, download: upload.name, "aria-label": `下載 ${upload.name}`, onclick: () => activityId && logRead(activityId, { upload_id: upload.id }) }, icon("download"), h("span", { class: "hide-sm" }, "下載"))
               : null,
           ),
         );
       }),
     );
   }
-
-  // TronClass shows converted documents in its own pdf.js page.
-  const viewerUrl = (courseId, upload, file) =>
-    `/note-bene/pdf-viewer?file=${encodeURIComponent(file)}&upload_id=${upload.id}&is_attachment_view=false&course_id=${courseId}`;
 
   function materialView(activity) {
     const uploads = activity.uploads || [];
@@ -1112,10 +1082,12 @@ button.row:first-child { border-top: 0; }
       viewer.replaceChildren(h("div", { class: "viewer" }, h("div", { class: "viewer-head" }, h("span", { class: "row-title" }, upload.name), h("span", { class: "meta" }, "載入預覽…"))));
       viewer.scrollIntoView({ behavior: "smooth", block: "start" });
       logRead(activity.id, { upload_id: upload.id });
+      // The portal streams TronClass's converted PDF so the browser's own
+      // viewer can show it.
+      const src = P(`/preview/${upload.reference_id}`);
       try {
-        const data = await request(`/api/uploads/reference/document/${upload.reference_id}/url?preview=true`);
-        if (!data.url) throw new Error();
-        const src = viewerUrl(activity.course_id, upload, data.url);
+        const head = await fetch(src, { method: "HEAD" });
+        if (!head.ok) throw new Error();
         viewer.replaceChildren(
           h(
             "div",
@@ -1239,7 +1211,7 @@ button.row:first-child { border-top: 0; }
       "div",
       { class: "actions" },
       !closed || activity.data?.allow_late_submission
-        ? h("a", { class: "btn primary", href: location.href, "data-classic": "" }, latest ? "重新繳交" : "繳交作業", icon("arrow"))
+        ? h("a", { class: "btn primary", href: classicHref(), "data-classic": "" }, latest ? "重新繳交" : "繳交作業", icon("arrow"))
         : null,
       item.end && !latest && !closed ? dueChip(item.end) : null,
     );
@@ -1265,7 +1237,7 @@ button.row:first-child { border-top: 0; }
                   "div",
                   { style: "min-width:0" },
                   h("div", { class: "row-title num" }, when(s.submitted_at)),
-                  (s.uploads || []).map((u) => h("div", null, h("a", { href: `/api/uploads/reference/${u.reference_id || u.id}/blob`, download: u.name, style: "color:var(--primary)" }, u.name))),
+                  (s.uploads || []).map((u) => h("div", null, h("a", { href: `${BASE}/api/uploads/reference/${u.reference_id || u.id}/blob`, download: u.name, style: "color:var(--primary)" }, u.name))),
                   s.instructor_comment ? h("div", { class: "row-sub", style: "white-space:normal" }, `老師評語：${s.instructor_comment}`) : null,
                 ),
                 h("span", { class: "row-end" }, (s.final_score ?? s.score) != null ? h("span", { class: "chip accent num" }, `${s.final_score ?? s.score} 分`) : h("span", { class: "meta" }, "未評分")),
@@ -1316,7 +1288,7 @@ button.row:first-child { border-top: 0; }
     const actions = h(
       "div",
       { class: "actions" },
-      canStart ? h("a", { class: "btn primary", href: location.href, "data-classic": "" }, startLabel, icon("arrow")) : null,
+      canStart ? h("a", { class: "btn primary", href: classicHref(), "data-classic": "" }, startLabel, icon("arrow")) : null,
       notOpen ? h("span", { class: "chip" }, icon("clock"), `${when(exam.start_time)} 開放`) : null,
       closed ? h("span", { class: "chip" }, "已結束") : null,
       outOfTries && !closed ? h("span", { class: "chip" }, "作答次數已用完") : null,

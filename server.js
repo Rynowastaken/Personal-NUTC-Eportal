@@ -38,6 +38,10 @@ import { createHitokotoService } from "./src/hitokoto-service.js";
 import { PreferenceStore } from "./src/preference-store.js";
 import { createServerUpdater } from "./src/server-update.js";
 import { describeLoginBridgeError } from "./src/login-bridge-error.js";
+import {
+  clearTronclassSession,
+  handleTronclassRequest,
+} from "./src/tronclass.js";
 import { stampHtmlAssetRevision, staticCacheControl } from "./src/static-assets.js";
 import {
   checkServerPortalStatus,
@@ -250,7 +254,14 @@ async function loadStaticAsset(resolved, relative) {
   return asset;
 }
 
-async function serveStatic(req, res, pathname) {
+const DEFAULT_CSP =
+  "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'";
+// The TronClass pages frame material previews from this origin and lecture
+// videos from YouTube.
+const TRONCLASS_CSP =
+  "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' https://www.youtube.com https://s.ytimg.com; img-src 'self' data: blob: https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; base-uri 'none'; frame-ancestors 'none'";
+
+async function serveStatic(req, res, pathname, { csp = DEFAULT_CSP } = {}) {
   const relative =
     pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const resolved = path.resolve(publicDir, relative);
@@ -272,8 +283,7 @@ async function serveStatic(req, res, pathname) {
       ETag: asset.etag,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      "Content-Security-Policy":
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": csp,
     };
 
     if (req.headers["if-none-match"] === asset.etag) {
@@ -812,6 +822,7 @@ const server = http.createServer(async (req, res) => {
         clearActivityRelaySessions();
         clearClassScheduleCache();
         clearAbsenceListCache();
+        await clearTronclassSession();
         sendJson(res, 200, result);
       } catch (error) {
         if (error?.code === "EPORTAL_PROFILE_BUSY") {
@@ -1135,6 +1146,16 @@ const server = http.createServer(async (req, res) => {
       }
 
       await serveStatic(req, res, "/launch.html");
+      return;
+    }
+
+    if (url.pathname === "/tronclass" || url.pathname.startsWith("/tronclass/")) {
+      if (await handleTronclassRequest(req, res, url, { sendJson, sendError })) return;
+      if (req.method === "GET" || req.method === "HEAD") {
+        await serveStatic(req, res, "/tronclass.html", { csp: TRONCLASS_CSP });
+        return;
+      }
+      sendError(res, 404, "Not found.");
       return;
     }
 
