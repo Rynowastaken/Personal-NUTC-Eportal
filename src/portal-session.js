@@ -262,8 +262,20 @@ function transferableHandoffFromRequest(request, handoffUrl) {
 }
 
 
-function looksSelfContainedGetHandoff(rawUrl) {
+export function looksSelfContainedGetHandoff(rawUrl) {
   const target = rawUrl instanceof URL ? rawUrl : new URL(rawUrl);
+
+  // A service ticket is the finished handoff: hand it to the browser and never
+  // walk it server-side, or the one-time ticket would be consumed here.
+  for (const name of target.searchParams.keys()) {
+    if (name.toLowerCase() === "ticket") return true;
+  }
+
+  // The school's SSO login pages also carry query parameters, but opening one
+  // in a browser without the school's session cookies only shows the login
+  // form. They authenticate whoever already holds the session, so the only way
+  // to cross the one-time ticket over is to walk the login server-side first.
+  if (isSsoLoginEndpoint(target)) return false;
 
   if (target.search || target.hash) return true;
 
@@ -276,6 +288,24 @@ function looksSelfContainedGetHandoff(rawUrl) {
         /[A-Za-z]/.test(segment) &&
         /\d/.test(segment),
     );
+}
+
+// Login pages that authenticate an existing school session instead of carrying
+// a bearer token. TronClass delegates to ePortal's SSO (sso.nutc.edu.tw) and
+// the identity provider's CAS endpoint, so its module handoff starts at one of
+// these and only redirects to TronClass with a ticket when the session is
+// present.
+export function isSsoLoginEndpoint(rawUrl) {
+  const target = rawUrl instanceof URL ? rawUrl : new URL(rawUrl);
+
+  if (target.protocol !== "https:") return false;
+
+  const host = target.hostname.toLowerCase();
+  if (host === "sso.nutc.edu.tw") return true;
+  if (host === "identity.nutc.edu.tw") return true;
+  if (host === "tc.nutc.edu.tw") return /^\/login(?:\/|$)/i.test(target.pathname);
+
+  return false;
 }
 
 
@@ -1049,6 +1079,29 @@ async function captureHttpRedirectHandoff(context, module, eportalOrigin) {
 
     const external = normalizeExternalHandoffUrl(next, eportalOrigin);
     if (external) {
+      if (isSsoLoginEndpoint(external)) {
+        console.log(
+          `[handoff] probe walking server-side SSO login for ${module.id}: ${external.hostname}${external.pathname}`,
+        );
+
+        try {
+          const resolved = await discoverBareExternalGet(
+            context,
+            module,
+            external,
+            eportalOrigin,
+          );
+
+          if (resolved) return resolved;
+        } catch (error) {
+          console.log(
+            `[handoff] server-side SSO walk for ${module.id} failed: ${error?.code || error?.name || "unknown"}`,
+          );
+        }
+
+        return null;
+      }
+
       if (!looksSelfContainedGetHandoff(external)) {
         console.log(
           `[handoff] probe found bare external endpoint for ${module.id}: ${external.hostname}${external.pathname}; deferring to browser-stage discovery`,
