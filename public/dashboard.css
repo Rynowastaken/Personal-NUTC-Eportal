@@ -265,7 +265,8 @@
 }
 
 /*
- * Module tiles and shortcuts: flat, square-shouldered tinted glass.
+ * Module tiles and shortcuts: the same flat dark glass as the live tiles and
+ * the schedule and absence panels, with the accent only on the icon chip.
  * Keep these rules in dashboard.css, not generated CSS, so they take effect
  * even if the server's compiled Tailwind bundle is cached or late to rebuild.
  */
@@ -274,10 +275,7 @@
   overflow: hidden;
   isolation: isolate;
   border: 1px solid rgba(255,255,255,.12);
-  background: linear-gradient(160deg,
-    color-mix(in srgb, var(--module-accent, var(--primary)) 26%, transparent) 0%,
-    color-mix(in srgb, var(--module-accent, var(--primary)) 10%, transparent) 55%,
-    rgba(18,15,22,.5) 100%);
+  background: var(--glass, rgba(18,15,22,.46));
   background-clip: padding-box;
   box-shadow: none;
   backdrop-filter: blur(20px) saturate(160%);
@@ -293,6 +291,8 @@
 
 .dashboard-module-card:hover {
   border-color: rgba(255,255,255,.24);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--glass, rgba(18,15,22,.46))) !important;
+  background-clip: padding-box !important;
 }
 .dashboard-module-icon {
   border-radius: 4px;

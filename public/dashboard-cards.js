@@ -51,14 +51,12 @@ export function createDashboardModuleCard({
   const rgba = window.NutcTheme?.rgba ||
     ((_color, alpha) => "rgba(45, 40, 50, " + alpha + ")");
   card.style.setProperty("--module-accent", accent);
-  // Flat, square-shouldered tinted glass: the accent tints the pane itself
-  // instead of sitting in an icon chip, so each door reads as a colour field.
+  // The same flat dark glass as the live tiles and the schedule and absence
+  // panels; the accent colour stays on the icon chip.
   card.style.borderRadius = "6px";
   card.style.overflow = "hidden";
   card.style.border = "1px solid rgba(255,255,255,.12)";
-  card.style.background =
-    "linear-gradient(160deg, " + rgba(accent, 0.26) +
-    " 0%, " + rgba(accent, 0.1) + " 55%, rgba(18,15,22,.5) 100%)";
+  card.style.background = "var(--glass, rgba(18,15,22,.46))";
   // The background shorthand resets background-clip, so this must be last.
   card.style.backgroundClip = "padding-box";
   card.style.boxShadow = "none";

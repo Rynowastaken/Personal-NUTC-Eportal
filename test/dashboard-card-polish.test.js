@@ -58,7 +58,8 @@ test("built-in modules and pinned links share smooth card rendering", async () =
   assert.equal(custom.children[1].children[0].textContent, opts.titleText);
   // The browser may still have yesterday's generated CSS after a dashboard
   // git update. These surfaces must be visible from JS alone on mobile.
-  assert.match(native.style.background, /^linear-gradient\(/);
+  // Flat glass like the live tiles; the accent stays on the icon chip.
+  assert.equal(native.style.background, "var(--glass, rgba(18,15,22,.46))");
   assert.match(native.style.border, /^1px solid rgba\(/);
   assert.match(native.children[0].style.background, /^rgba\(/);
   assert.match(native.children[0].style.border, /^1px solid rgba\(/);
@@ -101,7 +102,7 @@ test("single rounded border and clean surfaces come from dashboard CSS", async (
   assert.match(componentCSS, /background-clip: padding-box;/);
   const cardRule = componentCSS.slice(0, componentCSS.indexOf("}"));
   assert.ok(cardRule.indexOf("background-clip: padding-box;") >
-    cardRule.indexOf("background: linear-gradient("),
+    cardRule.indexOf("background: var(--glass"),
     "background-clip must follow the shorthand, even without JS");
   assert.match(componentCSS, /border: 1px solid rgba\(255,255,255,\.12\);/);
   assert.match(componentCSS, /\.dashboard-module-card::before\s*\{[\s\S]*?content: none;/);
