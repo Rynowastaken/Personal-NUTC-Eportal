@@ -480,9 +480,9 @@ async function discoverBareExternalGet(
       },
     };
 
-    const response =
+    const requestOnce = () =>
       method === "POST"
-        ? await context.request.post(current.toString(), {
+        ? context.request.post(current.toString(), {
             ...common,
             data: new URLSearchParams(fields).toString(),
             headers: {
@@ -490,7 +490,21 @@ async function discoverBareExternalGet(
               "Content-Type": "application/x-www-form-urlencoded",
             },
           })
-        : await context.request.get(current.toString(), common);
+        : context.request.get(current.toString(), common);
+
+    let response;
+
+    try {
+      response = await requestOnce();
+    } catch (error) {
+      // A login endpoint occasionally stalls without failing; a GET is safe to
+      // repeat and a second attempt avoids dropping the whole handoff.
+      if (method !== "GET") throw error;
+      console.log(
+        `[handoff] follow bare ${module.id}: retrying GET ${safeUrlLabel(current)} after ${error?.name || "error"}`,
+      );
+      response = await requestOnce();
+    }
 
     const status = response.status();
     console.log(
@@ -1949,8 +1963,16 @@ export async function createModuleHandoff(
               }
             }
 
+            let resultLabel = `${handoffUrl.hostname}${handoffUrl.pathname}`;
+            try {
+              const resolved = new URL(result.url);
+              resultLabel += ` -> ${resolved.hostname}${resolved.pathname}`;
+            } catch {
+              // Keep the original label when the result is not a plain URL.
+            }
+
             console.log(
-              `[handoff] captured preflight document for ${module.id}: ${result.type.toUpperCase()} ${handoffUrl.hostname}${handoffUrl.pathname}`,
+              `[handoff] captured preflight document for ${module.id}: ${result.type.toUpperCase()} ${resultLabel}`,
             );
             finish(resolveHandoff, result);
           })();

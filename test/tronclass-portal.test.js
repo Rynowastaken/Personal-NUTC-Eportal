@@ -57,6 +57,8 @@ test("pages opened on TronClass itself sign the browser in through the ePortal h
   // loads, matching the noopener behaviour of the old plain links.
   assert.match(page, /const popup = window\.open\("about:blank"\);/);
   assert.match(page, /\/tronclass-open\.html\?to=/);
+  // The waiting page must not flash white on about:blank's default document.
+  assert.match(page, /background:#141117/);
 
   const hop = await read("../public/tronclass-open.js");
   assert.match(hop, /window\.opener = null/);

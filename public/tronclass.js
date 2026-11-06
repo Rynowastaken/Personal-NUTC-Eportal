@@ -668,6 +668,11 @@ button.row:first-child { border-top: 0; }
       const doc = popup.document;
       if (!doc || !doc.body) return false;
       doc.title = title;
+      // about:blank starts as a white page; tint it before anything paints so
+      // the waiting tab never flashes the user.
+      doc.documentElement.style.background = "#141117";
+      doc.documentElement.style.colorScheme = "dark";
+      doc.body.style.cssText = "margin:0;min-height:100vh;background:#141117;";
       const wrap = doc.createElement("div");
       wrap.style.cssText = "max-width:440px;margin:18vh auto;padding:0 20px;font:15px/1.7 system-ui,sans-serif;color:#e7e2ee;";
       const heading = doc.createElement("h1");
