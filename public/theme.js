@@ -6,12 +6,14 @@
   const colorSchemeKey = "nutc-portal-color-scheme-v1";
   const colorfulnessKey = "nutc-portal-theme-colorfulness-v1";
   const brightnessKey = "nutc-portal-theme-brightness-v1";
+  const backgroundBrightnessKey = "nutc-portal-background-brightness-v1";
   const backgroundBlurKey = "nutc-portal-background-blur-v1";
   const defaults = ["#f0a8c8", "#e8b86d", "#51314a", "#f07178", "#151018"];
   const defaultSettings = {
     colorScheme: "tonalSpot",
     colorfulness: 1,
     brightness: 1,
+    backgroundBrightness: 100,
     backgroundBlur: 0,
   };
   const colorSchemes = {
@@ -209,6 +211,13 @@
     return clamp(Number(value) || 1, 0.5, 1.5);
   }
 
+  function normalizeBackgroundBrightness(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric)
+      ? clamp(Math.round(numeric / 5) * 5, 0, 200)
+      : defaultSettings.backgroundBrightness;
+  }
+
   function normalizeBackgroundBlur(value) {
     const numeric = Number(value);
     return Number.isFinite(numeric)
@@ -221,6 +230,9 @@
       colorScheme: normalizeColorScheme(settings.colorScheme),
       colorfulness: normalizeThemeFactor(settings.colorfulness),
       brightness: normalizeThemeFactor(settings.brightness),
+      backgroundBrightness: normalizeBackgroundBrightness(
+        settings.backgroundBrightness ?? defaultSettings.backgroundBrightness,
+      ),
       backgroundBlur: normalizeBackgroundBlur(
         settings.backgroundBlur ?? defaultSettings.backgroundBlur,
       ),
@@ -542,18 +554,28 @@
   // 100% background blur softens the image by this many pixels.
   const MAX_BACKGROUND_BLUR_PX = 24;
 
-  function applyBackdrop(background, blur = currentSettings.backgroundBlur) {
+  function applyBackdrop(background, look = currentSettings) {
     const backdrop = document.getElementById("portalBackdrop");
     if (!backdrop) return;
 
     if (background) {
+      // 100% brightness preserves the existing image overlay; lower values
+      // darken it and higher values reveal more of the image without
+      // dimming cards/text.
+      const level = normalizeBackgroundBrightness(look.backgroundBrightness);
+      const darken = Math.max(0, (100 - level) / 100);
+      const brighten = Math.max(0, (level - 100) / 100);
+      const topOpacity = (0.68 + 0.30 * darken - 0.58 * brighten).toFixed(3);
+      const bottomOpacity = (0.88 + 0.11 * darken - 0.68 * brighten).toFixed(3);
       backdrop.style.backgroundImage =
-        'linear-gradient(180deg, rgba(12,10,14,0.680), rgba(12,10,14,0.880)), radial-gradient(ellipse 80% 60% at 50% 0%, rgba(240,168,200,.14), transparent 56%), url("' +
+        "linear-gradient(180deg, rgba(12,10,14," + topOpacity +
+        "), rgba(12,10,14," + bottomOpacity +
+        ')), radial-gradient(ellipse 80% 60% at 50% 0%, rgba(240,168,200,.14), transparent 56%), url("' +
         background.replace(/"/g, "%22") +
         '")';
       // A blurred edge fades to transparent, so the blurred layer reaches
       // past the viewport by twice the radius.
-      const px = (normalizeBackgroundBlur(blur) / 100) * MAX_BACKGROUND_BLUR_PX;
+      const px = (normalizeBackgroundBlur(look.backgroundBlur) / 100) * MAX_BACKGROUND_BLUR_PX;
       backdrop.style.filter = px ? "blur(" + px + "px)" : "";
       backdrop.style.inset = px ? -2 * px + "px" : "";
     } else {
@@ -626,6 +648,10 @@
         brightnessKey,
         String(defaultSettings.brightness),
       ),
+      backgroundBrightness: readStored(
+        backgroundBrightnessKey,
+        String(defaultSettings.backgroundBrightness),
+      ),
       backgroundBlur: readStored(
         backgroundBlurKey,
         String(defaultSettings.backgroundBlur),
@@ -637,6 +663,7 @@
     store(colorSchemeKey, settings.colorScheme);
     store(colorfulnessKey, String(settings.colorfulness));
     store(brightnessKey, String(settings.brightness));
+    store(backgroundBrightnessKey, String(settings.backgroundBrightness));
     store(backgroundBlurKey, String(settings.backgroundBlur));
   }
 
@@ -687,9 +714,11 @@
     );
   }
 
-  function previewBackgroundBlur(value) {
-    applyBackdrop(currentBackground, value);
+  // Live preview of the background's brightness and blur; nothing is saved.
+  function previewBackground(look) {
+    applyBackdrop(currentBackground, look);
   }
+
 
   function applySettings(settings) {
     currentSettings = normalizeSettings(settings);
@@ -815,7 +844,7 @@
       })),
     settings: () => ({ ...currentSettings }),
     previewSettings,
-    previewBackgroundBlur,
+    previewBackground,
     applySettings,
     defaultSettings: () => ({ ...defaultSettings }),
     hasBackground: () => Boolean(currentBackground),

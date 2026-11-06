@@ -45,6 +45,7 @@
   let academicProgram = "day";
   const $ = (id) => document.getElementById(id);
   const defaultState = () => ({
+    brightness: 75,
     blur: 0,
     motion: true,
     shortcuts: DEFAULT_SHORTCUTS.map(item => ({ ...item })),
@@ -70,6 +71,9 @@
           })
         : fallback.shortcuts;
       return {
+        brightness: Number.isFinite(stored.brightness)
+          ? Math.min(140, Math.max(20, stored.brightness))
+          : fallback.brightness,
         blur: Number.isFinite(stored.blur)
           ? Math.min(100, Math.max(0, stored.blur))
           : fallback.blur,
@@ -368,6 +372,9 @@
   }));
 
   function applyAppearance() {
+    document.documentElement.style.setProperty("--brightness", String(state.brightness / 100));
+    $("brightness").value = String(state.brightness);
+    $("brightnessValue").textContent = state.brightness + "%";
     // 100% matches the dashboard's strongest background blur.
     document.documentElement.style.setProperty("--bg-blur", (state.blur / 100) * 24 + "px");
     $("backgroundBlur").value = String(state.blur);
@@ -377,6 +384,11 @@
   $("settingsButton").addEventListener("click", () => {
     applyAppearance();
     openDialog("settingsDialog");
+  });
+  $("brightness").addEventListener("input", (event) => {
+    state.brightness = Number(event.target.value);
+    applyAppearance();
+    persist();
   });
   $("backgroundBlur").addEventListener("input", (event) => {
     state.blur = Number(event.target.value);
@@ -389,6 +401,7 @@
     updateParallax();
   });
   $("resetAppearance").addEventListener("click", () => {
+    state.brightness = 75;
     state.blur = 0;
     state.motion = true;
     applyAppearance();

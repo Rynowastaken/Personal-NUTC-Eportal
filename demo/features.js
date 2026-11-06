@@ -251,6 +251,8 @@ import OpenCC from "opencc-js";
   });
   $("resetAppearance").addEventListener("click", () => {
     Object.assign(state, {scheme:"tonalSpot",colorfulness:1,themeBrightness:1,background:""});
+    $("brightness").value = "100";
+    $("brightness").dispatchEvent(new Event("input", {bubbles:true}));
     $("backgroundBlur").value = "0";
     $("backgroundBlur").dispatchEvent(new Event("input", {bubbles:true}));
     renderAppearance(); persist();

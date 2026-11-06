@@ -88,6 +88,8 @@ const themeColorfulness = document.querySelector("#themeColorfulness");
 const themeColorfulnessValue = document.querySelector("#themeColorfulnessValue");
 const themeBrightness = document.querySelector("#themeBrightness");
 const themeBrightnessValue = document.querySelector("#themeBrightnessValue");
+const backgroundBrightness = document.querySelector("#backgroundBrightness");
+const backgroundBrightnessValue = document.querySelector("#backgroundBrightnessValue");
 const backgroundBlur = document.querySelector("#backgroundBlur");
 const backgroundBlurValue = document.querySelector("#backgroundBlurValue");
 const themeReset = document.querySelector("#themeReset");
@@ -525,6 +527,9 @@ function renderThemePreview({ animate = false } = {}) {
   themeBrightnessValue.value = formatThemeFactor(
     stagedThemeSettings.brightness,
   );
+  backgroundBrightness.value = stagedThemeSettings.backgroundBrightness;
+  backgroundBrightnessValue.value =
+    stagedThemeSettings.backgroundBrightness + "%";
   backgroundBlur.value = stagedThemeSettings.backgroundBlur;
   backgroundBlurValue.value =
     stagedThemeSettings.backgroundBlur + "%";
@@ -675,9 +680,7 @@ document.addEventListener("pointerdown", (event) => {
 
 themeDialog.addEventListener("close", () => {
   setAcademicProgramMenuOpen(false);
-  window.NutcTheme.previewBackgroundBlur(
-    window.NutcTheme.settings().backgroundBlur,
-  );
+  window.NutcTheme.previewBackground(window.NutcTheme.settings());
 });
 
 const hitokotoLanguageLabels = {
@@ -820,9 +823,7 @@ async function openThemeDialog() {
 
 async function closeThemeDialog() {
   // Live background previews are temporary until Apply is selected.
-  window.NutcTheme.previewBackgroundBlur(
-    window.NutcTheme.settings().backgroundBlur,
-  );
+  window.NutcTheme.previewBackground(window.NutcTheme.settings());
   if (!themeDialog.open) {
     stagedThemeSettings = null;
     return;
@@ -2381,13 +2382,18 @@ themeBrightness.addEventListener("input", () => {
   renderThemePreview();
 });
 
+backgroundBrightness.addEventListener("input", () => {
+  if (!stagedThemeSettings) return;
+  stagedThemeSettings.backgroundBrightness = Number(backgroundBrightness.value);
+  backgroundBrightnessValue.value = backgroundBrightness.value + "%";
+  window.NutcTheme.previewBackground(stagedThemeSettings);
+});
+
 backgroundBlur.addEventListener("input", () => {
   if (!stagedThemeSettings) return;
   stagedThemeSettings.backgroundBlur = Number(backgroundBlur.value);
   backgroundBlurValue.value = backgroundBlur.value + "%";
-  window.NutcTheme.previewBackgroundBlur(
-    stagedThemeSettings.backgroundBlur,
-  );
+  window.NutcTheme.previewBackground(stagedThemeSettings);
 });
 
 themeReset.addEventListener("click", () => {
@@ -2397,9 +2403,7 @@ themeReset.addEventListener("click", () => {
   stagedHitokotoSettings = normalizeHitokotoSettings();
   renderHitokotoSettings();
   renderThemePreview({ animate: true });
-  window.NutcTheme.previewBackgroundBlur(
-    stagedThemeSettings.backgroundBlur,
-  );
+  window.NutcTheme.previewBackground(stagedThemeSettings);
 });
 
 themeApply.addEventListener("click", async () => {
