@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal TronClass Theme
 // @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
-// @version      0.3.0
+// @version      0.3.1
 // @description  Dark NUTC Portal theme for TronClass (tc.nutc.edu.tw) itself, including exam pages. The rebuilt TronClass pages now live in NUTC Portal at /tronclass.
 // @author       Rynowastaken
 // @match        https://tc.nutc.edu.tw/*
@@ -438,8 +438,13 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
   color: var(--tcx-text) !important;
 }
 .exam-paper .subject-options > li.option > label:has(input:focus-visible) { outline: 2px solid var(--tcx-primary); outline-offset: 2px; }
-.exam-paper .subject-options .left { display: inline-flex !important; align-items: center; gap: 8px; float: none !important; flex-shrink: 0; }
-.exam-paper .subject-options input { margin: 0 !important; width: 16px; height: 16px; position: static !important; top: auto !important; vertical-align: middle !important; }
+.exam-paper .subject-options .left { display: inline-flex !important; align-items: center; align-self: center; gap: 8px; float: none !important; flex-shrink: 0; line-height: 1 !important; }
+/* The radio sits in an inline wrapper whose line height pushed it above the
+   row's centre; size every wrapper to the control so it centres with the text.
+   The li.option/[type] parts outrank TronClass's own radio offsets. */
+.exam-paper .subject-options > li.option .left :has(input) { display: inline-flex !important; align-items: center; height: auto !important; line-height: 1 !important; margin: 0 !important; padding: 0 !important; position: static !important; top: auto !important; transform: none !important; }
+.exam-paper .subject-options > li.option input[type] { display: block; flex: none; margin: 0 !important; width: 16px; height: 16px; position: static !important; top: auto !important; transform: none !important; vertical-align: middle !important; }
+.exam-paper .subject-options .option-index { line-height: 1 !important; }
 .exam-paper .option-index { color: var(--tcx-muted) !important; font-weight: 600; font-variant-numeric: tabular-nums; }
 .exam-paper .subject-options > li.option > label:has(input:checked) .option-index { color: var(--tcx-primary) !important; }
 .exam-paper .option-content { flex: 1; min-width: 0; color: inherit !important; }
