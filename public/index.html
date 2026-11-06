@@ -740,28 +740,28 @@
 
           <label class="mt-5 grid gap-2">
             <span class="flex items-center justify-between gap-3 text-sm font-semibold">
-              <span>背景亮度 (Background brightness)</span>
+              <span>背景模糊 (Background blur)</span>
               <output
-                id="backgroundBrightnessValue"
+                id="backgroundBlurValue"
                 class="text-xs font-semibold tabular-nums text-[var(--muted)]"
-                for="backgroundBrightness"
-              >100%</output>
+                for="backgroundBlur"
+              >0%</output>
             </span>
             <input
-              id="backgroundBrightness"
+              id="backgroundBlur"
               class="h-2 w-full cursor-pointer accent-[var(--primary)]"
               type="range"
               min="0"
-              max="200"
+              max="100"
               step="5"
-              value="100"
-              aria-describedby="backgroundBrightnessHelp"
+              value="0"
+              aria-describedby="backgroundBlurHelp"
             />
             <span
-              id="backgroundBrightnessHelp"
+              id="backgroundBlurHelp"
               class="text-xs font-medium leading-5 text-[var(--muted)]"
             >
-              0% 最暗、100% 原始設定、200% 最亮。調整時可即時預覽，按 Apply 儲存到此瀏覽器。
+              0% 清晰（原始設定）、100% 最模糊。調整時可即時預覽，按 Apply 儲存到此瀏覽器。
             </span>
           </label>
         </div>

@@ -9,6 +9,7 @@
   --glass: rgba(31,27,36,.72);
   --line: rgba(255,255,255,.14);
   --brightness: .75;
+  --bg-blur: 0px;
   --scroll-shift: 0px;
   /* Names the shared tile wall reads; the demo's theme owns --demo-primary. */
   --primary: var(--demo-primary, #dd909b);
@@ -36,11 +37,12 @@ a { color: inherit; text-decoration: none; }
 .svg-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .icon { width: 20px; height: 20px; display: block; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .backdrop {
-  position: fixed; inset: -70px 0;
+  /* Reaches past the viewport by twice the blur so blurred edges stay filled. */
+  position: fixed; inset: calc(-70px - 2 * var(--bg-blur)) calc(-2 * var(--bg-blur));
   pointer-events: none;
   overflow: hidden;
   z-index: 0;
-  filter: brightness(var(--brightness));
+  filter: brightness(var(--brightness)) blur(var(--bg-blur));
   transform: translate3d(0, var(--scroll-shift), 0);
   will-change: transform;
 }
