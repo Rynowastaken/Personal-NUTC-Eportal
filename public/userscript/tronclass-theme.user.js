@@ -1,18 +1,22 @@
 // ==UserScript==
 // @name         NUTC Portal TronClass Theme
 // @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
-// @version      0.1.2
-// @description  Restyle NUTC TronClass (tc.nutc.edu.tw) in the NUTC Portal dark tile look, exam pages included.
+// @version      0.2.0
+// @description  A redesigned NUTC TronClass (tc.nutc.edu.tw) in the NUTC Portal dark tile look; pages it does not rebuild keep TronClass with a dark theme.
 // @author       Rynowastaken
 // @match        https://tc.nutc.edu.tw/*
 // @run-at       document-start
 // @grant        none
+// @require      https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/tronclass-app.js?v=0.2.0
 // @updateURL    https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/tronclass-theme.user.js
 // @downloadURL  https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/tronclass-theme.user.js
 // ==/UserScript==
 
 (() => {
   "use strict";
+
+  // tronclass-app.js (@require, runs first) has already drawn its own page.
+  if (window.__tcxApp && window.__tcxApp.active) return;
 
   // Purely visual: this script only adds a stylesheet and marker classes on
   // TronClass's own chrome. It never reads, sends or changes course data, and

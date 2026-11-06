@@ -75,9 +75,9 @@ and changes to the visible identity text can produce a different ID.
 
 The persisted file is `data/preferences.json`, which is ignored by Git.
 
-## TronClass 深色主題
+## TronClass 重新設計
 
-另一份獨立的 userscript，把 TronClass（`tc.nutc.edu.tw`）換成和 Dashboard 一致的深色主題：深梅色背景、Albert Sans、粉色強調色、6px 圓角的平面卡片。首頁、課程列表、課程頁、測驗說明頁和作答頁都有處理。
+另一份獨立的 userscript，把 TronClass（`tc.nutc.edu.tw`）學生每天會用到的頁面重新做過，外觀和 Dashboard 一致：深梅色背景、Albert Sans、粉色強調色、6px 圓角的平面卡片。
 
 安裝網址：
 
@@ -85,6 +85,26 @@ The persisted file is `data/preferences.json`, which is ignored by Git.
 https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/tronclass-theme.user.js
 ```
 
-它只改外觀：沒有 `@grant`、不送出任何資料，也不碰可編輯的內容（作答文字框、編輯器、浮水印），所以不會影響作答或存檔。老師貼上的題目文字若帶有 Word 的黑色字，會用 CSS 改成淺色顯示，原始內容不變。
+已經裝過舊版「TronClass Theme」的話不用重裝，userscript manager 更新後就會是新版。
 
-要暫時關閉，在 userscript manager 裡停用它再重新整理頁面即可。交卷後的成績和解析頁面還沒實際測過，如有看不清楚的地方請回報。
+### 重新設計的頁面
+
+| 頁面 | 內容 |
+| --- | --- |
+| 首頁（`/user/index`） | 依截止時間排序的待辦，以及本學期課程（最近開啟的排前面） |
+| 課程（`/user/courses`） | 進行中／未開始／已結束切換與搜尋 |
+| 單一課程 | 依章節排列的內容、完成狀態、繼續學習、成績 |
+| 教材 | 檔案列表，用 TronClass 自己的 PDF 檢視器預覽，開啟時記錄已讀 |
+| 影片 | YouTube 播放器，只記錄實際播放過的片段；老師設定離開視窗暫停時照樣暫停 |
+| 作業 | 狀態、截止時間、說明、老師附件、自己的繳交紀錄 |
+| 測驗 | 作答期間、限時、次數、題數、成績 |
+
+這些頁面直接使用 TronClass 的 JSON API 和瀏覽器現有的登入，不會把任何資料送到其他地方。
+
+### 仍然交給原版 TronClass 的部分
+
+- **測驗作答**：按「開始作答」會進入原版的測驗頁，保留規則確認、資格檢查、全螢幕與防作弊監控。重新做的介面不會繞過這些設定。
+- **繳交作業**：檔案上傳目前仍在原版頁面進行。
+- 其他頁面（討論區、問卷、點名等）照常顯示原版 TronClass，套用深色主題。
+
+每一頁右上角的選單和頁尾都有「用原版開啟此頁」，只對那一次載入有效。
