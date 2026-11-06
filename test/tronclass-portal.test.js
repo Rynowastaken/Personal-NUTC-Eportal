@@ -52,3 +52,10 @@ test("the TronClass pages use the dashboard's colours but not its background ima
   assert.doesNotMatch(page, /--primary: #/);
   assert.doesNotMatch(page, /rgba\(240,\s*168,\s*200/);
 });
+
+test("the TronClass page background is tinted with the theme's dark colour", async () => {
+  const page = await read("../public/tronclass.js");
+  assert.match(page, /--bg: color-mix\(in srgb, var\(--secondary\)/);
+  assert.match(page, /--surface: color-mix\(in srgb, var\(--secondary\)/);
+  assert.doesNotMatch(page, /#2f2735|rgba\(20, 16, 24/);
+});

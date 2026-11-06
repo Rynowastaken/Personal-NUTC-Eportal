@@ -64,11 +64,13 @@
   /* --primary, --primary-soft, --primary-ring, --accent, --foreground, --muted,
      --faint, --danger and --control-* come from the dashboard theme (theme.js),
      so this page takes the colours of the user's background like the dashboard.
-     The background image itself stays on the dashboard. */
-  --bg: #141018;
-  --surface: #1c1720;
-  --raised: #261f2b;
-  --sunken: #110d14;
+     The background image itself stays on the dashboard; the page and panels
+     are tinted with the palette's dark colour (--secondary) instead. */
+  --bg: color-mix(in srgb, var(--secondary) 34%, #0c0a0e);
+  --surface: color-mix(in srgb, var(--secondary) 44%, #141117);
+  --raised: color-mix(in srgb, var(--secondary) 54%, #1a161d);
+  --sunken: color-mix(in srgb, var(--secondary) 26%, #09070b);
+  --hover: color-mix(in srgb, var(--secondary) 64%, #201b24);
   --edge: rgba(255, 255, 255, .10);
   --edge-strong: rgba(255, 255, 255, .18);
   --text: var(--foreground);
@@ -108,7 +110,7 @@ svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
 /* Top bar */
 .bar {
   position: sticky; top: 0; z-index: 20; height: 56px;
-  background: rgba(20, 16, 24, .82); backdrop-filter: blur(16px) saturate(160%);
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(16px) saturate(160%);
   border-bottom: 1px solid var(--edge);
 }
 .bar-in { max-width: 1120px; height: 100%; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 4px; }
@@ -157,7 +159,7 @@ h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; letter-spacing: -.01em
   font-weight: 600; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap;
   transition: background .15s, border-color .15s, transform .15s;
 }
-.btn:hover { background: #2f2735; border-color: rgba(255,255,255,.28); }
+.btn:hover { background: var(--hover); border-color: rgba(255,255,255,.28); }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
