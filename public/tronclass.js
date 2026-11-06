@@ -63,14 +63,14 @@
   color-scheme: dark;
   /* --primary, --primary-soft, --primary-ring, --accent, --foreground, --muted,
      --faint, --danger and --control-* come from the dashboard theme (theme.js),
-     so this page takes the colours of the user's background like the dashboard. */
+     so this page takes the colours of the user's background like the dashboard.
+     The background image itself stays on the dashboard. */
   --bg: #141018;
-  --glass-blur: blur(20px) saturate(160%);
-  --surface: rgba(18, 15, 22, .46);
-  --raised: rgba(38, 31, 43, .66);
-  --sunken: rgba(10, 8, 12, .38);
-  --edge: rgba(255, 255, 255, .12);
-  --edge-strong: rgba(255, 255, 255, .2);
+  --surface: #1c1720;
+  --raised: #261f2b;
+  --sunken: #110d14;
+  --edge: rgba(255, 255, 255, .10);
+  --edge-strong: rgba(255, 255, 255, .18);
   --text: var(--foreground);
   --soft: color-mix(in srgb, var(--foreground) 84%, transparent);
   --primary-hover: var(--control-hover-bg);
@@ -89,7 +89,10 @@
 html { background: var(--bg); scrollbar-color: rgba(255,255,255,.18) transparent; }
 body {
   margin: 0; min-height: 100vh; color: var(--text); font: 15px/1.6 var(--font);
-  background: transparent;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 60%),
+    var(--bg);
   -webkit-font-smoothing: antialiased; caret-color: var(--primary);
 }
 ::selection { background: color-mix(in srgb, var(--primary) 45%, transparent); color: var(--foreground); }
@@ -105,7 +108,7 @@ svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
 /* Top bar */
 .bar {
   position: sticky; top: 0; z-index: 20; height: 56px;
-  background: rgba(18, 15, 22, .56); backdrop-filter: var(--glass-blur);
+  background: rgba(20, 16, 24, .82); backdrop-filter: blur(16px) saturate(160%);
   border-bottom: 1px solid var(--edge);
 }
 .bar-in { max-width: 1120px; height: 100%; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 4px; }
@@ -154,7 +157,7 @@ h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; letter-spacing: -.01em
   font-weight: 600; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap;
   transition: background .15s, border-color .15s, transform .15s;
 }
-.btn:hover { background: rgba(58, 48, 64, .72); border-color: rgba(255,255,255,.28); }
+.btn:hover { background: #2f2735; border-color: rgba(255,255,255,.28); }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
@@ -261,11 +264,6 @@ button.row:first-child { border-top: 0; }
 .pager a.next { text-align: right; grid-column: 2; }
 .pager small { color: var(--faint); font-size: 12px; }
 .pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Panes are glass over the dashboard background, like the dashboard tiles. */
-.list, .tile, .facts, .pager a, .error, .menu, .seg, .search input, .viewer, .btn:not(.primary):not(.ghost) {
-  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
-}
 
 /* States */
 .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
@@ -1312,7 +1310,7 @@ button.row:first-child { border-top: 0; }
     return parts;
   }
 
-  // Same background, brightness, blur and colours as the dashboard.
+  // Same colours as the dashboard (the page has no #portalBackdrop, so no image).
   window.NutcTheme?.init?.().catch(() => {});
   render();
 })();
