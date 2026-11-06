@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal TronClass Theme
 // @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
-// @version      0.1.0
+// @version      0.1.1
 // @description  Restyle NUTC TronClass (tc.nutc.edu.tw) in the NUTC Portal dark tile look, exam pages included.
 // @author       Rynowastaken
 // @match        https://tc.nutc.edu.tw/*
@@ -469,12 +469,26 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
 }
 `;
 
+  // The script runs before TronClass's stylesheets arrive, and those reset the
+  // same tokens and panels, so this sheet must stay the last one in <head> to
+  // win the cascade.
+  let headObserver = null;
+  let observedHead = null;
   function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID;
-    style.textContent = CSS;
-    (document.head || document.documentElement).append(style);
+    let style = document.getElementById(STYLE_ID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID;
+      style.textContent = CSS;
+    }
+    const parent = document.head || document.documentElement;
+    if (parent.lastElementChild !== style) parent.append(style);
+    if (document.head && observedHead !== document.head) {
+      headObserver?.disconnect();
+      observedHead = document.head;
+      headObserver = new MutationObserver(() => injectStyle());
+      headObserver.observe(observedHead, { childList: true });
+    }
   }
 
   // TronClass hard-codes white panels and near-black text all over its many
@@ -540,6 +554,8 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
     new MutationObserver((records) => {
       for (const record of records) record.addedNodes.forEach(queue);
     }).observe(document.body, { childList: true, subtree: true });
+    // Late stylesheets change what still renders white; sweep once more.
+    window.addEventListener("load", () => queue(document.body), { once: true });
   };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start, { once: true });
