@@ -47,7 +47,9 @@ import {
   checkServerPortalStatus,
   createModuleHandoff,
   getPortalKeepaliveState,
+  isSsoLoginEndpoint,
   logoutServerPortalSession,
+  looksSelfContainedGetHandoff,
   startPortalKeepalive,
 } from "./src/portal-session.js";
 import { applyTronclassLanding } from "./src/tronclass-handoff.js";
@@ -382,6 +384,29 @@ async function buildModuleLaunch(moduleId, onProgress, { target = "" } = {}) {
   });
 
   if (moduleId === "tronclass") {
+    // A capture that only produced the school's SSO login page (rather than a
+    // ticket) authenticates the server's session, not the student's browser;
+    // fail with a clear message instead of opening that page for them.
+    let handoffUrl = null;
+    try {
+      handoffUrl = handoff?.type === "get" ? new URL(handoff.url) : null;
+    } catch {
+      handoffUrl = null;
+    }
+
+    if (
+      handoffUrl &&
+      isSsoLoginEndpoint(handoffUrl) &&
+      !looksSelfContainedGetHandoff(handoffUrl)
+    ) {
+      throw Object.assign(
+        new Error(
+          "ePortal handed over its SSO login page instead of a TronClass ticket.",
+        ),
+        { code: "EPORTAL_HANDOFF_SESSION_BOUND" },
+      );
+    }
+
     handoff = applyTronclassLanding(handoff, target);
   }
 

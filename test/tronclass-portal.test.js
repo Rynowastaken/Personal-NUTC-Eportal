@@ -64,6 +64,12 @@ test("pages opened on TronClass itself sign the browser in through the ePortal h
   assert.doesNotMatch(launch, /postMessage/);
 });
 
+test("a session-bound SSO capture is rejected instead of shown to the student", async () => {
+  const server = await read("../server.js");
+  assert.match(server, /isSsoLoginEndpoint\(handoffUrl\)/);
+  assert.match(server, /EPORTAL_HANDOFF_SESSION_BOUND/);
+});
+
 test("the TronClass pages use the dashboard's colours but not its background image", async () => {
   const html = await read("../public/tronclass.html");
   const page = await read("../public/tronclass.js");
