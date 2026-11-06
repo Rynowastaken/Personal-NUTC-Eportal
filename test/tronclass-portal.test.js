@@ -40,3 +40,15 @@ test("the TronClass pages never show the student's name and send exams to TronCl
   assert.match(page, /const TRONCLASS = "https:\/\/tc\.nutc\.edu\.tw"/);
   assert.match(page, /canStart \? h\("a", \{ class: "btn primary", href: classicHref\(\), "data-classic": "" \}/);
 });
+
+test("the TronClass pages use the dashboard's background and colours", async () => {
+  const html = await read("../public/tronclass.html");
+  const page = await read("../public/tronclass.js");
+  assert.match(html, /<script src="\/theme-defaults\.js\?v=\d+"><\/script>/);
+  assert.match(html, /<script src="\/theme\.js\?v=\d+"><\/script>\s*<script src="\/tronclass\.js">/);
+  assert.match(html, /id="portalBackdrop"/);
+  assert.match(page, /window\.NutcTheme\?\.init\?\.\(\)/);
+  // The theme's inline variables must not be shadowed by fixed page colours.
+  assert.doesNotMatch(page, /--primary: #/);
+  assert.doesNotMatch(page, /rgba\(240,\s*168,\s*200/);
+});

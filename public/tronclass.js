@@ -61,25 +61,23 @@
 }
 :root {
   color-scheme: dark;
+  /* --primary, --primary-soft, --primary-ring, --accent, --foreground, --muted,
+     --faint, --danger and --control-* come from the dashboard theme (theme.js),
+     so this page takes the colours of the user's background like the dashboard. */
   --bg: #141018;
-  --surface: #1c1720;
-  --raised: #261f2b;
-  --sunken: #110d14;
-  --edge: rgba(255, 255, 255, .10);
-  --edge-strong: rgba(255, 255, 255, .18);
-  --text: #f4eef3;
-  --soft: #d9cfd7;
-  --muted: #b9aeb7;
-  --faint: #948996;
-  --primary: #f0a8c8;
-  --primary-hover: #f6c2da;
-  --on-primary: #2a1620;
-  --primary-soft: rgba(240, 168, 200, .14);
-  --primary-ring: rgba(240, 168, 200, .38);
-  --honey: #e8b86d;
-  --honey-soft: rgba(232, 184, 109, .14);
-  --danger: #f4a0a5;
-  --danger-soft: rgba(244, 160, 165, .14);
+  --glass-blur: blur(20px) saturate(160%);
+  --surface: rgba(18, 15, 22, .46);
+  --raised: rgba(38, 31, 43, .66);
+  --sunken: rgba(10, 8, 12, .38);
+  --edge: rgba(255, 255, 255, .12);
+  --edge-strong: rgba(255, 255, 255, .2);
+  --text: var(--foreground);
+  --soft: color-mix(in srgb, var(--foreground) 84%, transparent);
+  --primary-hover: var(--control-hover-bg);
+  --on-primary: var(--control-text);
+  --honey: var(--accent);
+  --honey-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
   --success: #8fd8ad;
   --success-soft: rgba(143, 216, 173, .14);
   --radius: 6px;
@@ -91,13 +89,10 @@
 html { background: var(--bg); scrollbar-color: rgba(255,255,255,.18) transparent; }
 body {
   margin: 0; min-height: 100vh; color: var(--text); font: 15px/1.6 var(--font);
-  background:
-    radial-gradient(1200px 600px at 85% -10%, rgba(240,168,200,.07), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(232,184,109,.04), transparent 60%),
-    var(--bg);
+  background: transparent;
   -webkit-font-smoothing: antialiased; caret-color: var(--primary);
 }
-::selection { background: rgba(240,168,200,.32); color: #fff; }
+::selection { background: color-mix(in srgb, var(--primary) 45%, transparent); color: var(--foreground); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 99px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -110,14 +105,14 @@ svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
 /* Top bar */
 .bar {
   position: sticky; top: 0; z-index: 20; height: 56px;
-  background: rgba(20, 16, 24, .82); backdrop-filter: blur(16px) saturate(160%);
+  background: rgba(18, 15, 22, .56); backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--edge);
 }
 .bar-in { max-width: 1120px; height: 100%; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 4px; }
 .brand { display: flex; align-items: center; gap: 10px; margin-right: 16px; font-weight: 600; letter-spacing: -.01em; }
 .brand-mark { display: grid; grid-template-columns: repeat(2, 7px); gap: 2px; }
 .brand-mark i { width: 7px; height: 7px; border-radius: 2px; background: var(--primary); }
-.brand-mark i:nth-child(2), .brand-mark i:nth-child(3) { background: rgba(240,168,200,.45); }
+.brand-mark i:nth-child(2), .brand-mark i:nth-child(3) { background: color-mix(in srgb, var(--primary) 45%, transparent); }
 .nav a { display: inline-flex; align-items: center; height: 36px; padding: 0 12px; border-radius: var(--radius); color: var(--muted); font-weight: 500; transition: color .15s, background .15s; }
 .nav a:hover { color: var(--text); background: rgba(255,255,255,.05); }
 .nav a[aria-current="page"] { color: var(--text); background: var(--primary-soft); }
@@ -159,7 +154,7 @@ h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; letter-spacing: -.01em
   font-weight: 600; font-size: 14px; color: var(--text); cursor: pointer; white-space: nowrap;
   transition: background .15s, border-color .15s, transform .15s;
 }
-.btn:hover { background: #2f2735; border-color: rgba(255,255,255,.28); }
+.btn:hover { background: rgba(58, 48, 64, .72); border-color: rgba(255,255,255,.28); }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
@@ -240,14 +235,14 @@ button.row:first-child { border-top: 0; }
 .module h2 { color: var(--soft); }
 
 /* Detail pages */
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; margin-top: 24px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--edge); overflow: hidden; }
-.fact { padding: 14px 16px; background: var(--surface); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; margin-top: 24px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.fact { padding: 14px 16px; box-shadow: -1px -1px 0 var(--edge); }
 .fact.wide { grid-column: span 2; }
 @media (max-width: 640px) { .fact.wide { grid-column: auto; } }
 .fact dt { color: var(--faint); font-size: 12px; }
 .fact dd { margin: 2px 0 0; font-weight: 600; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
-.note { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding: 12px 14px; border-radius: var(--radius); background: var(--honey-soft); color: #f1d3a2; font-size: 14px; max-width: 72ch; }
+.note { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding: 12px 14px; border-radius: var(--radius); background: var(--honey-soft); color: color-mix(in srgb, var(--accent) 70%, #fff); font-size: 14px; max-width: 72ch; }
 .note .i { color: var(--honey); margin-top: 2px; }
 .prose { max-width: 72ch; color: var(--soft); overflow-wrap: anywhere; }
 .prose a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
@@ -266,6 +261,11 @@ button.row:first-child { border-top: 0; }
 .pager a.next { text-align: right; grid-column: 2; }
 .pager small { color: var(--faint); font-size: 12px; }
 .pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Panes are glass over the dashboard background, like the dashboard tiles. */
+.list, .tile, .facts, .pager a, .error, .menu, .seg, .search input, .viewer, .btn:not(.primary):not(.ghost) {
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+}
 
 /* States */
 .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
@@ -1312,5 +1312,7 @@ button.row:first-child { border-top: 0; }
     return parts;
   }
 
+  // Same background, brightness, blur and colours as the dashboard.
+  window.NutcTheme?.init?.().catch(() => {});
   render();
 })();
