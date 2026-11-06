@@ -24,6 +24,7 @@ public/generated/
 .update-backup-*/
 .deploy/
 *.html
+!public/tronclass-open.html
 *.json.tmp
 
 # OS/editor

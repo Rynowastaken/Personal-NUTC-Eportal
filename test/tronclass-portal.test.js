@@ -41,6 +41,29 @@ test("the TronClass pages never show the student's name and send exams to TronCl
   assert.match(page, /canStart \? h\("a", \{ class: "btn primary", href: classicHref\(\), "data-classic": "" \}/);
 });
 
+test("pages opened on TronClass itself sign the browser in through the ePortal handoff first", async () => {
+  const page = await read("../public/tronclass.js");
+  // Classic links must be intercepted instead of walking straight into the
+  // school's SSO login page.
+  assert.match(page, /link\.dataset\.classic != null/);
+  assert.match(page, /openOnTronclass\(classic\)/);
+  // The handoff comes from the same launch job /go/tronclass uses, and the
+  // requested page follows once the handoff has set TronClass's cookies.
+  assert.match(page, /requestJson\("\/api\/launch\/tronclass", \{ method: "POST" \}\)/);
+  assert.match(page, /popup\.location = new URL\(`\/launch-job\/\$\{job\.id\}\/continue`/);
+  assert.match(page, /TRONCLASS_SSO_SETTLE_MS = \d+/);
+  // Each click gets its own tab, so an exam already open in a previous tab is
+  // never navigated away; the final hop drops the opener before TronClass
+  // loads, matching the noopener behaviour of the old plain links.
+  assert.match(page, /const popup = window\.open\("about:blank"\);/);
+  assert.match(page, /\/tronclass-open\.html\?to=/);
+
+  const hop = await read("../public/tronclass-open.js");
+  assert.match(hop, /window\.opener = null/);
+  assert.match(hop, /url\.origin !== "https:\/\/tc\.nutc\.edu\.tw"/);
+  assert.match(hop, /location\.replace\(url\.href\)/);
+});
+
 test("the TronClass pages use the dashboard's colours but not its background image", async () => {
   const html = await read("../public/tronclass.html");
   const page = await read("../public/tronclass.js");

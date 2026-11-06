@@ -14,6 +14,10 @@
   const USER_KEY = "tcx-user";
   const STYLE_ID = "tcx-app-style";
   const FONT_URL = "/fonts/albert-sans.woff2";
+  // Time the school's SSO chain is given after the handoff starts before the
+  // requested TronClass page replaces it in the tab. Too early would cut the
+  // handoff off before TronClass's cookies are set.
+  const TRONCLASS_SSO_SETTLE_MS = 7000;
 
   // ---------------------------------------------------------------------------
   // Routing
@@ -612,9 +616,175 @@ button.row:first-child { border-top: 0; }
     render();
   }
 
+  // ---------------------------------------------------------------------------
+  // Opening TronClass itself
+  //
+  // The rebuilt pages read TronClass through the server, which keeps the
+  // TronClass session it got from ePortal. That session never reaches this
+  // browser, so a plain link to tc.nutc.edu.tw lands on the school's SSO
+  // login. Pages we have not rebuilt (taking an exam with its anti-cheat,
+  // submitting homework) open there all the same, so send the browser through
+  // ePortal's one-time handoff first and put the requested page in front of
+  // the user once the handoff has set TronClass's cookies.
+
+  async function requestJson(path, options = {}) {
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      ...options,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error || `Request failed (${response.status})`);
+      error.code = data.code || "";
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  }
+
+  async function waitForLaunch(jobId) {
+    // The launch runs in the background tab this page opened, where browsers
+    // clamp timers; a wall-clock budget keeps the loop inside the server's
+    // two-minute job lifetime however slowly the polls run.
+    const deadline = Date.now() + 100_000;
+    for (;;) {
+      const data = await requestJson(`/api/launch-job/${jobId}`);
+      if (data.job?.state === "ready") return data.job;
+      if (data.job?.state === "error") {
+        const error = new Error(data.job.error?.message || "TronClass 登入失敗。");
+        error.code = data.job.error?.code || "";
+        throw error;
+      }
+      if (Date.now() >= deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error("TronClass 登入逾時，請再試一次。");
+  }
+
+  function paintPopup(popup, title, lines) {
+    try {
+      const doc = popup.document;
+      if (!doc || !doc.body) return false;
+      doc.title = title;
+      const wrap = doc.createElement("div");
+      wrap.style.cssText = "max-width:440px;margin:18vh auto;padding:0 20px;font:15px/1.7 system-ui,sans-serif;color:#e7e2ee;";
+      const heading = doc.createElement("h1");
+      heading.style.cssText = "margin:0 0 10px;font-size:19px;font-weight:600;";
+      heading.textContent = title;
+      wrap.append(heading);
+      for (const line of lines) {
+        if (!line) continue;
+        const p = doc.createElement("p");
+        p.style.margin = "0 0 10px";
+        if (typeof line === "string") p.textContent = line;
+        else p.append(line);
+        wrap.append(p);
+      }
+      doc.body.replaceChildren(wrap);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function showClassicFailure(popup, url, error) {
+    const login = error?.code === "EPORTAL_LOGIN_REQUIRED";
+    const busy = error?.code === "EPORTAL_PROFILE_BUSY";
+    const expired = error?.status === 404;
+    const handoff = typeof error?.code === "string" && error.code.startsWith("EPORTAL_HANDOFF");
+    const message = login
+      ? "需要先登入 Server ePortal，才能替這個瀏覽器開啟 TronClass。"
+      : busy
+        ? "Portal 正在使用 ePortal（可能是登入頁開著），請稍後再試。"
+        : expired
+          ? "TronClass 登入逾時，請再試一次。"
+          : handoff
+            ? "ePortal 沒有提供可轉移的 TronClass 登入，請稍後再試。"
+            : error?.message || "無法登入 TronClass。";
+
+    if (popup.closed) return;
+
+    let painted = false;
+    try {
+      const link = popup.document.createElement("a");
+      link.href = login ? "/server-login/" : url.href;
+      link.textContent = login ? "登入 Server ePortal" : "直接前往 TronClass";
+      link.style.cssText = "color:#b9a6f7;";
+      painted =
+        popup.document.body != null &&
+        paintPopup(popup, "無法開啟 TronClass", [message, link]);
+    } catch {
+      painted = false;
+    }
+
+    if (!painted) {
+      try {
+        popup.location = login ? "/server-login/" : url.href;
+      } catch {
+        // The tab is gone; nothing left to recover.
+      }
+    }
+  }
+
+  // Opens a TronClass page with this browser signed in through ePortal's SSO
+  // handoff. Must be called from a click handler so the tab is not blocked.
+  function openOnTronclass(url) {
+    // A fresh tab per click: reusing a named tab would navigate an exam or
+    // homework that is already open there away from what the student is doing.
+    const popup = window.open("about:blank");
+    if (!popup) {
+      location.assign(url.href);
+      return;
+    }
+
+    paintPopup(popup, "正在登入 TronClass…", [
+      "正在透過 ePortal 建立這個瀏覽器的單一登入。完成後會開啟你要的頁面。",
+    ]);
+
+    void (async () => {
+      try {
+        const { job } = await requestJson("/api/launch/tronclass", { method: "POST" });
+        await waitForLaunch(job.id);
+        // The continuation route hands the browser ePortal's one-time SSO
+        // handoff. Following it signs this browser into TronClass. Absolute,
+        // because this tab may already be showing TronClass itself.
+        popup.location = new URL(`/launch-job/${job.id}/continue`, location.origin).href;
+        // Once the handoff has set TronClass's cookies, the requested page
+        // loads directly with the browser's new session. Navigating before
+        // that would interrupt the handoff and fall back to the login page.
+        // It goes through /tronclass-open.html, which drops this tab's handle
+        // on the portal before TronClass's page takes over.
+        window.setTimeout(() => {
+          try {
+            if (!popup.closed) {
+              popup.location = new URL(
+                `/tronclass-open.html?to=${encodeURIComponent(url.href)}`,
+                location.origin,
+              ).href;
+            }
+          } catch {
+            // The tab was closed; nothing left to open.
+          }
+        }, TRONCLASS_SSO_SETTLE_MS);
+      } catch (error) {
+        showClassicFailure(popup, url, error);
+      }
+    })();
+  }
+
   document.addEventListener("click", (event) => {
     const link = event.target.closest("a[href]");
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (link.dataset.classic != null) {
+      const classic = new URL(link.href, location.origin);
+      if (classic.origin === TRONCLASS) {
+        event.preventDefault();
+        openOnTronclass(classic);
+        return;
+      }
+    }
     if (link.target === "_blank" || link.hasAttribute("download")) return;
     const url = new URL(link.href, location.origin);
     if (url.origin !== location.origin || !matchRoute(url)) return;

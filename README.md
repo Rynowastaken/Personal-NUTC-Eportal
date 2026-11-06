@@ -43,7 +43,7 @@
 - 顯示 AIS 每週課表（server 定時爬取，快取 5 分鐘）
 - 顯示 AIS 缺曠紀錄（含各類別統計）
 - 一鍵開啟五大 ePortal 子系統：學生管理、WebMail、活動報名、EP 學習歷程、TronClass
-- TronClass 直接在 Portal 裡（`/tronclass`）：待辦、課程、章節內容與完成狀態、成績、教材預覽、影片、作業與測驗資訊。伺服器用 ePortal 取得的 TronClass 登入代為讀取 API，登入資料存在 `data/tronclass-session.json`；測驗作答、繳交作業與其他未重做的頁面一律在 TronClass 原站開啟，保留原本的防作弊設定
+- TronClass 直接在 Portal 裡（`/tronclass`）：待辦、課程、章節內容與完成狀態、成績、教材預覽、影片、作業與測驗資訊。伺服器用 ePortal 取得的 TronClass 登入代為讀取 API，登入資料存在 `data/tronclass-session.json`；測驗作答、繳交作業與其他未重做的頁面一律在 TronClass 原站開啟，保留原本的防作弊設定。這些連結會先讓這個瀏覽器走一次 ePortal 的 TronClass SSO handoff，登入原站後再打開你要的頁面（否則瀏覽器沒有 TronClass 的登入 cookie，原站只會把你導到學校的登入頁）
 - Server 端持久保存 ePortal 登入狀態，重開機不用重登
 - 登入流程透過網頁表單完成，密碼不落盤
 - 自動 keepalive，定時檢查並延續 ePortal session
