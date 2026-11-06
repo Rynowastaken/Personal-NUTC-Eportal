@@ -573,16 +573,18 @@
         ')), radial-gradient(ellipse 80% 60% at 50% 0%, rgba(240,168,200,.14), transparent 56%), url("' +
         background.replace(/"/g, "%22") +
         '")';
-      // A blurred edge fades to transparent, so the blurred layer reaches
-      // past the viewport by twice the radius.
+      // A blurred edge fades to transparent, so the blurred layer grows by
+      // twice the radius. Negative margins add to the page's own overflow
+      // (the dashboard's scroll effect needs 72px above and below) rather
+      // than replacing it.
       const px = (normalizeBackgroundBlur(look.backgroundBlur) / 100) * MAX_BACKGROUND_BLUR_PX;
       backdrop.style.filter = px ? "blur(" + px + "px)" : "";
-      backdrop.style.inset = px ? -2 * px + "px" : "";
+      backdrop.style.margin = px ? -2 * px + "px" : "";
     } else {
       backdrop.style.backgroundImage =
         "radial-gradient(ellipse 72% 48% at 12% -6%, rgba(240,168,200,.16), transparent 66%), radial-gradient(ellipse 54% 44% at 88% 4%, rgba(232,184,109,.09), transparent 68%), linear-gradient(180deg, #17121b 0%, #100d13 58%, #09080a 100%)";
       backdrop.style.filter = "";
-      backdrop.style.inset = "";
+      backdrop.style.margin = "";
     }
   }
 

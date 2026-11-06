@@ -68,7 +68,7 @@ test("the background defaults to the original overlay with no blur", async () =>
   assert.equal(theme.settings().backgroundBlur, 0);
   assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.68, 0.88]);
   assert.equal(backdrop.style.filter, "");
-  assert.equal(backdrop.style.inset, "");
+  assert.equal(backdrop.style.margin, "");
   assert.ok(backdrop.style.backgroundImage.includes("https://example.com/background.jpg"));
 });
 
@@ -87,7 +87,10 @@ test("live preview shows brightness and blur together without saving", async () 
   theme.previewBackground({ backgroundBrightness: 0, backgroundBlur: 50 });
   assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.98, 0.99]);
   assert.equal(backdrop.style.filter, "blur(12px)");
-  assert.equal(backdrop.style.inset, "-24px");
+  assert.equal(backdrop.style.margin, "-24px");
+  // The page's own overflow (72px for the dashboard's scroll effect) is
+  // never replaced.
+  assert.equal(backdrop.style.inset, undefined);
   theme.previewBackground({ backgroundBrightness: 200, backgroundBlur: 100 });
   assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.1, 0.2]);
   assert.equal(backdrop.style.filter, "blur(24px)");
@@ -100,7 +103,7 @@ test("live preview shows brightness and blur together without saving", async () 
   theme.previewBackground(theme.settings());
   assert.deepEqual(overlayOpacities(backdrop.style.backgroundImage), [0.68, 0.88]);
   assert.equal(backdrop.style.filter, "");
-  assert.equal(backdrop.style.inset, "");
+  assert.equal(backdrop.style.margin, "");
 });
 
 test("Apply saves brightness and blur without changing theme palette brightness", async () => {
