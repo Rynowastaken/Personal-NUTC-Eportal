@@ -74,3 +74,17 @@ student/account identifier. Two users with identical visible identity text can c
 and changes to the visible identity text can produce a different ID.
 
 The persisted file is `data/preferences.json`, which is ignored by Git.
+
+## TronClass 深色主題
+
+另一份獨立的 userscript，把 TronClass（`tc.nutc.edu.tw`）換成和 Dashboard 一致的深色主題：深梅色背景、Albert Sans、粉色強調色、6px 圓角的平面卡片。首頁、課程列表、課程頁、測驗說明頁和作答頁都有處理。
+
+安裝網址：
+
+```text
+https://raw.githubusercontent.com/Rynowastaken/Personal-NUTC-Eportal/main/public/userscript/tronclass-theme.user.js
+```
+
+它只改外觀：沒有 `@grant`、不送出任何資料，也不碰可編輯的內容（作答文字框、編輯器、浮水印），所以不會影響作答或存檔。老師貼上的題目文字若帶有 Word 的黑色字，會用 CSS 改成淺色顯示，原始內容不變。
+
+要暫時關閉，在 userscript manager 裡停用它再重新整理頁面即可。交卷後的成績和解析頁面還沒實際測過，如有看不清楚的地方請回報。
