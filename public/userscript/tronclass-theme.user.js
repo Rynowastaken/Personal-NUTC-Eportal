@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal TronClass Theme
 // @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
-// @version      0.2.1
+// @version      0.2.2
 // @description  A redesigned NUTC TronClass (tc.nutc.edu.tw) in the NUTC Portal dark tile look; pages it does not rebuild keep TronClass with a dark theme.
 // @author       Rynowastaken
 // @match        https://tc.nutc.edu.tw/*
@@ -276,7 +276,7 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--tcx-primary); 
 
 /* Floating layers: dropdowns, menus, tooltips. */
 .f-dropdown, .dropdown-menu, .select2-drop, .select2-results, .ivu-select-dropdown, .ivu-dropdown-menu,
-.ivu-poptip-inner, .ivu-tooltip-inner, .autocollapse-more ul, .header .dropdown,
+.ivu-poptip-inner, .ivu-tooltip-inner, .autocollapse-more ul, .header .dropdown, .header .dropdown-list,
 .ui-multiselect-menu, .ui-menu, .ui-autocomplete, .ui-datepicker, .ui-dialog, .tcx-light-layer {
   background: var(--tcx-raised) !important;
   border: 1px solid var(--tcx-edge-strong) !important;
@@ -284,6 +284,8 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--tcx-primary); 
   box-shadow: 0 18px 50px rgba(0, 0, 0, .45) !important;
   color: var(--tcx-soft) !important;
 }
+.header .dropdown-list a { color: var(--tcx-soft) !important; }
+.header .dropdown-list a:hover { color: var(--tcx-text) !important; }
 .f-dropdown li a, .dropdown-menu li a, .select2-results li, .ivu-select-item, .ivu-dropdown-item { color: var(--tcx-soft) !important; }
 .f-dropdown li:hover, .f-dropdown li a:hover, .select2-results .select2-highlighted, .ivu-select-item:hover,
 .ivu-select-item-focus, .ivu-dropdown-item:hover { background: rgba(255, 255, 255, .06) !important; color: var(--tcx-text) !important; }
@@ -511,7 +513,10 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
       const box = element.getBoundingClientRect();
       // Floating panels need a solid fill; in-flow ones can just go clear.
       const floating = style.position === "absolute" || style.position === "fixed";
-      if (box.width > 24 && box.height > 16) {
+      // A menu that is still hidden has no size yet; repaint it now so it
+      // opens dark.
+      const hidden = box.width === 0 && box.height === 0;
+      if (hidden || (box.width > 24 && box.height > 16)) {
         element.classList.add(floating ? "tcx-light-layer" : "tcx-light-surface");
       }
     }
