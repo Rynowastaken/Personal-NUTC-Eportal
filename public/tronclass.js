@@ -14,10 +14,6 @@
   const USER_KEY = "tcx-user";
   const STYLE_ID = "tcx-app-style";
   const FONT_URL = "/fonts/albert-sans.woff2";
-  // Time the school's SSO chain is given after the handoff starts before the
-  // requested TronClass page replaces it in the tab. Too early would cut the
-  // handoff off before TronClass's cookies are set.
-  const TRONCLASS_SSO_SETTLE_MS = 7000;
 
   // ---------------------------------------------------------------------------
   // Routing
@@ -627,12 +623,12 @@ button.row:first-child { border-top: 0; }
   // ePortal's one-time handoff first and put the requested page in front of
   // the user once the handoff has set TronClass's cookies.
 
-  // The waiting UI is the portal's own launch page (/go/tronclass), so the
-  // handoff looks and behaves like every other ePortal module launch. That
-  // page reports when the one-time handoff starts; this page then lands the
-  // requested TronClass page once the school's redirects have set the
-  // browser's cookies. Must be called from a click handler so the tab is not
-  // blocked.
+  // The waiting UI and the SSO are the portal's own launch page
+  // (/go/tronclass), so the handoff looks and behaves like every other ePortal
+  // module launch. The launch page points the one-time ticket at the requested
+  // TronClass page, so the browser lands there directly instead of on
+  // TronClass's home page. Must be called from a click handler so the tab is
+  // not blocked.
   function openOnTronclass(url) {
     // A fresh tab per click: reusing a named tab would navigate an exam or
     // homework that is already open there away from what the student is doing.
@@ -641,41 +637,7 @@ button.row:first-child { border-top: 0; }
     );
     if (!popup) {
       location.assign(url.href);
-      return;
     }
-
-    const stopListening = () => {
-      window.removeEventListener("message", onMessage);
-      window.clearTimeout(giveUpTimer);
-    };
-
-    const onMessage = (event) => {
-      if (event.origin !== location.origin) return;
-      if (!event.data || event.data.type !== "nutc-launch-continue") return;
-      if (popup.closed || event.source !== popup) return;
-      stopListening();
-      // The launch page is about to hand this tab ePortal's one-time SSO
-      // handoff. Once the school's redirects have set TronClass's cookies,
-      // replace the handoff with the requested page through the hop that
-      // drops this tab's handle on the portal.
-      window.setTimeout(() => {
-        try {
-          if (!popup.closed) {
-            popup.location = new URL(
-              `/tronclass-open.html?to=${encodeURIComponent(url.href)}`,
-              location.origin,
-            ).href;
-          }
-        } catch {
-          // The tab was closed; nothing left to open.
-        }
-      }, TRONCLASS_SSO_SETTLE_MS);
-    };
-
-    window.addEventListener("message", onMessage);
-    // Launch jobs are forgotten after two minutes; stop listening then even
-    // if the popup never reached the handoff (failed job or closed tab).
-    const giveUpTimer = window.setTimeout(stopListening, 3 * 60_000);
   }
 
   document.addEventListener("click", (event) => {

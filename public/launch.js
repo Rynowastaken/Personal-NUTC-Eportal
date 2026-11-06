@@ -237,14 +237,13 @@ function continueReadyJob(jobId) {
     "Handoff ready; transferring control without exposing SSO material in the loading UI.",
   );
 
-  if (handoffTarget && window.opener) {
+  if (handoffTarget) {
     try {
-      window.opener.postMessage(
-        { type: "nutc-launch-continue" },
-        location.origin,
-      );
+      // This tab is about to enter the school's SSO and then TronClass itself;
+      // it has no reason to keep a handle on the authenticated portal.
+      window.opener = null;
     } catch {
-      // The opening page is gone; finish the launch without it.
+      // Already detached; nothing to drop.
     }
   }
 
@@ -301,7 +300,12 @@ async function startLaunch() {
 
     const data = await request(
       `/api/launch/${encodeURIComponent(moduleId)}`,
-      { method: "POST" },
+      {
+        method: "POST",
+        ...(handoffTarget
+          ? { body: JSON.stringify({ to: handoffTarget }) }
+          : {}),
+      },
     );
 
     activeJobId = data.job.id;

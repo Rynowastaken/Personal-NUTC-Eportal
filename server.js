@@ -50,6 +50,7 @@ import {
   logoutServerPortalSession,
   startPortalKeepalive,
 } from "./src/portal-session.js";
+import { applyTronclassLanding } from "./src/tronclass-handoff.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -375,10 +376,14 @@ function serializeLaunchJob(job) {
   };
 }
 
-async function buildModuleLaunch(moduleId, onProgress) {
-  const handoff = await createModuleHandoff(moduleId, {
+async function buildModuleLaunch(moduleId, onProgress, { target = "" } = {}) {
+  let handoff = await createModuleHandoff(moduleId, {
     onProgress,
   });
+
+  if (moduleId === "tronclass") {
+    handoff = applyTronclassLanding(handoff, target);
+  }
 
   if (moduleId === "activity") {
     onProgress?.({
@@ -418,7 +423,7 @@ async function buildModuleLaunch(moduleId, onProgress) {
   );
 }
 
-function startModuleLaunchJob(moduleId) {
+function startModuleLaunchJob(moduleId, { target = "" } = {}) {
   const module = moduleForLaunch(moduleId);
   if (!module) {
     const error = new Error("Unknown ePortal module.");
@@ -464,7 +469,7 @@ function startModuleLaunchJob(moduleId) {
           progress?.stage || "working",
           progress?.detail || "Server-side launch work is in progress.",
         );
-      });
+      }, { target });
 
       if (!launchJobs.has(id)) return;
       job.result = result;
@@ -1047,7 +1052,17 @@ const server = http.createServer(async (req, res) => {
       url.pathname.match(/^\/api\/launch\/([a-z0-9-]+)$/);
 
     if (launchStartMatch) {
-      const job = startModuleLaunchJob(launchStartMatch[1]);
+      // A rebuilt TronClass page asks for a specific page (an exam, a
+      // homework) so the handoff lands there instead of TronClass's home.
+      let target = "";
+      try {
+        const body = await readJsonBody(req);
+        if (typeof body?.to === "string") target = body.to;
+      } catch {
+        // A malformed optional body must not stop a plain launch.
+      }
+
+      const job = startModuleLaunchJob(launchStartMatch[1], { target });
       sendJson(res, 202, {
         ok: true,
         job: serializeLaunchJob(job),

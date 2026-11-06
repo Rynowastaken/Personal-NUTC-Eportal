@@ -48,26 +48,20 @@ test("pages opened on TronClass itself sign the browser in through the ePortal h
   assert.match(page, /link\.dataset\.classic != null/);
   assert.match(page, /openOnTronclass\(classic\)/);
   // The waiting UI is the portal's own launch page, opened with the requested
-  // TronClass page; it reports when the one-time handoff starts.
+  // TronClass page; the server points the ticket at that page so TronClass's
+  // home never shows first.
   assert.match(page, /\/go\/tronclass\?to=/);
   assert.match(page, /encodeURIComponent\(url\.href\)/);
-  assert.match(page, /nutc-launch-continue/);
-  assert.match(page, /TRONCLASS_SSO_SETTLE_MS = \d+/);
-  // Each click gets its own tab, so an exam already open in a previous tab is
-  // never navigated away; the final hop drops the opener before TronClass
-  // loads, matching the noopener behaviour of the old plain links.
   assert.match(page, /const popup = window\.open\(/);
-  assert.match(page, /\/tronclass-open\.html\?to=/);
+  assert.doesNotMatch(page, /tronclass-open|TRONCLASS_SSO_SETTLE_MS/);
 
   const launch = await read("../public/launch.js");
   assert.match(launch, /handoffTarget/);
-  assert.match(launch, /window\.opener\.postMessage/);
-  assert.match(launch, /nutc-launch-continue/);
-
-  const hop = await read("../public/tronclass-open.js");
-  assert.match(hop, /window\.opener = null/);
-  assert.match(hop, /url\.origin !== "https:\/\/tc\.nutc\.edu\.tw"/);
-  assert.match(hop, /location\.replace\(url\.href\)/);
+  assert.match(launch, /JSON\.stringify\(\{ to: handoffTarget \}\)/);
+  // The tab enters the school's SSO and TronClass; it keeps no handle on the
+  // authenticated portal.
+  assert.match(launch, /window\.opener = null/);
+  assert.doesNotMatch(launch, /postMessage/);
 });
 
 test("the TronClass pages use the dashboard's colours but not its background image", async () => {
