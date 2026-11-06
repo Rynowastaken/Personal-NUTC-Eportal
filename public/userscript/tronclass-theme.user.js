@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NUTC Portal TronClass Theme
 // @namespace    https://github.com/Rynowastaken/Personal-NUTC-Eportal
-// @version      0.2.0
+// @version      0.2.1
 // @description  A redesigned NUTC TronClass (tc.nutc.edu.tw) in the NUTC Portal dark tile look; pages it does not rebuild keep TronClass with a dark theme.
 // @author       Rynowastaken
 // @match        https://tc.nutc.edu.tw/*
@@ -529,10 +529,66 @@ tr:hover td { background: rgba(255, 255, 255, .03) !important; }
     }
   }
 
+  // A hover background only exists while the pointer is over the element, so
+  // the sweep never sees it. Read TronClass's own :hover rules instead and
+  // repaint the ones that light a row or button up in near-white.
+  const HOVER_ID = `${STYLE_ID}-hover`;
+  const scannedSheets = new WeakSet();
+  const hoverSelectors = new Set();
+  let probe = null;
+  function isLight(value) {
+    if (!value || value.includes("var(")) return false;
+    if (!probe) {
+      probe = document.createElement("span");
+      probe.hidden = true;
+      document.body.append(probe);
+    }
+    probe.style.backgroundColor = "";
+    probe.style.backgroundColor = value;
+    const [r, g, b, a = 1] = channels(getComputedStyle(probe).backgroundColor);
+    return a > 0.6 && r >= 225 && g >= 225 && b >= 225;
+  }
+  function collectHover(rules) {
+    for (const rule of rules) {
+      if (rule.cssRules && !rule.selectorText) {
+        collectHover(rule.cssRules);
+        continue;
+      }
+      const selector = rule.selectorText;
+      if (!selector || !selector.includes(":hover") || !isLight(rule.style.backgroundColor)) continue;
+      for (const part of selector.split(",")) {
+        if (part.includes(":hover")) hoverSelectors.add(part.trim());
+      }
+    }
+  }
+  function scanHover() {
+    const before = hoverSelectors.size;
+    for (const sheet of document.styleSheets) {
+      if (scannedSheets.has(sheet)) continue;
+      const owner = sheet.ownerNode;
+      if (owner && (owner.id === STYLE_ID || owner.id === HOVER_ID)) continue;
+      let rules;
+      try { rules = sheet.cssRules; } catch { continue; }
+      scannedSheets.add(sheet);
+      collectHover(rules);
+    }
+    if (hoverSelectors.size === before) return;
+    let style = document.getElementById(HOVER_ID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = HOVER_ID;
+      (document.head || document.documentElement).append(style);
+    }
+    style.textContent = [...hoverSelectors]
+      .map((selector) => `${selector} { background-color: rgba(255, 255, 255, .05) !important; }`)
+      .join("\n");
+  }
+
   const pending = new Set();
   let scheduled = false;
   function flush() {
     scheduled = false;
+    scanHover();
     for (const root of pending) {
       if (!root.isConnected) continue;
       classify(root);
