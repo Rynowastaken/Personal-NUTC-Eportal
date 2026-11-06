@@ -19,6 +19,12 @@ const launchBack = document.querySelector("#launchBack");
 const moduleId =
   location.pathname.match(/^\/go\/([a-z0-9-]+)$/)?.[1] || "";
 
+// A launch opened by the rebuilt TronClass pages for a specific page (taking
+// an exam, submitting homework) carries &to=<page>; the page that opened this
+// tab keeps its handle and needs to know when the handoff starts.
+const handoffTarget =
+  new URLSearchParams(location.search).get("to") || "";
+
 let startedAt = performance.now();
 let elapsedTimer = null;
 let lastStageKey = "";
@@ -230,6 +236,17 @@ function continueReadyJob(jobId) {
     "ready",
     "Handoff ready; transferring control without exposing SSO material in the loading UI.",
   );
+
+  if (handoffTarget && window.opener) {
+    try {
+      window.opener.postMessage(
+        { type: "nutc-launch-continue" },
+        location.origin,
+      );
+    } catch {
+      // The opening page is gone; finish the launch without it.
+    }
+  }
 
   location.replace(
     `/launch-job/${encodeURIComponent(jobId)}/continue`,

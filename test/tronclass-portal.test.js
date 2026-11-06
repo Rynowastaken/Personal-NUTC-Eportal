@@ -47,18 +47,22 @@ test("pages opened on TronClass itself sign the browser in through the ePortal h
   // school's SSO login page.
   assert.match(page, /link\.dataset\.classic != null/);
   assert.match(page, /openOnTronclass\(classic\)/);
-  // The handoff comes from the same launch job /go/tronclass uses, and the
-  // requested page follows once the handoff has set TronClass's cookies.
-  assert.match(page, /requestJson\("\/api\/launch\/tronclass", \{ method: "POST" \}\)/);
-  assert.match(page, /popup\.location = new URL\(`\/launch-job\/\$\{job\.id\}\/continue`/);
+  // The waiting UI is the portal's own launch page, opened with the requested
+  // TronClass page; it reports when the one-time handoff starts.
+  assert.match(page, /\/go\/tronclass\?to=/);
+  assert.match(page, /encodeURIComponent\(url\.href\)/);
+  assert.match(page, /nutc-launch-continue/);
   assert.match(page, /TRONCLASS_SSO_SETTLE_MS = \d+/);
   // Each click gets its own tab, so an exam already open in a previous tab is
   // never navigated away; the final hop drops the opener before TronClass
   // loads, matching the noopener behaviour of the old plain links.
-  assert.match(page, /const popup = window\.open\("about:blank"\);/);
+  assert.match(page, /const popup = window\.open\(/);
   assert.match(page, /\/tronclass-open\.html\?to=/);
-  // The waiting page must not flash white on about:blank's default document.
-  assert.match(page, /background:#141117/);
+
+  const launch = await read("../public/launch.js");
+  assert.match(launch, /handoffTarget/);
+  assert.match(launch, /window\.opener\.postMessage/);
+  assert.match(launch, /nutc-launch-continue/);
 
   const hop = await read("../public/tronclass-open.js");
   assert.match(hop, /window\.opener = null/);
