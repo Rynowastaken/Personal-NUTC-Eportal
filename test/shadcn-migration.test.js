@@ -25,7 +25,9 @@ test("React shadcn UI is a progressive enhancement of existing shortcuts", async
   assert.match(html, /<script src="\/generated\/ui\.js\?v=1" type="module"/);
   assert.match(app, /document\.addEventListener\("click", \(event\) => \{\s*if \(!event\.target\.closest\("#manageCustomLinks"\)\)/);
   assert.match(island, /createRoot\(root\)\.render\(<ManageLinksButton \/>\)/);
-  assert.match(island, /<Button[\s\S]*?variant="glass"/);
+  // Every action button shares the login button's filled control style.
+  assert.match(island, /<Button[\s\S]*?variant="default"/);
+  assert.match(button, /default: "portal-button"/);
   assert.match(button, /@radix-ui\/react-slot/);
   assert.match(button, /class-variance-authority/);
 });

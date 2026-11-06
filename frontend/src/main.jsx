@@ -10,7 +10,7 @@ function ManageLinksButton() {
   return (
     <Button
       id="manageCustomLinks"
-      variant="glass"
+      variant="default"
       size="default"
       className="text-xs"
     >

@@ -86,3 +86,34 @@
     will-change: auto;
   }
 }
+
+/* Every action button uses the same filled control as the login button:
+   the theme's control colour, dark readable text, a slight lift on hover. */
+@layer components {
+  .portal-button {
+    border: 1px solid var(--control-border);
+    background: var(--control-bg);
+    color: var(--control-text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+    transition: transform 150ms ease, background-color 150ms ease,
+      border-color 150ms ease, color 150ms ease;
+  }
+  .portal-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: var(--control-hover-border);
+    background: var(--control-hover-bg);
+    color: var(--control-hover-text);
+  }
+  .portal-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px var(--primary-ring);
+  }
+  .portal-button:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .portal-button { transition: none; }
+    .portal-button:hover:not(:disabled) { transform: none; }
+  }
+}

@@ -1971,10 +1971,10 @@ function customLinkAction(label, handler, { tone = "neutral", icon = "" } = {}) 
   const button = document.createElement("button");
   button.type = "button";
   button.disabled = customLinkBusy;
+  // Deleting keeps its red so it never looks like Save.
   button.className =
-    "custom-link-control inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-[5px] px-3 text-xs font-semibold" +
-    (tone === "accent" ? " custom-link-control--accent" : "") +
-    (tone === "danger" ? " custom-link-control--danger" : "");
+    (tone === "danger" ? "custom-link-control custom-link-control--danger" : "portal-button") +
+    " inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-[5px] px-3 text-xs font-semibold";
 
   if (icon) {
     const pictogram = document.createElement("i");

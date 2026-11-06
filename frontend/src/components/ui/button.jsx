@@ -9,10 +9,8 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "bg-[var(--control-bg)] text-[var(--control-text)] hover:bg-[var(--control-hover-bg)]",
-        outline:
-          "border border-white/[.12] bg-white/[.07] text-[var(--foreground)] hover:bg-white/[.10]",
+        default: "portal-button",
+        outline: "portal-button",
         glass: "shadcn-dashboard-glass text-[var(--foreground)] hover:-translate-y-px",
       },
       size: {
