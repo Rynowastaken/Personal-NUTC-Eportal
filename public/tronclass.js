@@ -253,7 +253,7 @@ button.row:first-child { border-top: 0; }
 @media (max-width: 1100px) { .fact.wide { grid-column: auto; } }
 .fact dt { color: var(--faint); font-size: 12px; }
 .fact dd { margin: 2px 0 0; font-weight: 600; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 24px; }
 .note { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding: 12px 14px; border-radius: var(--radius); background: var(--honey-soft); color: color-mix(in srgb, var(--accent) 70%, #fff); font-size: 14px; max-width: 72ch; }
 .note .i { color: var(--honey); margin-top: 2px; }
 .prose { max-width: 72ch; color: var(--soft); overflow-wrap: anywhere; }
