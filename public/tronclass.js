@@ -407,14 +407,28 @@ button.row:first-child { border-top: 0; }
 .ai-turn.user { justify-self: end; max-width: 92%; padding: 9px 12px; border: 1px solid var(--primary-ring); border-radius: var(--radius); background: var(--primary-soft); color: var(--text); }
 .ai-turn.ai { padding: 9px 12px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--sunken); }
 .ai-turn.error { padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--edge)); border-radius: var(--radius); background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
-.ai-followup { display: flex; align-items: flex-end; gap: 8px; margin-top: 14px; }
+.ai-followup { display: grid; gap: 6px; margin-top: 14px; }
 .ai-followup[hidden] { display: none; }
+.ai-followup-row { display: flex; align-items: flex-end; gap: 8px; }
 .ai-followup textarea {
-  flex: 1; min-height: 44px; max-height: 120px; padding: 10px 12px; border: 1px solid var(--edge); border-radius: var(--radius);
-  background: var(--sunken); color: var(--text); font: inherit; font-size: 14px; line-height: 1.5; resize: none;
+  flex: 1; min-height: 40px; height: 40px; max-height: 120px; padding: 8px 12px; border: 1px solid var(--edge);
+  border-radius: var(--radius); background: var(--sunken); color: var(--text); font: inherit; font-size: 14px;
+  line-height: 22px; resize: none; overflow-y: auto; transition: border-color .15s, box-shadow .15s;
 }
+.ai-followup textarea::placeholder { color: var(--muted); }
 .ai-followup textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
-.ai-followup .btn { min-height: 44px; }
+.ai-followup textarea:disabled { opacity: .6; }
+.ai-send {
+  display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0;
+  border: 1px solid var(--primary); border-radius: var(--radius); background: var(--primary); color: var(--on-primary);
+  cursor: pointer; transition: background .15s, border-color .15s, transform .15s;
+}
+.ai-send .i { width: 17px; height: 17px; }
+.ai-send:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.ai-send:active { transform: translateY(1px); }
+.ai-send:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ai-send[disabled] { opacity: .45; cursor: default; pointer-events: none; }
+.ai-followup-hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .ai-loading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .ai-loading .i { animation: ai-spin 1.1s linear infinite; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
@@ -505,6 +519,7 @@ button.row:first-child { border-top: 0; }
     arrow: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
     sparkles: '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     book: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
     clip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
@@ -2492,12 +2507,21 @@ button.row:first-child { border-top: 0; }
 
       const chat = h("div", { class: "ai-chat" });
       const input = h("textarea", {
-        rows: "2",
-        placeholder: "追問這題…（Enter 送出，Shift+Enter 換行）",
+        rows: "1",
+        placeholder: "追問這題…",
         "aria-label": "追問 AI",
       });
-      const send = h("button", { class: "btn primary small", type: "submit" }, "送出");
-      const follow = h("form", { class: "ai-followup", hidden: true }, input, send);
+      const send = h(
+        "button",
+        { class: "ai-send", type: "submit", "aria-label": "送出追問", title: "送出" },
+        icon("send"),
+      );
+      const follow = h(
+        "form",
+        { class: "ai-followup", hidden: true },
+        h("div", { class: "ai-followup-row" }, input, send),
+        h("span", { class: "ai-followup-hint" }, "Enter 送出 · Shift+Enter 換行"),
+      );
       const loading = h("div", { class: "ai-loading" }, icon("refresh"), h("span", null, "正在請 AI 看這題…"));
       chat.append(loading);
       openDialog({
@@ -2576,6 +2600,12 @@ button.row:first-child { border-top: 0; }
         }
       })();
 
+      const resizeInput = () => {
+        input.style.height = "auto";
+        input.style.height = `${Math.min(120, Math.max(40, input.scrollHeight))}px`;
+      };
+      input.addEventListener("input", resizeInput);
+
       follow.addEventListener("submit", async (event) => {
         event.preventDefault();
         const text = input.value.trim();
@@ -2583,6 +2613,7 @@ button.row:first-child { border-top: 0; }
         send.disabled = true;
         input.disabled = true;
         input.value = "";
+        resizeInput();
         const userNode = turn("user", text);
         const bubble = h("div", { class: "ai-loading" }, icon("refresh"), h("span", null, "正在回答…"));
         chat.append(bubble);
@@ -2604,6 +2635,7 @@ button.row:first-child { border-top: 0; }
           scrollTo(userNode);
           turn("error", result.error);
           input.value = text;
+          resizeInput();
           input.focus({ preventScroll: true });
         }
       });

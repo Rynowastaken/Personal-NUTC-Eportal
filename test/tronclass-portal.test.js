@@ -125,6 +125,10 @@ test("the Ask AI button is practice-only and posts a plain-text question", async
   assert.match(page, /String\(index \+ 1\)/);
   assert.match(page, /node\.textContent = text/);
   assert.match(page, /class: "ai-followup"/);
+  assert.match(page, /class: "ai-send"/);
+  assert.match(page, /icon\("send"\)/);
+  assert.match(page, /ai-followup-hint/);
+  assert.match(page, /resizeInput/);
   assert.match(page, /追問這題/);
   assert.match(page, /history: trimHistory\(history\)/);
   assert.match(page, /history\.push\(\{ role: "assistant", content: result\.answer \}\)/);
