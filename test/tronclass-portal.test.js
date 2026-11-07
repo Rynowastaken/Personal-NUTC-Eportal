@@ -114,7 +114,7 @@ test("the Ask AI button is practice-only and posts a plain-text question", async
   const page = await read("../public/tronclass.js");
   // The enable setting and the exam's practice flag both have to agree, and
   // the server checks the practice flag again before answering.
-  assert.match(page, /const aiTutorEnabled = Boolean\(exam\.is_practice_mode && aiStatusResult\.value\?\.enabled\)/);
+  assert.match(page, /let aiTutorEnabled = Boolean\(exam\.is_practice_mode && aiStatusResult\.value\?\.enabled\)/);
   assert.match(page, /fetch\("\/api\/ai\/status"/);
   assert.match(page, /if \(aiTutorEnabled\) \{/);
   assert.match(page, /fetch\("\/api\/ai\/ask"/);
@@ -123,6 +123,23 @@ test("the Ask AI button is practice-only and posts a plain-text question", async
   assert.match(page, /selected: options/);
   assert.match(page, /String\(index \+ 1\)/);
   assert.match(page, /answer\.textContent = data\.answer/);
+});
+
+test("the AI provider settings live on the TronClass page", async () => {
+  const page = await read("../public/tronclass.js");
+  const html = await read("../public/index.html");
+  // The dashboard no longer carries a second copy of the form.
+  assert.doesNotMatch(html, /id="aiEnabled"/);
+  assert.match(page, /function openAiSettings\(/);
+  assert.match(page, /AI 助手設定/);
+  assert.match(page, /id: "tc-ai-enabled"/);
+  assert.match(page, /id: "tc-ai-provider"/);
+  assert.match(page, /id: "tc-ai-base-url"/);
+  assert.match(page, /id: "tc-ai-model"/);
+  assert.match(page, /id: "tc-ai-key"/);
+  assert.match(page, /id: "tc-ai-save"/);
+  assert.match(page, /"\/api\/preferences\/ai"/);
+  assert.match(page, /aiTutorSettingListener/);
 });
 
 test("the exam view enforces fullscreen, window-leave and copy guards without a bypass", async () => {

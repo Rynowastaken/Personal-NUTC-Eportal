@@ -385,6 +385,23 @@ button.row:first-child { border-top: 0; }
 .exam-dialog .facts { margin-top: 12px; grid-template-columns: 1fr 1fr; }
 .exam-dialog .actions { margin-top: 16px; justify-content: flex-end; }
 .exam-dialog[data-kind="ai"] { width: min(640px, 100%); }
+.ai-settings { width: min(560px, 100%); }
+.ai-settings .fields { display: grid; gap: 14px; margin-top: 16px; }
+.ai-settings .field { display: grid; gap: 6px; }
+.ai-settings .field > span { font-size: 13px; font-weight: 600; color: var(--soft); }
+.ai-settings input:not([type="checkbox"]), .ai-settings select {
+  width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid var(--edge); border-radius: var(--radius);
+  background: var(--sunken); color: var(--text); font: inherit; font-size: 14px;
+}
+.ai-settings select { cursor: pointer; }
+.ai-settings input:focus, .ai-settings select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+.ai-settings .check { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--soft); cursor: pointer; }
+.ai-settings .check input { width: 16px; height: 16px; flex: none; accent-color: var(--primary); }
+.ai-settings .hint { color: var(--faint); font-size: 12px; }
+.ai-settings .settings-status { min-height: 18px; margin: 12px 0 0; color: var(--muted); font-size: 12.5px; }
+.ai-settings .settings-status[data-tone="error"] { color: var(--danger); }
+.ai-settings .settings-status[data-tone="saved"] { color: var(--success); }
+.ai-settings .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .ai-answer { white-space: pre-wrap; color: var(--soft); line-height: 1.7; max-height: 50vh; overflow: auto; }
 .ai-loading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .ai-loading .i { animation: ai-spin 1.1s linear infinite; }
@@ -922,8 +939,222 @@ button.row:first-child { border-top: 0; }
     menu.replaceChildren(
       h("div", { class: "menu-note" }, "這是 Portal 重新設計的 TronClass。"),
       h("a", { href: "/", role: "menuitem" }, icon("home"), "回到 Portal"),
+      h(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          onclick: () => {
+            menu.hidden = true;
+            userButton.setAttribute("aria-expanded", "false");
+            userButton.focus();
+            openAiSettings();
+          },
+        },
+        icon("sparkles"),
+        "AI 助手設定",
+      ),
       h("a", { href: classicHref(), "data-classic": "", role: "menuitem" }, icon("external"), "在 TronClass 開啟此頁"),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI tutor settings
+  //
+  // Lives on this page because the tutor is only used here. The server keeps
+  // the key; this form only ever sees whether one has been saved.
+
+  let settingsModal = null;
+  let settingsReturnFocus = null;
+  let settingsEscape = null;
+  let aiTutorSettingListener = null;
+
+  function closeAiSettings() {
+    settingsModal?.remove();
+    settingsModal = null;
+    if (settingsEscape) {
+      document.removeEventListener("keydown", settingsEscape);
+      settingsEscape = null;
+    }
+    for (const element of document.querySelectorAll("body > header, body > main")) element.inert = false;
+    const target = settingsReturnFocus;
+    settingsReturnFocus = null;
+    if (target && target.isConnected) target.focus({ preventScroll: true });
+  }
+
+  function aiSettingsField(label, control, hint) {
+    return h(
+      "label",
+      { class: "field" },
+      h("span", null, label),
+      control,
+      hint ? h("small", { class: "hint" }, hint) : null,
+    );
+  }
+
+  function openAiSettings() {
+    if (settingsModal) return;
+    settingsReturnFocus = document.activeElement;
+    const status = h("p", { class: "settings-status", id: "tc-ai-status", role: "status", "aria-live": "polite" });
+    const enabled = h("input", { type: "checkbox", id: "tc-ai-enabled" });
+    const provider = h(
+      "select",
+      { id: "tc-ai-provider" },
+      h("option", { value: "opencode-go" }, "OpenCode Go"),
+      h("option", { value: "openai" }, "OpenAI 相容 API"),
+    );
+    const baseUrl = h("input", {
+      type: "url",
+      id: "tc-ai-base-url",
+      autocomplete: "off",
+      spellcheck: "false",
+      placeholder: "https://opencode.ai/inference/go/openai/v1",
+    });
+    const model = h("input", {
+      type: "text",
+      id: "tc-ai-model",
+      autocomplete: "off",
+      spellcheck: "false",
+      placeholder: "deepseek-v4.1-flash",
+    });
+    const apiKey = h("input", {
+      type: "password",
+      id: "tc-ai-key",
+      autocomplete: "off",
+      autocapitalize: "off",
+      spellcheck: "false",
+      placeholder: "貼上 API 金鑰",
+    });
+    const clearKey = h("input", { type: "checkbox", id: "tc-ai-clear-key" });
+    const save = h("button", { class: "btn primary", type: "button", id: "tc-ai-save" }, "保存");
+    const presets = {
+      "opencode-go": { baseUrl: "https://opencode.ai/inference/go/openai/v1", model: "deepseek-v4.1-flash" },
+      openai: { baseUrl: "", model: "" },
+    };
+
+    const setStatus = (text, tone = "") => {
+      status.textContent = text;
+      if (tone) status.dataset.tone = tone;
+      else delete status.dataset.tone;
+    };
+
+    const applyDefaults = () => {
+      const preset = presets[provider.value];
+      if (!preset) return;
+      const otherDefault = (value, key) =>
+        Object.entries(presets).some(([id, item]) => id !== provider.value && item[key] && item[key] === value.trim());
+      if (preset.baseUrl && (!baseUrl.value.trim() || otherDefault(baseUrl.value, "baseUrl"))) {
+        baseUrl.value = preset.baseUrl;
+      } else if (!preset.baseUrl && otherDefault(baseUrl.value, "baseUrl")) {
+        baseUrl.value = "";
+      }
+      if (preset.model && (!model.value.trim() || otherDefault(model.value, "model"))) {
+        model.value = preset.model;
+      } else if (!preset.model && otherDefault(model.value, "model")) {
+        model.value = "";
+      }
+    };
+
+    provider.addEventListener("change", applyDefaults);
+
+    // Keep the form inert until the stored settings arrive so a slow load can
+    // never overwrite something the student has already changed.
+    const formControls = [enabled, provider, baseUrl, model, apiKey, clearKey, save];
+    for (const control of formControls) control.disabled = true;
+
+    save.addEventListener("click", async () => {
+      if (save.disabled) return;
+      save.disabled = true;
+      setStatus("正在儲存…");
+      const body = {
+        enabled: enabled.checked,
+        provider: provider.value,
+        baseUrl: baseUrl.value.trim(),
+        model: model.value.trim(),
+        clearKey: clearKey.checked,
+      };
+      if (apiKey.value) body.apiKey = apiKey.value;
+      try {
+        const response = await fetch("/api/preferences/ai", {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `儲存失敗（${response.status}）`);
+        const ai = data.ai || {};
+        enabled.checked = ai.enabled === true;
+        provider.value = ai.provider === "openai" ? "openai" : "opencode-go";
+        baseUrl.value = ai.baseUrl || baseUrl.value;
+        model.value = ai.model || model.value;
+        apiKey.value = "";
+        apiKey.placeholder = ai.hasKey ? "已設定，留空保留" : "貼上 API 金鑰";
+        clearKey.checked = false;
+        setStatus("已儲存。", "saved");
+        // A take view in the background can add or remove its button in place.
+        aiTutorSettingListener?.(ai.enabled === true);
+      } catch (error) {
+        setStatus("儲存失敗：" + (error?.message || String(error)), "error");
+      } finally {
+        save.disabled = false;
+      }
+    });
+
+    const panel = h(
+      "div",
+      { class: "exam-dialog ai-settings", role: "dialog", "aria-modal": "true", "aria-labelledby": "tc-ai-title", tabindex: "-1" },
+      h("h2", { id: "tc-ai-title" }, "AI 助手設定"),
+      h("p", null, "練習測驗的「問 AI 這題」按鈕會使用這裡的設定。API 金鑰只會儲存在 Server，不會傳回瀏覽器。"),
+      h(
+        "div",
+        { class: "fields" },
+        h("label", { class: "check" }, enabled, h("span", null, "啟用 AI 助手")),
+        aiSettingsField("服務提供者", provider),
+        aiSettingsField("API 位址", baseUrl),
+        aiSettingsField("模型", model),
+        aiSettingsField("API 金鑰", apiKey, "留空會保留目前的金鑰。"),
+        h("label", { class: "check" }, clearKey, h("span", null, "清除已儲存的金鑰")),
+      ),
+      status,
+      h("div", { class: "actions" }, h("button", { class: "btn ghost", type: "button", onclick: closeAiSettings }, "關閉"), save),
+    );
+
+    settingsModal = h("div", { class: "exam-modal" }, panel);
+    settingsModal.addEventListener("click", (event) => {
+      if (event.target === settingsModal) closeAiSettings();
+    });
+    document.body.append(settingsModal);
+    for (const element of document.querySelectorAll("body > header, body > main")) element.inert = true;
+    settingsEscape = (event) => {
+      if (event.key === "Escape") closeAiSettings();
+    };
+    document.addEventListener("keydown", settingsEscape);
+
+    panel.focus({ preventScroll: true });
+    fetch("/api/preferences", { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((data) => {
+        if (!settingsModal) return;
+        const ai = data?.ai || {};
+        enabled.checked = ai.enabled === true;
+        provider.value = ai.provider === "openai" ? "openai" : "opencode-go";
+        baseUrl.value = ai.baseUrl || "";
+        model.value = ai.model || "";
+        apiKey.value = "";
+        apiKey.placeholder = ai.hasKey ? "已設定，留空保留" : "貼上 API 金鑰";
+        setStatus("");
+        for (const control of formControls) control.disabled = false;
+      })
+      .catch(() => {
+        if (!settingsModal) return;
+        setStatus("無法載入 AI 設定。", "error");
+        for (const control of formControls) control.disabled = false;
+      });
   }
 
   // ---------------------------------------------------------------------------
@@ -1677,7 +1908,7 @@ button.row:first-child { border-top: 0; }
     if (token !== renderToken) return null;
     const exam = examResult.value;
     setTitle(exam.title || "測驗");
-    const aiTutorEnabled = Boolean(exam.is_practice_mode && aiStatusResult.value?.enabled);
+    let aiTutorEnabled = Boolean(exam.is_practice_mode && aiStatusResult.value?.enabled);
     const state = examState(exam);
     const blocked = (title, message) => blockedExamView(courseId, examId, title, message);
     if (state.closed) return blocked("這份測驗已經結束", "測驗已關閉，無法作答。");
@@ -2122,6 +2353,31 @@ button.row:first-child { border-top: 0; }
       );
     }
 
+    function aiTools(question) {
+      return h(
+        "div",
+        { class: "q-tools" },
+        h(
+          "button",
+          { class: "btn small ghost q-ai", type: "button", onclick: () => openAiDialog(question) },
+          icon("sparkles"),
+          "問 AI 這題",
+        ),
+      );
+    }
+
+    // The settings dialog can be opened from the header while an attempt is on
+    // screen; add or remove the button without re-rendering (and without
+    // touching the student's text or cursor).
+    function applyAiTutor(enabled) {
+      aiTutorEnabled = Boolean(enabled && exam.is_practice_mode);
+      if (disposed) return;
+      const host = questionHost.querySelector(".q-body");
+      const existing = host?.querySelector(".q-tools");
+      if (aiTutorEnabled && host && !existing) host.append(aiTools(questions[current]));
+      else if (!aiTutorEnabled && existing) existing.remove();
+    }
+
     function drawQuestion() {
       const question = questions[current];
       const answer = answerFor(question.id);
@@ -2196,18 +2452,7 @@ button.row:first-child { border-top: 0; }
       // The setting can turn the tutor off; the server checks the practice
       // flag again for /api/ai/ask.
       if (aiTutorEnabled) {
-        body.append(
-          h(
-            "div",
-            { class: "q-tools" },
-            h(
-              "button",
-              { class: "btn small ghost q-ai", type: "button", onclick: () => openAiDialog(question) },
-              icon("sparkles"),
-              "問 AI 這題",
-            ),
-          ),
-        );
+        body.append(aiTools(question));
       }
       paintProgress();
     }
@@ -2692,8 +2937,10 @@ button.row:first-child { border-top: 0; }
       if (event.key === "Escape" && dialog && dialogDismissible) closeDialog();
     });
 
+    aiTutorSettingListener = applyAiTutor;
     cleanup.push(() => {
       disposed = true;
+      if (aiTutorSettingListener === applyAiTutor) aiTutorSettingListener = null;
       detach.forEach((fn) => fn());
       if (saveTimer) {
         clearTimeout(saveTimer);

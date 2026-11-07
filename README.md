@@ -43,7 +43,7 @@
 - 顯示 AIS 每週課表（server 定時爬取，快取 5 分鐘）
 - 顯示 AIS 缺曠紀錄（含各類別統計）
 - 一鍵開啟五大 ePortal 子系統：學生管理、WebMail、活動報名、EP 學習歷程、TronClass
-- TronClass 直接在 Portal 裡（`/tronclass`）：待辦、課程、章節內容與完成狀態、成績、教材預覽、影片、作業與測驗資訊，測驗也能在 Portal 內作答（題目、倒數計時、自動儲存、交卷），並保留測驗本身的防作弊設定（全螢幕、離開視窗警告、停用複製與右鍵）；需要監考的測驗會留在原站。伺服器用 ePortal 取得的 TronClass 登入代為讀取 API，登入資料存在 `data/tronclass-session.json`。繳交作業與其他未重做的頁面在 TronClass 原站開啟，會先讓這個瀏覽器走一次 ePortal 的 SSO handoff；每個測驗頁面也都有「在 TronClass 開啟」備援
+- TronClass 直接在 Portal 裡（`/tronclass`）：待辦、課程、章節內容與完成狀態、成績、教材預覽、影片、作業與測驗資訊，測驗也能在 Portal 內作答（題目、倒數計時、自動儲存、交卷），並保留測驗本身的防作弊設定（全螢幕、離開視窗警告、停用複製與右鍵）；需要監考的測驗會留在原站。練習測驗另提供「問 AI 這題」解說，AI provider 與金鑰在 TronClass 頁面右上角選單的「AI 助手設定」設定，金鑰只存在 Server。伺服器用 ePortal 取得的 TronClass 登入代為讀取 API，登入資料存在 `data/tronclass-session.json`。繳交作業與其他未重做的頁面在 TronClass 原站開啟，會先讓這個瀏覽器走一次 ePortal 的 SSO handoff；每個測驗頁面也都有「在 TronClass 開啟」備援
 - Server 端持久保存 ePortal 登入狀態，重開機不用重登
 - 登入流程透過網頁表單完成，密碼不落盤
 - 自動 keepalive，定時檢查並延續 ePortal session

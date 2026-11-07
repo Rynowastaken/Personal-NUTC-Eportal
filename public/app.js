@@ -100,14 +100,6 @@ const academicProgramOptions = document.querySelector("#academicProgramOptions")
 const academicProgramValue = document.querySelector("#academicProgramValue");
 const academicProgramChevron = document.querySelector("#academicProgramChevron");
 const academicProgramStatus = document.querySelector("#academicProgramStatus");
-const aiEnabled = document.querySelector("#aiEnabled");
-const aiProvider = document.querySelector("#aiProvider");
-const aiBaseUrl = document.querySelector("#aiBaseUrl");
-const aiModel = document.querySelector("#aiModel");
-const aiApiKey = document.querySelector("#aiApiKey");
-const aiClearKey = document.querySelector("#aiClearKey");
-const aiSave = document.querySelector("#aiSave");
-const aiStatus = document.querySelector("#aiStatus");
 const backgroundUploadDialog = document.querySelector("#backgroundUploadDialog");
 const backgroundUploadClose = document.querySelector("#backgroundUploadClose");
 const backgroundDropzone = document.querySelector("#backgroundDropzone");
@@ -141,8 +133,6 @@ let currentAcademicProgram = "day";
 let stagedAcademicProgram = "day";
 let currentHitokotoSettings = normalizeHitokotoSettings();
 let stagedHitokotoSettings = normalizeHitokotoSettings();
-let currentAiSettings = null;
-let aiSettingsLoadToken = 0;
 let absenceListData = null;
 let checkingSessionExpiry = null;
 let lastPortalCheckAt = 0;
@@ -287,7 +277,6 @@ async function loadServerAccountProfile() {
   try {
     const preferences = await api("/api/preferences");
     currentHitokotoSettings = normalizeHitokotoSettings(preferences.hitokoto);
-    currentAiSettings = normalizeAiSettings(preferences.ai);
     currentAcademicProgram = ["day", "evening", "weekend"].includes(
       preferences.academicProgram,
     ) ? preferences.academicProgram : "day";
@@ -802,161 +791,6 @@ hitokotoShowSource.addEventListener("change", () => {
   stagedHitokotoSettings.showSource = hitokotoShowSource.checked;
 });
 
-const aiProviderPresets = {
-  "opencode-go": {
-    baseUrl: "https://opencode.ai/inference/go/openai/v1",
-    model: "deepseek-v4.1-flash",
-  },
-  openai: {
-    baseUrl: "",
-    model: "",
-  },
-};
-
-function normalizeAiSettings(ai) {
-  const source = ai && typeof ai === "object" ? ai : {};
-  const provider = source.provider === "openai" ? "openai" : "opencode-go";
-  return {
-    enabled: Boolean(source.enabled),
-    provider,
-    baseUrl: typeof source.baseUrl === "string" ? source.baseUrl : "",
-    model: typeof source.model === "string" ? source.model : "",
-    hasKey: Boolean(source.hasKey),
-    session: typeof source.session === "string" ? source.session : "",
-  };
-}
-
-function setAiStatus(message = "", isError = false) {
-  aiStatus.textContent = message;
-  aiStatus.classList.toggle("text-[#f4a0a5]", isError);
-  aiStatus.classList.toggle("text-[var(--muted)]", !isError);
-}
-
-function renderAiSettings() {
-  const settings = currentAiSettings || normalizeAiSettings();
-
-  aiEnabled.checked = settings.enabled;
-  aiProvider.value = settings.provider;
-  aiBaseUrl.value = settings.baseUrl;
-  aiModel.value = settings.model;
-  aiApiKey.value = "";
-  aiApiKey.placeholder = settings.hasKey
-    ? "已設定，留空保留"
-    : "貼上 API 金鑰";
-  aiClearKey.checked = false;
-}
-
-async function loadAiSettings() {
-  const token = ++aiSettingsLoadToken;
-
-  try {
-    const preferences = await api("/api/preferences");
-    if (token !== aiSettingsLoadToken) return;
-    currentAiSettings = normalizeAiSettings(preferences.ai);
-    renderAiSettings();
-  } catch (error) {
-    if (token !== aiSettingsLoadToken) return;
-    console.warn(
-      "AI preferences unavailable:",
-      error?.message || error,
-    );
-    setAiStatus("無法載入 AI 設定。", true);
-  }
-}
-
-function applyAiProviderDefaults() {
-  const preset = aiProviderPresets[aiProvider.value];
-  if (!preset) return;
-
-  const isOtherPresetDefault = (value, key) =>
-    Object.entries(aiProviderPresets).some(
-      ([id, item]) =>
-        id !== aiProvider.value &&
-        item[key] &&
-        item[key] === value.trim(),
-    );
-
-  if (
-    preset.baseUrl &&
-    (!aiBaseUrl.value.trim() ||
-      isOtherPresetDefault(aiBaseUrl.value, "baseUrl"))
-  ) {
-    aiBaseUrl.value = preset.baseUrl;
-  } else if (!preset.baseUrl && isOtherPresetDefault(aiBaseUrl.value, "baseUrl")) {
-    // Do not keep another provider's preset host: this provider's key would
-    // otherwise be sent to it.
-    aiBaseUrl.value = "";
-  }
-
-  if (
-    preset.model &&
-    (!aiModel.value.trim() ||
-      isOtherPresetDefault(aiModel.value, "model"))
-  ) {
-    aiModel.value = preset.model;
-  } else if (!preset.model && isOtherPresetDefault(aiModel.value, "model")) {
-    aiModel.value = "";
-  }
-}
-
-aiProvider.addEventListener("change", applyAiProviderDefaults);
-
-aiSave.addEventListener("click", async () => {
-  if (aiSave.disabled) return;
-
-  const body = {
-    enabled: aiEnabled.checked,
-    provider: aiProvider.value,
-    baseUrl: aiBaseUrl.value.trim(),
-    model: aiModel.value.trim(),
-    clearKey: aiClearKey.checked,
-  };
-
-  if (aiApiKey.value) {
-    body.apiKey = aiApiKey.value;
-  }
-
-  if (currentAiSettings) {
-    body.session = currentAiSettings.session;
-  }
-
-  aiSave.disabled = true;
-  setAiStatus("正在儲存…");
-
-  try {
-    const response = await fetch("/api/preferences/ai", {
-      method: "POST",
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(
-        data.error || `儲存 AI 設定失敗（${response.status}）`,
-      );
-    }
-
-    aiSettingsLoadToken += 1;
-    currentAiSettings = normalizeAiSettings(data.ai ?? data);
-    renderAiSettings();
-    setAiStatus("已儲存");
-  } catch (error) {
-    setAiStatus(
-      "設定儲存失敗：" + (error?.message || String(error)),
-      true,
-    );
-  } finally {
-    aiSave.disabled = false;
-  }
-});
-
 async function openThemeDialog() {
   stagedThemeSettings = {
     ...window.NutcTheme.settings(),
@@ -966,9 +800,6 @@ async function openThemeDialog() {
   setHitokotoLanguageMenuOpen(false);
   stagedHitokotoSettings = { ...currentHitokotoSettings };
   renderHitokotoSettings();
-  renderAiSettings();
-  setAiStatus("");
-  void loadAiSettings();
   academicProgramStatus.textContent = "";
   academicProgramStatus.classList.remove("text-[#f4a0a5]");
   academicProgramStatus.classList.add("text-[var(--muted)]");
