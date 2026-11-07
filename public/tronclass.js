@@ -354,7 +354,7 @@ button.row:first-child { border-top: 0; }
 .exam-card h2 { margin: 0 0 12px; font-size: 14px; }
 .qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 8px; }
 .qjump {
-  display: grid; place-items: center; min-width: 36px; height: 36px; padding: 0;
+  display: grid; place-items: center; min-width: 36px; height: 36px; padding: 3px 0 0;
   border: 1px solid var(--edge); border-radius: var(--radius-sm); background: var(--raised);
   color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
   transition: background .15s, border-color .15s, color .15s;
