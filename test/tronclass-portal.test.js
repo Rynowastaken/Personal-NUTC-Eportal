@@ -119,10 +119,15 @@ test("the Ask AI button is practice-only and posts a plain-text question", async
   assert.match(page, /if \(aiTutorEnabled\) \{/);
   assert.match(page, /fetch\("\/api\/ai\/ask"/);
   // The tutor gets option numbers, not option ids, and the answer is rendered
-  // as text so provider output can never become markup.
+  // as text so provider output can never become markup. A follow-up chat keeps
+  // the previous turns and sends them back as bounded history.
   assert.match(page, /selected: options/);
   assert.match(page, /String\(index \+ 1\)/);
-  assert.match(page, /answer\.textContent = data\.answer/);
+  assert.match(page, /node\.textContent = text/);
+  assert.match(page, /class: "ai-followup"/);
+  assert.match(page, /追問這題/);
+  assert.match(page, /history: trimHistory\(history\)/);
+  assert.match(page, /history\.push\(\{ role: "assistant", content: result\.answer \}\)/);
 });
 
 test("the AI provider settings live on the TronClass page", async () => {

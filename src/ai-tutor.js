@@ -13,6 +13,9 @@ const LIMITS = {
   selectedText: 120,
   text: 4000,
   answer: 16000,
+  historyMessages: 8,
+  historyContent: 12000,
+  historyTotal: 24000,
 };
 
 function questionError(message) {
@@ -96,13 +99,53 @@ export function validateAiQuestion(input) {
   return { stem, type, options, selected, text };
 }
 
+export function validateAiHistory(input) {
+  if (input === undefined) return [];
+  if (!Array.isArray(input)) {
+    throw questionError("Conversation history must be an array.");
+  }
+  if (input.length > LIMITS.historyMessages) {
+    throw questionError(
+      `Conversation history must contain at most ${LIMITS.historyMessages} messages.`,
+    );
+  }
+  let total = 0;
+  return input.map((turn) => {
+    if (!turn || typeof turn !== "object" || Array.isArray(turn)) {
+      throw questionError("Each history message must be an object.");
+    }
+    if (!["user", "assistant"].includes(turn.role)) {
+      throw questionError("History role must be user or assistant.");
+    }
+    if (typeof turn.content !== "string") {
+      throw questionError("History content must be a string.");
+    }
+    const content = turn.content.trim();
+    if (!content) {
+      throw questionError("History content must not be empty.");
+    }
+    if (content.length > LIMITS.historyContent) {
+      throw questionError(
+        `Each history message must be ${LIMITS.historyContent} characters or fewer.`,
+      );
+    }
+    total += content.length;
+    if (total > LIMITS.historyTotal) {
+      throw questionError(
+        `Conversation history must be ${LIMITS.historyTotal} characters or fewer.`,
+      );
+    }
+    return { role: turn.role, content };
+  });
+}
+
 const SYSTEM_PROMPT =
   "你是一位有耐心的家教，正在協助學生理解一道「練習測驗」題目。" +
   "請先說明這道題目考查的核心概念，接著逐一解釋每個選項為什麼正確或錯誤，" +
   "最後清楚指出建議的答案。請使用繁體中文，以簡潔、易讀的白話段落說明；" +
   "不要使用 Markdown 表格或標題，也不要在回覆中提及任何個人資料。";
 
-export function buildTutorMessages(question) {
+export function buildTutorMessages(question, history = []) {
   const type = question?.type || "未提供";
   const stem = question?.stem || "（未提供題目）";
   const options = Array.isArray(question?.options) ? question.options : [];
@@ -123,16 +166,26 @@ export function buildTutorMessages(question) {
   );
   if (text) lines.push(`學生填寫的答案：${text}`);
 
+  const system = history.length
+    ? `${SYSTEM_PROMPT} 這是同一道練習題的追問，請延續先前的解說回答。`
+    : SYSTEM_PROMPT;
+
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: system },
     { role: "user", content: lines.join("\n") },
+    ...history,
   ];
 }
 
-export async function askTutor(config, question, { fetchImpl = fetch } = {}) {
+export async function askTutor(
+  config,
+  question,
+  { history = [], fetchImpl = fetch } = {},
+) {
   const baseUrl =
     typeof config?.baseUrl === "string" ? config.baseUrl.replace(/\/+$/, "") : "";
   if (!baseUrl) throw providerError("AI 服務尚未設定。");
+  const turns = validateAiHistory(history);
 
   const headers = {
     "Content-Type": "application/json",
@@ -149,7 +202,7 @@ export async function askTutor(config, question, { fetchImpl = fetch } = {}) {
       headers,
       body: JSON.stringify({
         model: config.model,
-        messages: buildTutorMessages(question),
+        messages: buildTutorMessages(question, turns),
         temperature: 0.2,
         max_tokens: 900,
       }),

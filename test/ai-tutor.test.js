@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   askTutor,
   buildTutorMessages,
+  validateAiHistory,
   validateAiQuestion,
 } from "../src/ai-tutor.js";
 import {
@@ -208,6 +209,73 @@ test("buildTutorMessages marks unanswered questions", () => {
   );
   assert.match(messages[1].content, /學生目前的選擇：尚未作答/);
   assert.doesNotMatch(messages[1].content, /學生填寫的答案/);
+});
+
+test("buildTutorMessages appends follow-up history", () => {
+  const history = validateAiHistory([
+    { role: "assistant", content: "先前的解說" },
+    { role: "user", content: "為什麼？" },
+  ]);
+  const messages = buildTutorMessages(validateAiQuestion(QUESTION), history);
+
+  assert.equal(messages.length, 4);
+  assert.match(messages[0].content, /追問/);
+  assert.deepEqual(messages.slice(2), history);
+});
+
+test("validateAiHistory rejects bad turns and oversized history", () => {
+  assert.throws(() => validateAiHistory("no"), /array/);
+  assert.throws(
+    () => validateAiHistory([{ role: "system", content: "x" }]),
+    /role/,
+  );
+  assert.throws(
+    () => validateAiHistory([{ role: "user", content: "  " }]),
+    /empty/,
+  );
+  assert.throws(
+    () =>
+      validateAiHistory(
+        Array.from({ length: 9 }, () => ({ role: "user", content: "x" })),
+      ),
+    /at most 8/,
+  );
+  assert.throws(
+    () =>
+      validateAiHistory([{ role: "user", content: "x".repeat(12001) }]),
+    /12000/,
+  );
+  assert.throws(
+    () =>
+      validateAiHistory(
+        Array.from({ length: 3 }, () => ({
+          role: "user",
+          content: "x".repeat(9000),
+        })),
+      ),
+    /24000/,
+  );
+});
+
+test("askTutor sends follow-up history after the original question", async () => {
+  const captured = {};
+  const history = [
+    { role: "assistant", content: "先前的解說" },
+    { role: "user", content: "為什麼？" },
+  ];
+  await askTutor(
+    {
+      provider: "openai",
+      baseUrl: "https://api.example.test/v1",
+      model: "gpt-4o-mini",
+      apiKey: "key",
+    },
+    validateAiQuestion(QUESTION),
+    { history, fetchImpl: capturingFetch(answerResponse("ok"), captured) },
+  );
+
+  assert.equal(captured.body.messages.length, 4);
+  assert.deepEqual(captured.body.messages.slice(2), history);
 });
 
 function capturingFetch(response, captured) {

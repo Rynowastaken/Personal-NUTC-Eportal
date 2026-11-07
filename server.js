@@ -1150,6 +1150,7 @@ const server = http.createServer(async (req, res) => {
         const answer = await askTutor(
           config,
           validateAiQuestion(body?.question),
+          { history: body?.history },
         );
         sendJson(res, 200, { answer });
       } catch (error) {

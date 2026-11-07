@@ -402,7 +402,19 @@ button.row:first-child { border-top: 0; }
 .ai-settings .settings-status[data-tone="error"] { color: var(--danger); }
 .ai-settings .settings-status[data-tone="saved"] { color: var(--success); }
 .ai-settings .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-.ai-answer { white-space: pre-wrap; color: var(--soft); line-height: 1.7; max-height: 50vh; overflow: auto; }
+.ai-chat { position: relative; display: grid; gap: 10px; max-height: 55vh; overflow: auto; padding-right: 2px; }
+.ai-answer, .ai-turn { white-space: pre-wrap; line-height: 1.7; color: var(--soft); overflow-wrap: anywhere; }
+.ai-turn.user { justify-self: end; max-width: 92%; padding: 9px 12px; border: 1px solid var(--primary-ring); border-radius: var(--radius); background: var(--primary-soft); color: var(--text); }
+.ai-turn.ai { padding: 9px 12px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--sunken); }
+.ai-turn.error { padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--edge)); border-radius: var(--radius); background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.ai-followup { display: flex; align-items: flex-end; gap: 8px; margin-top: 14px; }
+.ai-followup[hidden] { display: none; }
+.ai-followup textarea {
+  flex: 1; min-height: 44px; max-height: 120px; padding: 10px 12px; border: 1px solid var(--edge); border-radius: var(--radius);
+  background: var(--sunken); color: var(--text); font: inherit; font-size: 14px; line-height: 1.5; resize: none;
+}
+.ai-followup textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+.ai-followup .btn { min-height: 44px; }
 .ai-loading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .ai-loading .i { animation: ai-spin 1.1s linear infinite; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
@@ -2477,69 +2489,131 @@ button.row:first-child { border-top: 0; }
         },
       };
       if (type && type.kind === "text") payload.question.text = answer.text;
-      const message = h(
-        "div",
-        { class: "ai-loading" },
-        icon("refresh"),
-        h("span", null, "正在請 AI 看這題…"),
-      );
+
+      const chat = h("div", { class: "ai-chat" });
+      const input = h("textarea", {
+        rows: "2",
+        placeholder: "追問這題…（Enter 送出，Shift+Enter 換行）",
+        "aria-label": "追問 AI",
+      });
+      const send = h("button", { class: "btn primary small", type: "submit" }, "送出");
+      const follow = h("form", { class: "ai-followup", hidden: true }, input, send);
+      const loading = h("div", { class: "ai-loading" }, icon("refresh"), h("span", null, "正在請 AI 看這題…"));
+      chat.append(loading);
       openDialog({
         kind: "ai",
         title: "AI 解說",
         dismissible: true,
-        message,
+        message: h("div", null, chat, follow),
         actions: [h("button", { class: "btn ghost", type: "button", onclick: closeDialog }, "關閉")],
       });
-      void askAi(payload, message);
-    }
 
-    function aiMessageLive(message) {
-      return dialogKind === "ai" && message.isConnected;
-    }
+      const live = () => dialogKind === "ai" && chat.isConnected;
+      const scrollTo = (node) => {
+        chat.scrollTop = Math.max(0, node.offsetTop - 8);
+      };
+      const turn = (role, text) => {
+        const node = h("div", { class: `ai-turn ${role}` });
+        node.textContent = text;
+        chat.append(node);
+        return node;
+      };
+      const history = [];
+      // Keep the follow-up request small enough for the server's history
+      // validator and for the provider's context window.
+      const trimHistory = (messages) => {
+        const kept = [];
+        let total = 0;
+        for (let index = messages.length - 1; index >= 0 && kept.length < 6; index -= 1) {
+          const content = String(messages[index].content || "").slice(0, 12000);
+          if (!content) continue;
+          if (total + content.length > 20000) break;
+          kept.unshift({ role: messages[index].role, content });
+          total += content.length;
+        }
+        return kept;
+      };
 
-    function showAiMessage(message, ...nodes) {
-      if (!aiMessageLive(message)) return;
-      message.replaceWith(...nodes);
-    }
+      const requestTurn = async (withHistory) => {
+        let res;
+        let data = null;
+        try {
+          res = await fetch("/api/ai/ask", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify(withHistory ? { ...payload, history: trimHistory(history) } : payload),
+            signal: AbortSignal.timeout?.(60000),
+          });
+          data = await res.json().catch(() => null);
+        } catch {
+          return { error: "連不上 AI，請檢查網路後再試一次。" };
+        }
+        if (res.ok && data && typeof data.answer === "string") return { answer: data.answer };
+        const code = data && data.code;
+        if (res.status === 403 || code === "AI_PRACTICE_ONLY") {
+          return { error: "AI 助手只適用於練習測驗。" };
+        }
+        if (code === "AI_NOT_CONFIGURED") {
+          return { error: "AI 助手還沒設定。請從右上角選單 →「AI 助手設定」填入供應商與 API 金鑰後再試一次。" };
+        }
+        if (res.ok) return { error: "AI 沒有回傳內容，請稍後再試一次。" };
+        return { error: (data && data.error) || "AI 沒有回應，請稍後再試一次；若持續發生，請到「AI 助手設定」檢查 API 金鑰與模型。" };
+      };
 
-    async function askAi(payload, message) {
-      let res;
-      let data = null;
-      try {
-        res = await fetch("/api/ai/ask", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout?.(60000),
-        });
-        data = await res.json().catch(() => null);
-      } catch {
-        showAiMessage(message, h("p", null, "連不上 AI，請檢查網路後再試一次。"));
-        return;
-      }
-      // A closed (or replaced) dialog makes this response irrelevant.
-      if (!aiMessageLive(message)) return;
-      if (res.ok && data && typeof data.answer === "string") {
-        const answer = h("div", { class: "ai-answer" });
-        answer.textContent = data.answer;
-        showAiMessage(message, answer);
-        return;
-      }
-      const code = data && data.code;
-      if (res.status === 403 || code === "AI_PRACTICE_ONLY") {
-        showAiMessage(message, h("p", null, "AI 助手只適用於練習測驗。"));
-      } else if (code === "AI_NOT_CONFIGURED") {
-        showAiMessage(
-          message,
-          h("p", null, "AI 助手還沒設定。請到 Portal 首頁 → 右上角「網站設定」→「AI 助手」，填入供應商與 API 金鑰後再回來試一次。"),
-          h("a", { class: "btn", href: "/" }, "開啟 Portal 網站設定"),
-        );
-      } else if (res.ok) {
-        showAiMessage(message, h("p", null, "AI 沒有回傳內容，請稍後再試一次。"));
-      } else {
-        showAiMessage(message, h("p", null, (data && data.error) || "AI 沒有回應，請稍後再試一次；若持續發生，請到網站設定檢查 API 金鑰與模型。"));
-      }
+      void (async () => {
+        const result = await requestTurn(false);
+        if (!live()) return;
+        loading.remove();
+        if (result.answer) {
+          const node = turn("ai", result.answer);
+          history.push({ role: "assistant", content: result.answer });
+          follow.hidden = false;
+          input.focus({ preventScroll: true });
+          scrollTo(node);
+        } else {
+          scrollTo(turn("error", result.error));
+        }
+      })();
+
+      follow.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const text = input.value.trim();
+        if (!text || send.disabled) return;
+        send.disabled = true;
+        input.disabled = true;
+        input.value = "";
+        const userNode = turn("user", text);
+        const bubble = h("div", { class: "ai-loading" }, icon("refresh"), h("span", null, "正在回答…"));
+        chat.append(bubble);
+        scrollTo(userNode);
+        history.push({ role: "user", content: text });
+        const result = await requestTurn(true);
+        if (!live()) return;
+        bubble.remove();
+        send.disabled = false;
+        input.disabled = false;
+        if (result.answer) {
+          turn("ai", result.answer);
+          history.push({ role: "assistant", content: result.answer });
+          input.focus({ preventScroll: true });
+          // Keep the follow-up question in view; the answer starts beneath it.
+          scrollTo(userNode);
+        } else {
+          history.pop();
+          scrollTo(userNode);
+          turn("error", result.error);
+          input.value = text;
+          input.focus({ preventScroll: true });
+        }
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          follow.requestSubmit();
+        }
+      });
     }
 
     function showQuestion(index) {
