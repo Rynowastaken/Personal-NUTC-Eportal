@@ -2535,6 +2535,9 @@ button.row:first-child { border-top: 0; }
       });
       listen(window, "blur", noteLeave);
       listen(window, "focus", stopLeaveCountdown);
+      // Any interaction with the page means the student is back.
+      listen(document, "pointerdown", stopLeaveCountdown);
+      listen(document, "keydown", stopLeaveCountdown, true);
     }
     // Background tabs throttle timers; ask TronClass for the real remaining
     // time as soon as the student comes back.
