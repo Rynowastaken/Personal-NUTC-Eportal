@@ -110,6 +110,21 @@ test("submitting waits for an in-flight save and keeps the paper locked", async 
   assert.match(page, /storageValue && storageValue\.id != null \? storageValue : null/);
 });
 
+test("the Ask AI button is practice-only and posts a plain-text question", async () => {
+  const page = await read("../public/tronclass.js");
+  // The enable setting and the exam's practice flag both have to agree, and
+  // the server checks the practice flag again before answering.
+  assert.match(page, /const aiTutorEnabled = Boolean\(exam\.is_practice_mode && aiStatusResult\.value\?\.enabled\)/);
+  assert.match(page, /fetch\("\/api\/ai\/status"/);
+  assert.match(page, /if \(aiTutorEnabled\) \{/);
+  assert.match(page, /fetch\("\/api\/ai\/ask"/);
+  // The tutor gets option numbers, not option ids, and the answer is rendered
+  // as text so provider output can never become markup.
+  assert.match(page, /selected: options/);
+  assert.match(page, /String\(index \+ 1\)/);
+  assert.match(page, /answer\.textContent = data\.answer/);
+});
+
 test("the exam view enforces fullscreen, window-leave and copy guards without a bypass", async () => {
   const page = await read("../public/tronclass.js");
   assert.match(page, /function enterFullscreen\(/);
@@ -137,7 +152,7 @@ test("the exam view enforces fullscreen, window-leave and copy guards without a 
 
 test("nothing with side effects runs before the checks that can block the paper", async () => {
   const page = await read("../public/tronclass.js");
-  assert.match(page, /const \[examResult, qualificationResult\] = await Promise\.all/);
+  assert.match(page, /const \[examResult, qualificationResult, aiStatusResult\] = await Promise\.all/);
   assert.match(
     page,
     /if \(exam\.enable_invigilation \|\| qualification\.enable_invigilation\)[\s\S]*?const \[storageResult, distributeResult\] = await Promise\.all/,

@@ -16,6 +16,177 @@ const IMAGE_LIMITS = {
   background: 6 * 1024 * 1024,
 };
 
+const AI_PROVIDERS = ["opencode-go", "openai"];
+const AI_DEFAULT_PROVIDER = "opencode-go";
+const AI_DEFAULT_BASE_URL = "https://opencode.ai/inference/go/openai/v1";
+const AI_DEFAULT_MODEL = "deepseek-v4.1-flash";
+
+function aiError(message) {
+  return Object.assign(new Error(message), { statusCode: 400 });
+}
+
+function defaultAiSettings() {
+  return {
+    enabled: false,
+    provider: AI_DEFAULT_PROVIDER,
+    baseUrl: AI_DEFAULT_BASE_URL,
+    model: AI_DEFAULT_MODEL,
+    apiKey: "",
+    session: "",
+  };
+}
+
+function normalizeAiBaseUrl(value, enabled) {
+  if (typeof value !== "string") {
+    throw aiError("AI base URL must be a string.");
+  }
+  const baseUrl = value.trim();
+  if (baseUrl.length > 500) {
+    throw aiError("AI base URL must be 500 characters or fewer.");
+  }
+  if (!baseUrl) {
+    if (enabled) {
+      throw aiError("AI base URL is required when the AI assistant is enabled.");
+    }
+    return "";
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw aiError("Enter a complete HTTP or HTTPS URL for the AI base URL.");
+  }
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw aiError(
+      "AI base URL must be an HTTP or HTTPS URL without embedded credentials.",
+    );
+  }
+
+  const localHost = ["localhost", "127.0.0.1"].includes(parsed.hostname);
+  if (enabled && parsed.protocol !== "https:" && !localHost) {
+    throw aiError("AI base URL must use HTTPS unless it points at localhost.");
+  }
+  return baseUrl;
+}
+
+// Pure validation of an AI settings payload. Returns the stored shape,
+// including the API key; callers outside the server must use get() instead.
+export function validateAiSettings(input, previous = defaultAiSettings()) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw aiError("AI settings must be an object.");
+  }
+
+  const base = { ...defaultAiSettings(), ...(previous || {}) };
+
+  const enabled = Object.hasOwn(input, "enabled") ? input.enabled : base.enabled;
+  if (typeof enabled !== "boolean") {
+    throw aiError("AI enabled must be true or false.");
+  }
+
+  const provider = Object.hasOwn(input, "provider")
+    ? input.provider
+    : base.provider;
+  if (!AI_PROVIDERS.includes(provider)) {
+    throw aiError("AI provider must be opencode-go or openai.");
+  }
+
+  let baseUrl = Object.hasOwn(input, "baseUrl") ? input.baseUrl : base.baseUrl;
+  if (typeof baseUrl !== "string") {
+    throw aiError("AI base URL must be a string.");
+  }
+  if (provider === AI_DEFAULT_PROVIDER && !baseUrl.trim()) {
+    baseUrl = AI_DEFAULT_BASE_URL;
+  }
+  baseUrl = normalizeAiBaseUrl(baseUrl, enabled);
+
+  let model = Object.hasOwn(input, "model") ? input.model : base.model;
+  if (typeof model !== "string") {
+    throw aiError("AI model must be a string.");
+  }
+  model = model.trim();
+  if (model.length > 120) {
+    throw aiError("AI model must be 120 characters or fewer.");
+  }
+  if (provider === AI_DEFAULT_PROVIDER && !model) {
+    model = AI_DEFAULT_MODEL;
+  }
+  if (enabled && !model) {
+    throw aiError("AI model is required when the AI assistant is enabled.");
+  }
+
+  const hasApiKey = Object.hasOwn(input, "apiKey") && input.apiKey !== undefined;
+  if (
+    hasApiKey &&
+    (typeof input.apiKey !== "string" || input.apiKey.length > 500)
+  ) {
+    throw aiError("AI API key must be a string of 500 characters or fewer.");
+  }
+
+  const clearKey = Object.hasOwn(input, "clearKey") ? input.clearKey : false;
+  if (typeof clearKey !== "boolean") {
+    throw aiError("clearKey must be true or false.");
+  }
+
+  let apiKey = typeof base.apiKey === "string" ? base.apiKey : "";
+  if (hasApiKey && input.apiKey.trim()) apiKey = input.apiKey.trim();
+  if (clearKey) apiKey = "";
+
+  let session = Object.hasOwn(input, "session") ? input.session : base.session;
+  if (typeof session !== "string" || session.length > 200) {
+    throw aiError("AI session must be a string of 200 characters or fewer.");
+  }
+  session = session.trim();
+
+  return { enabled, provider, baseUrl, model, apiKey, session };
+}
+
+// Load persisted settings without ever throwing on malformed data.
+function loadAiSettings(ai) {
+  const saved = ai && typeof ai === "object" && !Array.isArray(ai) ? ai : {};
+  const provider = AI_PROVIDERS.includes(saved.provider)
+    ? saved.provider
+    : AI_DEFAULT_PROVIDER;
+  const enabled = saved.enabled === true;
+
+  let baseUrl =
+    typeof saved.baseUrl === "string" ? saved.baseUrl.trim() : "";
+  if (provider === AI_DEFAULT_PROVIDER && !baseUrl) {
+    baseUrl = AI_DEFAULT_BASE_URL;
+  }
+  if (baseUrl) {
+    try {
+      baseUrl = normalizeAiBaseUrl(baseUrl, false);
+    } catch {
+      // A broken saved URL must not silently fall back to another provider's
+      // host, which would send this provider's key there.
+      baseUrl = provider === AI_DEFAULT_PROVIDER ? AI_DEFAULT_BASE_URL : "";
+    }
+  }
+
+  let model = typeof saved.model === "string" ? saved.model.trim() : "";
+  if (model.length > 120) model = "";
+  if (provider === AI_DEFAULT_PROVIDER && !model) {
+    model = AI_DEFAULT_MODEL;
+  }
+
+  const apiKey =
+    typeof saved.apiKey === "string" && saved.apiKey.length <= 500
+      ? saved.apiKey
+      : "";
+  const session =
+    typeof saved.session === "string" && saved.session.length <= 200
+      ? saved.session.trim()
+      : "";
+
+  return { enabled, provider, baseUrl, model, apiKey, session };
+}
+
 export function validateAcademicProgram(value) {
   if (typeof value !== "string" || !["day", "evening", "weekend"].includes(value)) {
     throw Object.assign(
@@ -165,6 +336,7 @@ export class DashboardPreferenceStore {
         background: null,
       },
       customLinks: [],
+      ai: defaultAiSettings(),
       updatedAt: null,
     };
     this.writeQueue = Promise.resolve();
@@ -221,6 +393,7 @@ export class DashboardPreferenceStore {
               : null,
         },
         customLinks: loadCustomLinks(parsed?.customLinks),
+        ai: loadAiSettings(parsed?.ai),
         updatedAt:
           typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null,
       };
@@ -266,8 +439,21 @@ export class DashboardPreferenceStore {
           : "",
       },
       customLinks: this.value.customLinks.map((link) => ({ ...link })),
+      ai: {
+        enabled: this.value.ai.enabled,
+        provider: this.value.ai.provider,
+        baseUrl: this.value.ai.baseUrl,
+        model: this.value.ai.model,
+        hasKey: Boolean(this.value.ai.apiKey),
+        session: this.value.ai.session,
+      },
       updatedAt: this.value.updatedAt,
     };
+  }
+
+  // Server-only accessor: includes the API key. Never send this to a client.
+  aiConfig() {
+    return { ...this.value.ai };
   }
 
   async persist() {
@@ -302,6 +488,19 @@ export class DashboardPreferenceStore {
         showSpeaker: input.showSpeaker !== false,
         showSource: input.showSource !== false,
       };
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return this.get();
+    });
+  }
+
+  async setAiSettings(input) {
+    return this.enqueue(async () => {
+      const ai = validateAiSettings(input, this.value.ai);
+      if (ai.provider === "opencode-go" && !ai.session) {
+        ai.session = `portal-${randomUUID()}`;
+      }
+      this.value.ai = ai;
       this.value.updatedAt = new Date().toISOString();
       await this.persist();
       return this.get();

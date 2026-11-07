@@ -11,6 +11,7 @@ import {
   proxyActivityRelay,
   startActivityRelay,
 } from "./src/activity-relay.js";
+import { askTutor, validateAiQuestion } from "./src/ai-tutor.js";
 import {
   clearClassScheduleCache,
   getClassSchedule,
@@ -40,6 +41,7 @@ import { createServerUpdater } from "./src/server-update.js";
 import { describeLoginBridgeError } from "./src/login-bridge-error.js";
 import {
   clearTronclassSession,
+  fetchTronclassJson,
   handleTronclassRequest,
 } from "./src/tronclass.js";
 import { stampHtmlAssetRevision, staticCacheControl } from "./src/static-assets.js";
@@ -69,6 +71,7 @@ const preferenceStore = new PreferenceStore();
 const dashboardPreferenceStore = new DashboardPreferenceStore();
 const hitokotoService = createHitokotoService();
 const launchJobs = new Map();
+let aiAskInFlight = false;
 const staticAssetCache = new Map();
 const launchJobTtlMs = 2 * 60_000;
 const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
@@ -1022,6 +1025,16 @@ const server = http.createServer(async (req, res) => {
 
     if (
       req.method === "POST" &&
+      url.pathname === "/api/preferences/ai"
+    ) {
+      const body = await readJsonBody(req);
+      const saved = await dashboardPreferenceStore.setAiSettings(body);
+      sendJson(res, 200, { ok: true, ...saved });
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
       url.pathname === "/api/preferences/account"
     ) {
       const body = await readJsonBody(req, 3 * 1024 * 1024);
@@ -1069,6 +1082,97 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       sendBinaryImage(res, image);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/ai/status") {
+      const config = dashboardPreferenceStore.aiConfig();
+      sendJson(res, 200, {
+        enabled: config.enabled,
+        configured: Boolean(config.apiKey),
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/ai/ask") {
+      const body = await readJsonBody(req, 128 * 1024);
+      const examId = Number(body?.examId);
+      if (!Number.isInteger(examId) || examId <= 0) {
+        sendError(res, 400, "examId must be a positive integer.");
+        return;
+      }
+
+      if (aiAskInFlight) {
+        sendError(
+          res,
+          429,
+          "AI 助手正在回答上一題，請稍後再試。",
+          "AI_BUSY",
+        );
+        return;
+      }
+
+      aiAskInFlight = true;
+      try {
+        const config = dashboardPreferenceStore.aiConfig();
+        if (!config.enabled || !config.apiKey) {
+          sendError(
+            res,
+            409,
+            "AI 助手尚未設定，請到網站設定 → AI 助手填入 provider 與金鑰。",
+            "AI_NOT_CONFIGURED",
+          );
+          return;
+        }
+
+        let exam;
+        try {
+          exam = await fetchTronclassJson(`/api/exams/${examId}`);
+        } catch (error) {
+          console.error(
+            "[ai-tutor] exam check failed:",
+            error?.code || "UNCLASSIFIED",
+          );
+          sendError(
+            res,
+            502,
+            "無法確認測驗資訊，請稍後再試。",
+            "AI_EXAM_CHECK_FAILED",
+          );
+          return;
+        }
+
+        if (exam?.is_practice_mode !== true) {
+          sendError(res, 403, "AI 助手只適用於練習測驗。", "AI_PRACTICE_ONLY");
+          return;
+        }
+
+        const answer = await askTutor(
+          config,
+          validateAiQuestion(body?.question),
+        );
+        sendJson(res, 200, { answer });
+      } catch (error) {
+        // A rejected question is a client error, not an upstream failure.
+        const invalidRequest =
+          Number.isInteger(error?.statusCode) &&
+          error.statusCode >= 400 &&
+          error.statusCode < 500;
+        console.error(
+          "[ai-tutor] request failed:",
+          error?.code || error?.statusCode || "UNCLASSIFIED",
+        );
+        if (!res.headersSent) {
+          sendError(
+            res,
+            invalidRequest ? error.statusCode : 502,
+            error?.message || "AI 服務沒有回應，請稍後再試。",
+            invalidRequest ? "AI_INVALID_REQUEST" : "AI_UPSTREAM",
+          );
+        }
+      } finally {
+        aiAskInFlight = false;
+      }
       return;
     }
 

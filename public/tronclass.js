@@ -6,7 +6,8 @@
 // goes through the portal's server, which holds the TronClass session it got
 // from ePortal. Exams are answered here too, with the same anti-cheat rules
 // TronClass enforces in the browser; invigilated exams and anything not
-// rebuilt keep an explicit link to TronClass itself.
+// rebuilt keep an explicit link to TronClass itself. Practice exams also offer
+// an AI explanation of the current question.
 (() => {
   "use strict";
 
@@ -383,6 +384,14 @@ button.row:first-child { border-top: 0; }
 .exam-dialog p { margin: 0 0 12px; color: var(--muted); }
 .exam-dialog .facts { margin-top: 12px; grid-template-columns: 1fr 1fr; }
 .exam-dialog .actions { margin-top: 16px; justify-content: flex-end; }
+.exam-dialog[data-kind="ai"] { width: min(640px, 100%); }
+.ai-answer { white-space: pre-wrap; color: var(--soft); line-height: 1.7; max-height: 50vh; overflow: auto; }
+.ai-loading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.ai-loading .i { animation: ai-spin 1.1s linear infinite; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+.q-tools { display: flex; justify-content: flex-end; margin-top: 12px; }
+.q-ai { color: var(--primary); }
+.q-ai.btn.ghost, .q-ai.btn.ghost:hover { color: var(--primary); }
 .blocked { margin-top: 8px; }
 
 @media (max-width: 860px) {
@@ -466,6 +475,7 @@ button.row:first-child { border-top: 0; }
     shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
     arrow: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+    sparkles: '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>',
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     book: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
     clip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
@@ -498,6 +508,18 @@ button.row:first-child { border-top: 0; }
     const box = doc.body.firstChild;
     box.className = "prose";
     return document.importNode(box, true);
+  }
+
+  // Teacher-written rich text as plain text for the AI tutor. A parsed (inert)
+  // document means no markup, script or image request reaches the page; block
+  // boundaries become line breaks so paragraphs stay readable.
+  function plainText(html) {
+    if (!html) return "";
+    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+    const box = doc.body.firstChild;
+    box.querySelectorAll("br").forEach((node) => node.replaceWith("\n"));
+    box.querySelectorAll("p, div, li, tr, h1, h2, h3, h4, h5, h6").forEach((node) => node.append("\n"));
+    return (box.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   // ---------------------------------------------------------------------------
@@ -1636,9 +1658,17 @@ button.row:first-child { border-top: 0; }
     const storagePath = `/api/exams/${examId}/submissions/storage`;
     const distributePath = `/api/exams/${examId}/distribute`;
     const settle = (promise) => promise.then((value) => ({ value }), (error) => ({ error }));
-    const [examResult, qualificationResult] = await Promise.all([
+    const aiStatusRequest = fetch("/api/ai/status", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout?.(5000),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+    const [examResult, qualificationResult, aiStatusResult] = await Promise.all([
       settle(get(`/api/exams/${examId}`)),
       settle(request(qualificationPath)),
+      settle(aiStatusRequest),
     ]);
 
     if (examResult.error) throw examResult.error;
@@ -1647,6 +1677,7 @@ button.row:first-child { border-top: 0; }
     if (token !== renderToken) return null;
     const exam = examResult.value;
     setTitle(exam.title || "測驗");
+    const aiTutorEnabled = Boolean(exam.is_practice_mode && aiStatusResult.value?.enabled);
     const state = examState(exam);
     const blocked = (title, message) => blockedExamView(courseId, examId, title, message);
     if (state.closed) return blocked("這份測驗已經結束", "測驗已關閉，無法作答。");
@@ -1866,6 +1897,7 @@ button.row:first-child { border-top: 0; }
         typeof message === "string" ? h("p", null, message) : message,
         h("div", { class: "actions" }, actions),
       );
+      panel.dataset.kind = kind;
       dialog = h(
         "div",
         {
@@ -2069,7 +2101,7 @@ button.row:first-child { border-top: 0; }
     }
 
     function setPaperDisabled(disabled) {
-      for (const control of paperEl.querySelectorAll("input, textarea, .qjump, .q-nav button")) control.disabled = disabled;
+      for (const control of paperEl.querySelectorAll("input, textarea, .qjump, .q-nav button, .q-ai")) control.disabled = disabled;
     }
 
     function unsupportedNotice(question, detail = "") {
@@ -2161,7 +2193,108 @@ button.row:first-child { border-top: 0; }
       } else {
         body.append(unsupportedNotice(question, "這題沒有可顯示的選項"));
       }
+      // The setting can turn the tutor off; the server checks the practice
+      // flag again for /api/ai/ask.
+      if (aiTutorEnabled) {
+        body.append(
+          h(
+            "div",
+            { class: "q-tools" },
+            h(
+              "button",
+              { class: "btn small ghost q-ai", type: "button", onclick: () => openAiDialog(question) },
+              icon("sparkles"),
+              "問 AI 這題",
+            ),
+          ),
+        );
+      }
       paintProgress();
+    }
+
+    function openAiDialog(question) {
+      if (submitted || expired || submitting || locked) return;
+      const type = typeOf(question);
+      const answer = answerFor(question.id);
+      const options = [...(question.options || [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+      const payload = {
+        examId,
+        courseId,
+        question: {
+          type: question.type,
+          stem: plainText(question.description),
+          options: options.map((option, index) => ({ index: index + 1, text: plainText(option.content) })),
+          // The server's question validator reads selected answers as
+          // strings; keep the 1-based option numbers the tutor prompt prints.
+          selected: options
+            .map((option, index) => (answer.options.some((id) => String(id) === String(option.id)) ? String(index + 1) : null))
+            .filter((index) => index != null),
+        },
+      };
+      if (type && type.kind === "text") payload.question.text = answer.text;
+      const message = h(
+        "div",
+        { class: "ai-loading" },
+        icon("refresh"),
+        h("span", null, "正在請 AI 看這題…"),
+      );
+      openDialog({
+        kind: "ai",
+        title: "AI 解說",
+        dismissible: true,
+        message,
+        actions: [h("button", { class: "btn ghost", type: "button", onclick: closeDialog }, "關閉")],
+      });
+      void askAi(payload, message);
+    }
+
+    function aiMessageLive(message) {
+      return dialogKind === "ai" && message.isConnected;
+    }
+
+    function showAiMessage(message, ...nodes) {
+      if (!aiMessageLive(message)) return;
+      message.replaceWith(...nodes);
+    }
+
+    async function askAi(payload, message) {
+      let res;
+      let data = null;
+      try {
+        res = await fetch("/api/ai/ask", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout?.(60000),
+        });
+        data = await res.json().catch(() => null);
+      } catch {
+        showAiMessage(message, h("p", null, "連不上 AI，請檢查網路後再試一次。"));
+        return;
+      }
+      // A closed (or replaced) dialog makes this response irrelevant.
+      if (!aiMessageLive(message)) return;
+      if (res.ok && data && typeof data.answer === "string") {
+        const answer = h("div", { class: "ai-answer" });
+        answer.textContent = data.answer;
+        showAiMessage(message, answer);
+        return;
+      }
+      const code = data && data.code;
+      if (res.status === 403 || code === "AI_PRACTICE_ONLY") {
+        showAiMessage(message, h("p", null, "AI 助手只適用於練習測驗。"));
+      } else if (code === "AI_NOT_CONFIGURED") {
+        showAiMessage(
+          message,
+          h("p", null, "AI 助手還沒設定。請到 Portal 首頁 → 右上角「網站設定」→「AI 助手」，填入供應商與 API 金鑰後再回來試一次。"),
+          h("a", { class: "btn", href: "/" }, "開啟 Portal 網站設定"),
+        );
+      } else if (res.ok) {
+        showAiMessage(message, h("p", null, "AI 沒有回傳內容，請稍後再試一次。"));
+      } else {
+        showAiMessage(message, h("p", null, (data && data.error) || "AI 沒有回應，請稍後再試一次。"));
+      }
     }
 
     function showQuestion(index) {

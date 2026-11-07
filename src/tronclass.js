@@ -268,6 +268,25 @@ async function withSession(url, options) {
   return response;
 }
 
+// Read one TronClass JSON API endpoint with the server-held session. Used by
+// server-side features (such as the AI tutor's practice-mode check).
+export async function fetchTronclassJson(pathname) {
+  const response = await withSession(new URL(pathname, TRONCLASS_ORIGIN), {
+    headers: {
+      Accept: "application/json",
+      Referer: `${TRONCLASS_ORIGIN}/user/index`,
+    },
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw tronclassError(
+      `TronClass request failed (HTTP ${response.status}).`,
+      "TRONCLASS_REQUEST_FAILED",
+    );
+  }
+  return response.json();
+}
+
 async function readBody(req) {
   const chunks = [];
   let size = 0;
