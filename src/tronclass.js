@@ -3,8 +3,8 @@
 // The server asks ePortal for a fresh TronClass SSO handoff (the same one the
 // /go/tronclass launch hands to the browser), follows it itself, and keeps the
 // resulting TronClass cookies. The rebuilt pages under /tronclass then call
-// TronClass's JSON API through this relay. Exam taking is never relayed: the
-// pages send the student to TronClass itself, where its anti-cheat runs.
+// TronClass's JSON API through this relay, including the exam-taking calls
+// that save and submit answers.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -279,6 +279,18 @@ async function readBody(req) {
   return chunks.length ? Buffer.concat(chunks) : undefined;
 }
 
+// GET and POST were already relayed; taking an exam adds PUT for saving the
+// answers of a temporary submission.
+export function isTronclassRelayMethod(req) {
+  return ["GET", "POST", "PUT"].includes(req.method);
+}
+
+// PUT carries its answer payload exactly like POST, so it reads the body
+// through the same size limit and content-type pass-through.
+export function tronclassRelayReadsBody(method) {
+  return ["POST", "PUT"].includes(method);
+}
+
 function pipe(response, res, headers) {
   res.writeHead(response.status, headers);
   if (!response.body) return res.end();
@@ -305,8 +317,8 @@ export async function handleTronclassRequest(req, res, url, { sendJson, sendErro
     }
 
     if (url.pathname.startsWith("/tronclass/api/")) {
-      if (!["GET", "POST"].includes(req.method)) {
-        sendError(res, 405, "Only GET and POST are relayed to TronClass.");
+      if (!isTronclassRelayMethod(req)) {
+        sendError(res, 405, "Only GET, POST and PUT are relayed to TronClass.");
         return true;
       }
       await relayApi(req, res, url);
@@ -337,7 +349,7 @@ export async function handleTronclassRequest(req, res, url, { sendJson, sendErro
 
 async function relayApi(req, res, url) {
   const target = new URL(url.pathname.slice("/tronclass".length) + url.search, TRONCLASS_ORIGIN);
-  const body = req.method === "POST" ? await readBody(req) : undefined;
+  const body = tronclassRelayReadsBody(req.method) ? await readBody(req) : undefined;
   const response = await withSession(target, {
     method: req.method,
     body,

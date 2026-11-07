@@ -4,8 +4,9 @@
 // Pages mirror TronClass's own addresses under /tronclass (TronClass's
 // /course/1/content is /tronclass/course/1/content here), and every API call
 // goes through the portal's server, which holds the TronClass session it got
-// from ePortal. Anything not rebuilt, including exam taking with its
-// anti-cheat checks, opens on TronClass itself.
+// from ePortal. Exams are answered here too, with the same anti-cheat rules
+// TronClass enforces in the browser; invigilated exams and anything not
+// rebuilt keep an explicit link to TronClass itself.
 (() => {
   "use strict";
 
@@ -26,7 +27,11 @@
     const path = url.pathname.startsWith(BASE) ? url.pathname.slice(BASE.length) || "/user/index" : url.pathname;
     return TRONCLASS + path + url.search + url.hash;
   };
-  const classicHref = () => tcHref(location.href);
+  const classicHref = () => {
+    const route = matchRoute(location);
+    if (route?.name === "examTake") return classicExamHref(route.courseId, route.examId);
+    return tcHref(location.href);
+  };
 
   function matchRoute(url) {
     if (url.pathname !== BASE && !url.pathname.startsWith(BASE + "/")) return null;
@@ -40,7 +45,9 @@
     if (m) {
       const courseId = +m[1];
       if (!hash || hash === "#" || hash === "#/") return { name: "course", courseId };
-      let h = hash.match(/^#\/exam\/(\d+)\/?(?:[?#].*)?$/);
+      let h = hash.match(/^#\/exam\/(\d+)\/take\/?(?:[?#].*)?$/);
+      if (h) return { name: "examTake", courseId, examId: +h[1] };
+      h = hash.match(/^#\/exam\/(\d+)\/?(?:[?#].*)?$/);
       if (h) return { name: "exam", courseId, examId: +h[1] };
       h = hash.match(/^#\/(\d+)\/?(?:[?#].*)?$/);
       if (h) return { name: "activity", courseId, activityId: +h[1] };
@@ -140,7 +147,7 @@ svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
 main { max-width: 1120px; margin: 0 auto; padding: 32px 16px 96px; }
 main.enter { animation: enter .32s var(--ease); }
 @keyframes enter { from { opacity: .4; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-h1 { margin: 0; font-size: clamp(24px, 3.2vw, 32px); font-weight: 300; line-height: 1.2; letter-spacing: -.025em; text-wrap: balance; }
+h1 { margin: 0; font-size: clamp(24px, 3.2vw, 32px); font-weight: 300; line-height: 1.2; letter-spacing: -.025em; text-wrap: balance; overflow-wrap: anywhere; }
 h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .section { margin-top: 40px; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -243,7 +250,7 @@ button.row:first-child { border-top: 0; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; margin-top: 24px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
 .fact { padding: 14px 16px; box-shadow: -1px -1px 0 var(--edge); }
 .fact.wide { grid-column: span 2; }
-@media (max-width: 640px) { .fact.wide { grid-column: auto; } }
+@media (max-width: 1100px) { .fact.wide { grid-column: auto; } }
 .fact dt { color: var(--faint); font-size: 12px; }
 .fact dd { margin: 2px 0 0; font-weight: 600; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
@@ -252,8 +259,8 @@ button.row:first-child { border-top: 0; }
 .prose { max-width: 72ch; color: var(--soft); overflow-wrap: anywhere; }
 .prose a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 .prose img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
-.prose table { border-collapse: collapse; }
-.prose td, .prose th { border: 1px solid var(--edge); padding: 6px 8px; }
+.prose table { border-collapse: collapse; max-width: 100%; }
+.prose td, .prose th { border: 1px solid var(--edge); padding: 6px 8px; overflow-wrap: anywhere; }
 .viewer { margin-top: 16px; border: 1px solid var(--edge); border-radius: var(--radius); overflow: hidden; background: var(--sunken); }
 .viewer-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--edge); }
 .viewer-head .row-title { flex: 1; }
@@ -279,6 +286,111 @@ button.row:first-child { border-top: 0; }
 .error .actions { justify-content: center; margin-top: 0; }
 .footer-link { margin-top: 56px; text-align: center; }
 
+/* Exam overview and taking */
+.exam-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: start;
+  margin-top: 4px; padding: 16px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface);
+}
+.exam-head-main { min-width: 0; }
+.exam-head h1 { font-size: clamp(22px, 3vw, 28px); }
+.exam-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.exam-clock {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px;
+  border: 1px solid var(--edge); border-radius: var(--radius); background: var(--sunken);
+  font-size: 15px; font-weight: 600; white-space: nowrap;
+}
+.exam-clock .i { color: var(--muted); }
+.exam-clock.low { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--edge)); }
+.exam-clock.low .i { color: var(--danger); }
+.exam-progress { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.exam-progress .bar-track { flex: 1; min-width: 120px; max-width: 360px; }
+.exam-progress .meta { white-space: nowrap; }
+.exam-progress:has(.save-state[data-tone="error"]) .bar-track { min-width: 0; }
+.save-state { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; min-height: 24px; color: var(--faint); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.save-state .i { width: 14px; height: 14px; }
+.save-state[data-tone="saved"] { color: var(--success); }
+.save-state[data-tone="error"] { color: var(--danger); }
+.save-state .btn.small { min-height: 36px; }
+
+.exam-layout { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 20px; align-items: start; margin-top: 20px; }
+.exam-paper { min-width: 0; scroll-margin-top: 72px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); }
+.q-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--edge); }
+.q-number { color: var(--primary); font-size: 14px; font-weight: 600; }
+.q-points { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.q-body { padding: 16px; }
+.q-prompt { color: var(--text); font-size: 16px; line-height: 1.7; }
+.q-prompt .prose, .q-prompt.prose { max-width: none; }
+.q-help { margin-top: 8px; color: var(--faint); font-size: 12.5px; }
+.choices { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+.choice {
+  display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 10px 12px;
+  border: 1px solid var(--edge); border-radius: var(--radius); background: rgba(255, 255, 255, .02);
+  color: var(--soft); cursor: pointer; transition: background .15s, border-color .15s;
+}
+.choice:hover { background: rgba(255, 255, 255, .045); border-color: var(--edge-strong); }
+.choice:has(input:checked) { background: var(--primary-soft); border-color: var(--primary); color: var(--text); }
+.choice:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+.choice input { flex: none; width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--primary); }
+.choice-index { flex: none; min-width: 18px; color: var(--muted); font-weight: 600; line-height: 1.5; }
+.choice:has(input:checked) .choice-index { color: var(--primary); }
+.choice-text { flex: 1; min-width: 0; }
+.choice-text .prose { max-width: none; }
+.choice-text .prose p:first-child { margin-top: 0; }
+.choice-text .prose p:last-child { margin-bottom: 0; }
+.answer-area { margin-top: 16px; }
+.answer-area textarea {
+  width: 100%; min-height: 148px; padding: 12px 14px; border: 1px solid var(--edge); border-radius: var(--radius);
+  background: var(--sunken); color: var(--text); font: inherit; line-height: 1.7; resize: vertical;
+}
+.answer-area textarea::placeholder { color: var(--faint); }
+.answer-area textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+.q-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--edge); }
+.q-nav .meta { min-width: 0; text-align: center; white-space: nowrap; }
+.q-nav .btn { min-width: 92px; }
+.q-nav .btn[disabled] { opacity: .35; }
+
+.exam-side { position: sticky; top: 72px; display: grid; gap: 12px; }
+.exam-card { padding: 16px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); }
+.exam-card h2 { margin: 0 0 12px; font-size: 14px; }
+.qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 8px; }
+.qjump {
+  display: grid; place-items: center; min-width: 36px; height: 36px; padding: 0;
+  border: 1px solid var(--edge); border-radius: var(--radius-sm); background: var(--raised);
+  color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.qjump:hover { border-color: var(--edge-strong); color: var(--text); }
+.qjump[data-answered="true"] { background: var(--primary-soft); border-color: var(--primary-ring); color: var(--primary); }
+.qjump[aria-current="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.qjump[data-unsupported="true"] { border-style: dashed; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; color: var(--faint); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 9px; height: 9px; border-radius: 3px; border: 1px solid var(--edge-strong); background: var(--raised); }
+.legend i.now { background: var(--primary); border-color: var(--primary); }
+.legend i.done { background: var(--primary-soft); border-color: var(--primary-ring); }
+
+.exam-modal {
+  position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent); backdrop-filter: blur(8px);
+}
+.exam-modal[hidden] { display: none; }
+.exam-dialog {
+  width: min(440px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px;
+  border: 1px solid var(--edge-strong); border-radius: var(--radius); background: var(--raised);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .46);
+}
+.exam-dialog h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+.exam-dialog p { margin: 0 0 12px; color: var(--muted); }
+.exam-dialog .facts { margin-top: 12px; grid-template-columns: 1fr 1fr; }
+.exam-dialog .actions { margin-top: 16px; justify-content: flex-end; }
+.blocked { margin-top: 8px; }
+
+@media (max-width: 860px) {
+  .exam-head { grid-template-columns: 1fr; }
+  .exam-tools { justify-content: flex-start; }
+  .exam-layout { grid-template-columns: 1fr; }
+  .exam-side { position: static; }
+}
 @media (max-width: 640px) {
   main { padding-top: 24px; }
   .brand-text { display: none; }
@@ -287,6 +399,16 @@ button.row:first-child { border-top: 0; }
   .hide-sm { display: none !important; }
   .pager { grid-template-columns: 1fr; }
   .pager a.next { grid-column: 1; }
+  .prose td, .prose th { padding: 5px 4px; font-size: 14px; }
+  .q-prompt .prose tr > :first-child { width: 40%; }
+}
+@media (max-width: 545px) {
+  /* Two fact columns: let a trailing odd fact use the full row. */
+  .fact:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (max-width: 380px) {
+  .q-nav { gap: 8px; }
+  .q-nav .btn { min-width: 0; padding: 0 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -415,9 +537,10 @@ button.row:first-child { border-top: 0; }
   // API
 
   class ApiError extends Error {
-    constructor(message, kind) {
+    constructor(message, kind, status = 0) {
       super(message);
       this.kind = kind;
+      this.status = status;
     }
   }
 
@@ -425,9 +548,9 @@ button.row:first-child { border-top: 0; }
   // sign-in has lapsed; that is the only sign-in the student has to redo.
   async function failure(res) {
     const data = await res.json().catch(() => ({}));
-    if (data.code === "EPORTAL_LOGIN_REQUIRED") return new ApiError("Portal 的 ePortal 登入已過期，重新登入後就能回到這裡。", "auth");
-    if (res.status === 401 || res.status === 403) return new ApiError("TronClass 拒絕了這次的登入，請稍後再試。", "http");
-    return new ApiError(data.error || `TronClass 回應錯誤（${res.status}），請稍後再試。`, "http");
+    if (data.code === "EPORTAL_LOGIN_REQUIRED") return new ApiError("Portal 的 ePortal 登入已過期，重新登入後就能回到這裡。", "auth", res.status);
+    if (res.status === 401 || res.status === 403) return new ApiError("TronClass 拒絕了這次的登入，請稍後再試。", "http", res.status);
+    return new ApiError(data.error || `TronClass 回應錯誤（${res.status}），請稍後再試。`, "http", res.status);
   }
 
   async function request(path, { method = "GET", body } = {}) {
@@ -438,15 +561,32 @@ button.row:first-child { border-top: 0; }
         credentials: "same-origin",
         headers: body ? { "Content-Type": "application/json", Accept: "application/json" } : { Accept: "application/json" },
         body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout?.(20000),
       });
     } catch {
       throw new ApiError("連不上 TronClass，請檢查網路後再試一次。", "network");
     }
     if (!res.ok) throw await failure(res);
     const type = res.headers.get("content-type") || "";
-    if (!type.includes("json")) throw new ApiError("TronClass 回傳了無法讀取的內容，請稍後再試。", "http");
     const text = await res.text();
-    return text ? JSON.parse(text) : {};
+    if (!text) return {};
+    if (!type.includes("json")) {
+      // Writes may answer 204 or an empty body; only a read has to be JSON.
+      if (method !== "GET") return {};
+      throw new ApiError("TronClass 回傳了無法讀取的內容，請稍後再試。", "http");
+    }
+    return JSON.parse(text);
+  }
+
+  // A 404 is a normal answer for "no attempt exists yet"; everything else still
+  // fails loudly.
+  async function requestMaybe(path, options) {
+    try {
+      return await request(path, options);
+    } catch (error) {
+      if (error.status === 404) return null;
+      throw error;
+    }
   }
 
   // GETs are cached briefly so moving between a course and its items is instant.
@@ -462,6 +602,23 @@ button.row:first-child { border-top: 0; }
     return promise;
   }
   const soft = (promise, fallback) => promise.catch((error) => (error.kind === "auth" ? Promise.reject(error) : fallback));
+
+  // A submitted exam changes the course's exam rows, scores and counts; drop
+  // the short-lived GET cache so the overview behind the take view is fresh.
+  function forgetExam(courseId, examId) {
+    for (const key of [...cache.keys()]) {
+      if (
+        key === `/api/exams/${examId}` ||
+        key.startsWith(`/api/courses/${courseId}/exams`) ||
+        key.startsWith(`/api/courses/${courseId}/submitted-exams`) ||
+        key.startsWith(`/api/courses/${courseId}/exam-scores`) ||
+        key.startsWith(`/api/course/${courseId}/my-completeness`) ||
+        key.startsWith(`/api/course/${courseId}/activity-reads-for-user`)
+      ) {
+        cache.delete(key);
+      }
+    }
+  }
 
   // Record that a material was opened or a stretch of video was played,
   // exactly as TronClass's own pages do.
@@ -586,8 +743,12 @@ button.row:first-child { border-top: 0; }
     };
   }
 
+  const examOverviewHref = (courseId, examId) => `${BASE}/course/${courseId}/learning-activity#/exam/${examId}`;
+  const examTakeHref = (courseId, examId) => `${examOverviewHref(courseId, examId)}/take`;
+  const classicExamHref = (courseId, examId) => tcHref(examOverviewHref(courseId, examId));
+
   const itemHref = (courseId, item) =>
-    item.kind === "exam" ? `${BASE}/course/${courseId}/learning-activity#/exam/${item.id}` : `${BASE}/course/${courseId}/learning-activity#/${item.id}`;
+    item.kind === "exam" ? examOverviewHref(courseId, item.id) : `${BASE}/course/${courseId}/learning-activity#/${item.id}`;
 
   const KIND = {
     material: { label: "教材", icon: "file" },
@@ -612,6 +773,15 @@ button.row:first-child { border-top: 0; }
     render();
   }
 
+  // Must be called from a click handler so the browser counts it as a user
+  // gesture. The take view blocks the paper while an exam requires fullscreen.
+  function enterFullscreen() {
+    if (document.fullscreenElement) return Promise.resolve();
+    const root = document.documentElement;
+    if (!root.requestFullscreen) return Promise.reject(new Error("這個瀏覽器不支援全螢幕。"));
+    return root.requestFullscreen();
+  }
+
   // ---------------------------------------------------------------------------
   // Opening TronClass itself
   //
@@ -632,12 +802,11 @@ button.row:first-child { border-top: 0; }
   function openOnTronclass(url) {
     // A fresh tab per click: reusing a named tab would navigate an exam or
     // homework that is already open there away from what the student is doing.
-    const popup = window.open(
-      new URL(`/go/tronclass?to=${encodeURIComponent(url.href)}`, location.origin).href,
-    );
-    if (!popup) {
-      location.assign(url.href);
-    }
+    const launch = new URL(`/go/tronclass?to=${encodeURIComponent(url.href)}`, location.origin).href;
+    const popup = window.open(launch);
+    // A blocked popup still has to go through the handoff; opening the classic
+    // URL directly would land on the school's login page.
+    if (!popup) location.assign(launch);
   }
 
   document.addEventListener("click", (event) => {
@@ -657,8 +826,19 @@ button.row:first-child { border-top: 0; }
     event.preventDefault();
     navigate(url.href);
   });
-  window.addEventListener("popstate", () => render());
-  window.addEventListener("hashchange", () => render());
+  // Chrome fires both popstate and hashchange for one hash navigation. Coalesce
+  // them so a take view never starts two attempts on a single route change.
+  let renderQueued = false;
+  function scheduleRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    setTimeout(() => {
+      renderQueued = false;
+      render();
+    }, 0);
+  }
+  window.addEventListener("popstate", scheduleRender);
+  window.addEventListener("hashchange", scheduleRender);
 
   // ---------------------------------------------------------------------------
   // Shell
@@ -753,9 +933,9 @@ button.row:first-child { border-top: 0; }
     main.replaceChildren(h("div", { class: "loading", role: "progressbar", "aria-label": "載入中" }));
     window.scrollTo(0, 0);
 
-    const views = { home: viewHome, courses: viewCourses, course: viewCourse, activity: viewActivity, exam: viewExam };
+    const views = { home: viewHome, courses: viewCourses, course: viewCourse, activity: viewActivity, exam: viewExam, examTake: viewExamTake };
     try {
-      const content = await views[route.name](route);
+      const content = await views[route.name](route, token);
       // A view that hands the page back to TronClass returns nothing.
       if (token !== renderToken || content == null) return;
       main.replaceChildren(...[content].flat().filter(Boolean));
@@ -1290,8 +1470,60 @@ button.row:first-child { border-top: 0; }
     return h("div", { class: wide ? "fact wide" : "fact" }, h("dt", null, label), h("dd", { class: "num" }, value));
   }
 
-  // Exam overview. Taking the exam always happens on TronClass's own page,
-  // which runs the rules pledge, qualification and anti-cheat checks.
+  // Exam overview. Answering happens in this app; TronClass itself stays one
+  // click away for invigilated exams or when the student prefers it.
+  function examState(exam) {
+    const now = Date.now();
+    const start = toDate(exam.start_time);
+    const end = toDate(exam.end_time);
+    const notOpen = Boolean(start && start > now);
+    const closed = Boolean(exam.is_closed || (end && end < now));
+    const used = exam.submitted_times ?? 0;
+    const limit = exam.submit_times || 0;
+    const outOfTries = limit > 0 && used >= limit;
+    return { notOpen, closed, used, limit, outOfTries, canStart: !notOpen && !closed && !outOfTries };
+  }
+
+  function examStartLink(courseId, examId, exam, label) {
+    const wantsFullscreen = exam.is_fullscreen_mode && !exam.enable_invigilation && !exam.check_submit_ip_consistency && !exam.has_audio;
+    return h(
+      "a",
+      {
+        class: "btn primary",
+        href: examTakeHref(courseId, examId),
+        onclick: (event) => {
+          // A modified click opens the take page in another tab; fullscreening
+          // this one would leave the new tab blocked.
+          if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          if (wantsFullscreen) enterFullscreen().catch(() => {});
+        },
+      },
+      label,
+      icon("arrow"),
+    );
+  }
+
+  function blockedExamView(courseId, examId, title, message) {
+    return h(
+      "div",
+      { class: "blocked" },
+      h("a", { class: "back", href: examOverviewHref(courseId, examId) }, icon("left"), "測驗說明"),
+      h(
+        "div",
+        { class: "error", role: "alert" },
+        icon("shield"),
+        h("h1", null, title),
+        h("p", null, message),
+        h(
+          "div",
+          { class: "actions" },
+          h("a", { class: "btn primary", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 開啟"),
+          h("a", { class: "btn ghost", href: examOverviewHref(courseId, examId) }, "回測驗說明"),
+        ),
+      ),
+    );
+  }
+
   async function viewExam({ courseId, examId }) {
     const [bundle, exam, scores] = await Promise.all([
       courseBundle(courseId),
@@ -1299,12 +1531,8 @@ button.row:first-child { border-top: 0; }
       soft(get(`/api/courses/${courseId}/exam-scores?no-intercept=true`), { exam_scores: [] }),
     ]);
     const item = bundle.ordered.find((i) => i.kind === "exam" && i.id === examId) || { kind: "exam", id: exam.id, title: exam.title, end: exam.end_time, state: "none" };
-    const now = Date.now();
-    const notOpen = toDate(exam.start_time) && toDate(exam.start_time) > now;
-    const closed = exam.is_closed || (toDate(exam.end_time) && toDate(exam.end_time) < now);
-    const used = exam.submitted_times ?? 0;
-    const limit = exam.submit_times || 0;
-    const outOfTries = limit > 0 && used >= limit;
+    const state = examState(exam);
+    const { notOpen, closed, outOfTries, used, limit, canStart } = state;
     const score = (scores.exam_scores || []).find((s) => s.activity_id === examId)?.score;
 
     const facts = h(
@@ -1317,14 +1545,17 @@ button.row:first-child { border-top: 0; }
       score != null ? fact("我的成績", `${score} 分`) : null,
     );
 
-    const guarded = exam.enable_anti_cheat || exam.is_fullscreen_mode || exam.is_leaving_window_constrained || exam.enable_invigilation;
+    const guarded = exam.enable_anti_cheat || exam.is_fullscreen_mode || exam.is_leaving_window_constrained || exam.enable_invigilation || exam.has_audio;
+    // These rules only exist in TronClass's own page; offering a start button
+    // that would immediately bounce the student is worse than pointing at it.
+    const classicOnly = Boolean(exam.enable_invigilation || exam.has_audio || exam.check_submit_ip_consistency);
     const startLabel = exam.has_temporary_submission ? "繼續作答" : used > 0 ? "再次作答" : "開始作答";
-    const canStart = !notOpen && !closed && !outOfTries;
 
     const actions = h(
       "div",
       { class: "actions" },
-      canStart ? h("a", { class: "btn primary", href: classicHref(), "data-classic": "" }, startLabel, icon("arrow")) : null,
+      canStart && !classicOnly ? examStartLink(courseId, examId, exam, startLabel) : null,
+      h("a", { class: classicOnly && canStart ? "btn primary" : "btn", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 開啟"),
       notOpen ? h("span", { class: "chip" }, icon("clock"), `${when(exam.start_time)} 開放`) : null,
       closed ? h("span", { class: "chip" }, "已結束") : null,
       outOfTries && !closed ? h("span", { class: "chip" }, "作答次數已用完") : null,
@@ -1338,7 +1569,19 @@ button.row:first-child { border-top: 0; }
           "div",
           { class: "note" },
           icon("shield"),
-          h("span", null, "這份測驗有防作弊設定", exam.is_fullscreen_mode ? "，會以全螢幕作答" : "", "。作答時請不要切換視窗或分頁。按下開始後會進入原版 TronClass 的作答頁。"),
+          h(
+            "span",
+            null,
+            "這份測驗有防作弊設定",
+            exam.is_fullscreen_mode ? "，會以全螢幕作答" : "",
+            exam.enable_invigilation
+              ? "，且需要監考，只能在 TronClass 原版頁面作答；原版頁面會記錄作答過程。"
+              : exam.check_submit_ip_consistency
+                ? "。這份測驗會檢查作答 IP，只能在 TronClass 原版頁面作答。"
+                : exam.has_audio
+                  ? "。這份測驗有音訊題，需要在 TronClass 原版頁面作答才能播放音檔。"
+                  : "。作答時請不要切換視窗或分頁；按下開始後會在這裡作答，需要時仍可在 TronClass 開啟。",
+          ),
         ),
       );
     }
@@ -1346,6 +1589,995 @@ button.row:first-child { border-top: 0; }
     if (exam.description) parts.push(h("section", { class: "section" }, h("h2", null, "說明"), richText(exam.description)));
     parts.push(pager(courseId, bundle, item));
     return parts;
+  }
+
+  // Taking an exam in the rebuilt page. The anti-cheat flags come from the
+  // qualification call made with check_status=in_test; TronClass remains the
+  // explicit fallback for invigilated exams and unsupported question types.
+  const EXAM_TYPES = {
+    single_selection: { kind: "radio", label: "單選" },
+    true_or_false: { kind: "radio", label: "是非" },
+    multiple_selection: { kind: "check", label: "多選" },
+    short_answer: { kind: "text", label: "簡答" },
+  };
+
+  function examQuestions(subjects) {
+    const list = [];
+    const walk = (items, parentId) => {
+      for (const item of [...(items || [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))) {
+        // A container (an analysis group) is not a question itself; its
+        // sub-questions are the ones the student answers.
+        if (item.sub_subjects?.length) {
+          walk(item.sub_subjects, item.id);
+          continue;
+        }
+        list.push(parentId == null ? item : { ...item, parent_id: item.parent_id ?? parentId });
+      }
+    };
+    walk(subjects, null);
+    return list;
+  }
+
+  function formatPoint(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? String(Number(number.toFixed(2))) : String(value);
+  }
+
+  async function viewExamTake({ courseId, examId }, token) {
+    // Registered before any return: the overview may have entered fullscreen
+    // for this route, and every blocked/error path must be able to leave it.
+    cleanup.push(() => {
+      if (document.fullscreenElement) {
+        const exiting = document.exitFullscreen?.();
+        if (exiting && exiting.catch) exiting.catch(() => {});
+      }
+    });
+    const qualificationPath = `/api/exam/${examId}/check-exam-qualification?no-intercept=true&check_status=in_test`;
+    const storagePath = `/api/exams/${examId}/submissions/storage`;
+    const distributePath = `/api/exams/${examId}/distribute`;
+    const settle = (promise) => promise.then((value) => ({ value }), (error) => ({ error }));
+    const [examResult, qualificationResult] = await Promise.all([
+      settle(get(`/api/exams/${examId}`)),
+      settle(request(qualificationPath)),
+    ]);
+
+    if (examResult.error) throw examResult.error;
+    // A newer route change has already superseded this view; do not start an
+    // attempt for a paper the student is no longer looking at.
+    if (token !== renderToken) return null;
+    const exam = examResult.value;
+    setTitle(exam.title || "測驗");
+    const state = examState(exam);
+    const blocked = (title, message) => blockedExamView(courseId, examId, title, message);
+    if (state.closed) return blocked("這份測驗已經結束", "測驗已關閉，無法作答。");
+    if (state.notOpen) return blocked("這份測驗還沒開放", `測驗將於 ${when(exam.start_time)} 開放。`);
+    if (state.outOfTries) return blocked("作答次數已用完", `已作答 ${state.used} / ${state.limit} 次，無法再作答。`);
+
+    if (qualificationResult.error) {
+      if (qualificationResult.error.kind === "auth") throw qualificationResult.error;
+      return blocked("無法確認作答資格", qualificationResult.error.message);
+    }
+    const qualification = qualificationResult.value || {};
+    if (qualification.is_closed) return blocked("這份測驗已經結束", "測驗已關閉，無法作答。");
+    if (qualification.error_code) {
+      return blocked("無法開始作答", qualification.error_message || qualification.message || `TronClass 回報：${qualification.error_code}`);
+    }
+    if (qualification.check_submit_ip_consistency || exam.check_submit_ip_consistency) {
+      return blocked("需要在原版頁面作答", "這份測驗會檢查作答 IP 的一致性，只能在 TronClass 原版頁面作答。");
+    }
+    if (qualification.has_audio || exam.has_audio) {
+      return blocked("這份測驗包含音訊題", "這份測驗有音訊題目，需要在 TronClass 原版頁面作答，才能播放題目音檔。");
+    }
+    if (exam.enable_invigilation || qualification.enable_invigilation) {
+      return blocked(
+        "這份測驗需要監考",
+        "這份測驗啟用了監考，只能在 TronClass 原版頁面作答；原版頁面會記錄作答過程。",
+      );
+    }
+
+    // Distribute assigns the paper instance, so it only runs after every check
+    // that can still send the student back to TronClass.
+    const [storageResult, distributeResult] = await Promise.all([
+      settle(requestMaybe(storagePath)),
+      settle(request(distributePath)),
+    ]);
+    if (token !== renderToken) return null;
+    if (distributeResult.error) throw distributeResult.error;
+    if (storageResult.error) throw storageResult.error;
+
+    const paper = distributeResult.value || {};
+    const questions = examQuestions(paper.subjects);
+    if (!questions.length) return blocked("這份測驗沒有題目", "TronClass 沒有回傳可作答的題目，請使用原版頁面或稍後再試。");
+    // For the cases the exam summary does not flag as audio, a single question
+    // still can be: its sound must play in the original page. A group container
+    // can carry the flag too, so the raw paper is walked, not the leaf list.
+    const hasAudio = (items) => (items || []).some((item) => item.has_audio || hasAudio(item.sub_subjects));
+    if (hasAudio(paper.subjects)) {
+      return blocked("這份測驗包含音訊題", "這份測驗有音訊題目，需要在 TronClass 原版頁面作答，才能播放題目音檔。");
+    }
+    // Submitting here would hand in the unsupported questions unanswered, so
+    // the whole paper stays on TronClass when any question cannot be rendered.
+    const unsupported = questions.filter((question) => !EXAM_TYPES[question.type]);
+    if (unsupported.length) {
+      return blocked(
+        "這份測驗要在 TronClass 作答",
+        `這份測驗有 ${unsupported.length} 題是 Portal 尚未支援的題型，請使用 TronClass 原版頁面作答。`,
+      );
+    }
+    const optionless = questions.filter((question) => {
+      const type = EXAM_TYPES[question.type];
+      return type && type.kind !== "text" && !(question.options || []).length;
+    });
+    if (optionless.length) {
+      return blocked(
+        "這份測驗的題目資料不完整",
+        `這份測驗有 ${optionless.length} 題沒有可顯示的選項，請使用 TronClass 原版頁面作答。`,
+      );
+    }
+
+    const storageValue = storageResult.value;
+    // Only a stored attempt with an id can be saved into; an empty answer
+    // (or a 200 with no body) means the student has no temporary attempt yet.
+    const storage = storageValue && storageValue.id != null ? storageValue : null;
+    let paperInstanceId = storage?.instance_id ?? paper.exam_paper_instance_id;
+    if (paperInstanceId == null) return blocked("讀不到試卷", "TronClass 沒有回傳試卷編號，請使用原版頁面作答。");
+
+    const answers = new Map();
+    const answerFor = (subjectId) => {
+      const key = String(subjectId);
+      let answer = answers.get(key);
+      if (!answer) {
+        answer = { options: [], text: "", attachments: [] };
+        answers.set(key, answer);
+      }
+      return answer;
+    };
+    if (storage) {
+      for (const saved of storage.submission_data?.subjects || []) {
+        const answer = answerFor(saved.subject_id);
+        if (Array.isArray(saved.answer_option_ids)) answer.options = saved.answer_option_ids.slice();
+        if (Array.isArray(saved.attachments)) answer.attachments = saved.attachments.slice();
+        if (typeof saved.answer === "string") answer.text = saved.answer;
+        else if (typeof saved.answer_text === "string") answer.text = saved.answer_text;
+      }
+    }
+
+    const total = questions.length;
+    const totalPoints = questions.reduce((sum, question) => sum + (Number(question.point) || 0), 0);
+    const typeOf = (question) => EXAM_TYPES[question.type];
+    const isAnswered = (question) => {
+      const type = typeOf(question);
+      if (!type) return false;
+      const answer = answerFor(question.id);
+      return type.kind === "text" ? answer.text.trim().length > 0 : answer.options.length > 0;
+    };
+    const answeredCount = () => questions.filter(isAnswered).length;
+
+    let submission = storage || null;
+    let starting = null;
+    let current = 0;
+    let left = null;
+    let expired = false;
+    let submitted = false;
+    let submitting = false;
+    let locked = false;
+    let disposed = false;
+    let tickTimer = null;
+    let refreshTimer = null;
+    let saveTimer = null;
+    let saving = null;
+    let saveAgain = false;
+    let dialog = null;
+    let dialogKind = "";
+    let dialogDismissible = false;
+    let dialogReturnFocus = null;
+    let leaves = 0;
+    let lastLeaveAt = 0;
+    let leaveTimer = null;
+
+    const barFill = h("span", { class: "bar-fill" });
+    const progressText = h("span", { class: "meta num" });
+    const saveStatus = h("span", { class: "save-state", role: "status", "aria-live": "polite" });
+    const clockText = h("span", null, "不限時");
+    const clockEl = h("span", { class: "exam-clock num" }, icon("clock"), clockText);
+    const submitBtn = h("button", { class: "btn primary", type: "button", onclick: () => openSubmitDialog() }, icon("check"), "交卷");
+    const fallback = h("a", { class: "btn", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 開啟");
+
+    const head = h(
+      "div",
+      { class: "exam-head" },
+      h(
+        "div",
+        { class: "exam-head-main" },
+        h(
+          "div",
+          { class: "meta-row" },
+          h("span", { class: "chip accent" }, "測驗"),
+          exam.is_practice_mode ? h("span", { class: "chip" }, "練習") : null,
+        ),
+        h("h1", null, exam.title || "測驗"),
+        h(
+          "div",
+          { class: "meta-row" },
+          h("span", { class: "num" }, `${total} 題 · ${formatPoint(exam.total_points ?? totalPoints)} 分`),
+          exam.limit_time ? h("span", null, `限時 ${exam.limit_time} 分鐘`) : h("span", null, "不限時"),
+        ),
+      ),
+      h("div", { class: "exam-tools" }, clockEl, submitBtn, fallback),
+      h("div", { class: "exam-progress" }, h("span", { class: "bar-track" }, barFill), progressText, saveStatus),
+    );
+
+    const questionHost = h("div", { id: "exam-question", tabindex: "-1" });
+    const position = h("span", { class: "meta num" });
+    const prevBtn = h("button", { class: "btn", type: "button", onclick: () => showQuestion(current - 1) }, icon("left"), "上一題");
+    const nextBtn = h("button", { class: "btn", type: "button", onclick: () => showQuestion(current + 1) }, "下一題", icon("right"));
+    const paperEl = h(
+      "section",
+      { class: "exam-paper", "aria-label": "試題" },
+      questionHost,
+      h("div", { class: "q-nav" }, prevBtn, position, nextBtn),
+    );
+
+    const navButtons = [];
+    const navGrid = h("div", { class: "qgrid", role: "group", "aria-label": "題目導覽" });
+    questions.forEach((question, index) => {
+      const button = h("button", { class: "qjump num", type: "button", onclick: () => showQuestion(index) }, String(index + 1));
+      navButtons.push(button);
+      navGrid.append(button);
+    });
+    const side = h(
+      "aside",
+      { class: "exam-side", "aria-label": "作答進度" },
+      h(
+        "div",
+        { class: "exam-card" },
+        h("h2", null, "題目"),
+        navGrid,
+        h(
+          "div",
+          { class: "legend" },
+          h("span", null, h("i", { class: "now" }), "目前"),
+          h("span", null, h("i", { class: "done" }), "已作答"),
+          h("span", null, h("i"), "未作答"),
+        ),
+      ),
+    );
+
+    function closeDialog() {
+      dialog?.remove();
+      dialog = null;
+      dialogKind = "";
+      dialogDismissible = false;
+      for (const element of document.querySelectorAll("body > header, body > main")) element.inert = false;
+      const target = dialogReturnFocus;
+      dialogReturnFocus = null;
+      if (target && target.isConnected) target.focus({ preventScroll: true });
+    }
+
+    function openDialog({ title, message, actions, kind = "info", dismissible = true }) {
+      closeDialog();
+      dialogReturnFocus = document.activeElement;
+      dialogKind = kind;
+      dialogDismissible = dismissible;
+      const panel = h(
+        "div",
+        { class: "exam-dialog", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "exam-dialog-title" },
+        h("h2", { id: "exam-dialog-title" }, title),
+        typeof message === "string" ? h("p", null, message) : message,
+        h("div", { class: "actions" }, actions),
+      );
+      dialog = h(
+        "div",
+        {
+          class: "exam-modal",
+          onclick: (event) => {
+            if (dismissible && event.target === dialog) closeDialog();
+          },
+        },
+        panel,
+      );
+      document.body.append(dialog);
+      for (const element of document.querySelectorAll("body > header, body > main")) element.inert = true;
+      const focusable = panel.querySelector("button, a");
+      if (focusable) focusable.focus({ preventScroll: true });
+    }
+
+    function setSave(tone, text, title = "") {
+      saveStatus.dataset.tone = tone || "";
+      saveStatus.title = title;
+      saveStatus.setAttribute("aria-label", text ? (title ? `${text}：${title}` : text) : "");
+      if (!text) {
+        saveStatus.replaceChildren();
+        return;
+      }
+      saveStatus.replaceChildren(icon(tone === "error" ? "alert" : tone === "saved" ? "check" : "refresh"), h("span", null, text));
+      if (tone === "error") {
+        saveStatus.append(
+          h(
+            "button",
+            { class: "btn small ghost", type: "button", onclick: () => (expired ? submitExam({ auto: true }) : flushSave()) },
+            "重試",
+          ),
+        );
+      }
+    }
+
+    function answerPayload() {
+      const payload = [];
+      questions.forEach((question, index) => {
+        const type = typeOf(question);
+        if (!type) return;
+        const answer = answerFor(question.id);
+        payload.push({
+          index,
+          subject_id: question.id,
+          parent_id: question.parent_id ?? null,
+          answer: type.kind === "text" ? { answer: answer.text, attachments: answer.attachments.slice() } : { answer_option_ids: answer.options.slice() },
+        });
+      });
+      return payload;
+    }
+
+    function progressPayload() {
+      return { answered_num: answeredCount(), total_subjects: total };
+    }
+
+    async function startAttempt() {
+      if (token !== renderToken) throw new ApiError("已離開作答頁，這次作答沒有開始。", "cancelled");
+      const created = await request(storagePath, {
+        method: "POST",
+        body: {
+          exam_paper_instance_id: paperInstanceId,
+          exam_submission_id: null,
+          subjects: answerPayload(),
+          progress: progressPayload(),
+        },
+      });
+      let fresh = await requestMaybe(storagePath);
+      if (!fresh) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        fresh = await requestMaybe(storagePath);
+      }
+      // The student may have left while the attempt was being created. Start
+      // no clock and keep no timers for a detached view.
+      if (token !== renderToken || disposed) throw new ApiError("已離開作答頁，這次作答沒有開始。", "cancelled");
+      submission = fresh || created || null;
+      if (!submission || submission.id == null) throw new ApiError("已建立作答，但讀不到作答編號，請重新整理後再試。", "http");
+      paperInstanceId = submission.instance_id ?? paperInstanceId;
+      const leftTime = Number(submission.left_time);
+      if (Number.isFinite(leftTime)) setLeft(leftTime);
+      else if (exam.limit_time) setLeft(exam.limit_time * 60);
+      startClock();
+      return submission;
+    }
+
+    async function performSave() {
+      if (!submission) {
+        if (starting) {
+          await starting;
+        } else {
+          await startAttempt();
+          return;
+        }
+      }
+      if (!submission) throw new ApiError("無法開始作答，請重新整理後再試。", "http");
+      await request(`/api/exams/submissions/${submission.id}/multiple-subjects`, {
+        method: "PUT",
+        body: {
+          exam_paper_instance_id: paperInstanceId,
+          exam_submission_id: submission.id,
+          subjects_answers: answerPayload(),
+          progress: progressPayload(),
+        },
+      });
+    }
+
+    function flushSave() {
+      if (submitted || expired || submitting || locked) return Promise.resolve();
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (saving) {
+        saveAgain = true;
+        return saving;
+      }
+      setSave("saving", "儲存中…");
+      saving = performSave()
+        .then(() => setSave("saved", "已儲存"))
+        .catch((error) => setSave("error", "儲存失敗", error.message))
+        .finally(() => {
+          saving = null;
+          if (saveAgain) {
+            saveAgain = false;
+            flushSave();
+          }
+        });
+      return saving;
+    }
+
+    function scheduleSave() {
+      if (submitted || expired || submitting || locked) return;
+      setSave("saving", "儲存中…");
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        flushSave();
+      }, 600);
+    }
+
+    function paintClock() {
+      clockText.textContent = left == null ? "不限時" : left <= 0 ? "時間到" : formatLeft(left);
+      clockEl.classList.toggle("low", left != null && left <= 300);
+    }
+
+    function formatLeft(seconds) {
+      const totalSeconds = Math.max(0, Math.ceil(seconds));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const rest = totalSeconds % 60;
+      return hours
+        ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
+        : `${minutes}:${String(rest).padStart(2, "0")}`;
+    }
+
+    function setLeft(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return;
+      left = Math.max(0, number);
+      paintClock();
+      if (left <= 0) expire();
+    }
+
+    async function refreshLeftTime() {
+      if (!submission || expired || submitted || locked) return;
+      try {
+        const data = await request(`/api/exams/${submission.id}/left_time`);
+        if (token !== renderToken || disposed) return;
+        const leftTime = Number(data.left_time);
+        if (Number.isFinite(leftTime)) setLeft(leftTime);
+      } catch {}
+    }
+
+    function startClock() {
+      if (disposed || tickTimer || left == null) return;
+      tickTimer = setInterval(() => {
+        if (disposed || expired || submitted || left == null) return;
+        left = Math.max(0, left - 1);
+        paintClock();
+        if (left <= 0) expire();
+      }, 1000);
+      refreshTimer = setInterval(refreshLeftTime, 30000);
+    }
+
+    function paintProgress() {
+      const done = answeredCount();
+      progressText.textContent = `已作答 ${done} / ${total}`;
+      barFill.style.width = `${total ? (done / total) * 100 : 0}%`;
+      navButtons.forEach((button, index) => {
+        const question = questions[index];
+        const answered = isAnswered(question);
+        const supported = Boolean(typeOf(question));
+        button.dataset.answered = String(answered);
+        button.dataset.unsupported = String(!supported);
+        button.setAttribute("aria-current", index === current ? "true" : "false");
+        button.setAttribute("aria-label", `第 ${index + 1} 題${answered ? "，已作答" : ""}${supported ? "" : "，需要在 TronClass 作答"}`);
+      });
+      prevBtn.disabled = current === 0;
+      nextBtn.disabled = current === total - 1;
+      position.textContent = `第 ${current + 1} / ${total} 題`;
+    }
+
+    function setPaperDisabled(disabled) {
+      for (const control of paperEl.querySelectorAll("input, textarea, .qjump, .q-nav button")) control.disabled = disabled;
+    }
+
+    function unsupportedNotice(question, detail = "") {
+      return h(
+        "div",
+        null,
+        h(
+          "div",
+          { class: "note" },
+          icon("alert"),
+          h("span", null, `${detail ? `${detail}；` : ""}這種題型（${question.type || "未知"}）需要在 TronClass 作答。`),
+        ),
+        h(
+          "div",
+          { class: "actions", style: "margin-top:12px" },
+          h("a", { class: "btn", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 作答"),
+        ),
+      );
+    }
+
+    function drawQuestion() {
+      const question = questions[current];
+      const answer = answerFor(question.id);
+      const type = typeOf(question);
+      const options = [...(question.options || [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+      const prompt = h("div", { class: "q-prompt" });
+      prompt.append(question.description ? richText(question.description) : h("p", null, "這題沒有題目內容。"));
+      const body = h("div", { class: "q-body" }, prompt);
+      questionHost.replaceChildren(
+        h(
+          "div",
+          { class: "q-head" },
+          h("span", { class: "q-number num" }, `第 ${current + 1} 題`),
+          h("span", { class: "meta" }, type ? type.label : "需在 TronClass 作答"),
+          h("span", { class: "q-points num" }, question.point != null ? `${formatPoint(question.point)} 分` : ""),
+        ),
+        body,
+      );
+
+      if (!type) {
+        body.append(unsupportedNotice(question));
+      } else if (type.kind === "text") {
+        const area = h("textarea", { placeholder: "輸入你的答案…", "aria-label": `第 ${current + 1} 題答案` });
+        area.value = answer.text;
+        area.addEventListener("input", () => {
+          answer.text = area.value;
+          scheduleSave();
+          paintProgress();
+        });
+        body.append(
+          h("div", { class: "answer-area" }, area),
+          h("div", { class: "q-help" }, "附件只能上傳到 TronClass 原版頁面；在這裡作答的內容不含附件。"),
+        );
+      } else if (options.length) {
+        const list = h("ul", { class: "choices" });
+        options.forEach((option, index) => {
+          const input = h("input", {
+            type: type.kind === "radio" ? "radio" : "checkbox",
+            name: `q-${question.id}`,
+            value: String(option.id),
+          });
+          input.checked = answer.options.some((id) => String(id) === String(option.id));
+          input.addEventListener("change", () => {
+            if (type.kind === "radio") {
+              answer.options = [option.id];
+            } else if (input.checked) {
+              if (!answer.options.some((id) => String(id) === String(option.id))) answer.options.push(option.id);
+            } else {
+              answer.options = answer.options.filter((id) => String(id) !== String(option.id));
+            }
+            scheduleSave();
+            paintProgress();
+          });
+          list.append(
+            h(
+              "li",
+              null,
+              h(
+                "label",
+                { class: "choice" },
+                input,
+                h("span", { class: "choice-index num" }, String(index + 1)),
+                h("div", { class: "choice-text" }, option.content ? richText(option.content) : h("span", null, "（空白選項）")),
+              ),
+            ),
+          );
+        });
+        body.append(list);
+      } else {
+        body.append(unsupportedNotice(question, "這題沒有可顯示的選項"));
+      }
+      paintProgress();
+    }
+
+    function showQuestion(index) {
+      if (index < 0 || index >= total) return;
+      current = index;
+      drawQuestion();
+      questionHost.focus({ preventScroll: true });
+      if (window.innerWidth <= 860) paperEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function openSubmitDialog() {
+      if (submitted || expired) return;
+      const done = answeredCount();
+      const unanswered = total - done;
+      openDialog({
+        title: "確定要交卷嗎？",
+        message: h(
+          "div",
+          null,
+          h("p", null, unanswered ? `還有 ${unanswered} 題未作答。交卷後不能修改答案。` : "所有題目都已作答。交卷後不能修改答案。"),
+          h(
+            "dl",
+            { class: "facts" },
+            h("div", { class: "fact" }, h("dt", null, "已作答"), h("dd", { class: "num" }, `${done} / ${total}`)),
+            h("div", { class: "fact" }, h("dt", null, "剩下時間"), h("dd", { class: "num" }, left == null ? "不限" : left <= 0 ? "時間到" : formatLeft(left))),
+          ),
+        ),
+        actions: [
+          h("button", { class: "btn ghost", type: "button", onclick: closeDialog }, "繼續作答"),
+          h(
+            "button",
+            {
+              class: "btn primary",
+              type: "button",
+              onclick: () => {
+                closeDialog();
+                submitExam();
+              },
+            },
+            "確認交卷",
+          ),
+        ],
+        kind: "submit",
+      });
+    }
+
+    async function submitExam({ auto = false, reason = null, label = null } = {}) {
+      if (submitting || submitted) return;
+      submitting = true;
+      submitBtn.disabled = true;
+      setPaperDisabled(true);
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      // Let an in-flight autosave finish first; the submit body already carries
+      // every answer, but a write must not land after the paper is handed in.
+      if (saving) {
+        try {
+          await saving;
+        } catch {}
+      }
+      if (!submission && starting) {
+        try {
+          await starting;
+        } catch {}
+      }
+      if (token !== renderToken || disposed) {
+        submitting = false;
+        return;
+      }
+      setSave("saving", "交卷中…");
+      try {
+        await request(`/api/exams/${examId}/submissions`, {
+          method: "POST",
+          body: {
+            exam_paper_instance_id: paperInstanceId,
+            exam_submission_id: submission?.id ?? null,
+            subjects: answerPayload(),
+            progress: progressPayload(),
+            reason: reason || (auto ? "time is up" : "user"),
+          },
+        });
+        if (token !== renderToken || disposed) {
+          // The paper is handed in even though this view is gone; drop the
+          // cached exam so the next page sees the new state.
+          forgetExam(courseId, examId);
+          submitting = false;
+          return;
+        }
+        submitted = true;
+        clearInterval(tickTimer);
+        clearInterval(refreshTimer);
+        forgetExam(courseId, examId);
+        // Replace the take entry so Back cannot reopen a submitted paper.
+        navigate(examOverviewHref(courseId, examId), { replace: true });
+      } catch (error) {
+        submitting = false;
+        if (token !== renderToken || disposed) return;
+        const outOfFullscreen = guards.fullscreen && !document.fullscreenElement;
+        const closedBook = expired || locked;
+        submitBtn.disabled = closedBook || outOfFullscreen;
+        if (!closedBook && !outOfFullscreen) {
+          setPaperDisabled(false);
+          paintProgress();
+        }
+        setSave("error", "交卷失敗", error.message);
+        openDialog({
+          title: label ? `${label}，交卷失敗` : auto || expired ? "時間到，交卷失敗" : "交卷失敗",
+          message: h("p", null, error.message),
+          actions: [
+            outOfFullscreen
+              ? h("button", { class: "btn primary", type: "button", onclick: resumeAfterFailedSubmit }, "回到全螢幕")
+              : closedBook
+                ? null
+                : h("button", { class: "btn ghost", type: "button", onclick: closeDialog }, "繼續作答"),
+            h(
+              "button",
+              {
+                class: outOfFullscreen ? "btn" : "btn primary",
+                type: "button",
+                onclick: () => {
+                  closeDialog();
+                  submitExam({ auto, reason, label });
+                },
+              },
+              "重新交卷",
+            ),
+            h("a", { class: "btn", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 開啟"),
+          ],
+          kind: "submit-error",
+          dismissible: !(auto || closedBook || outOfFullscreen),
+        });
+      }
+    }
+
+    function expire() {
+      if (disposed || expired || submitted || locked) return;
+      expired = true;
+      left = 0;
+      paintClock();
+      setPaperDisabled(true);
+      submitBtn.disabled = true;
+      openDialog({
+        title: "作答時間已結束",
+        message: h("p", null, "時間到，正在自動交卷。若交卷失敗，請按重新交卷或使用 TronClass 原版頁面。"),
+        actions: [
+          h(
+            "button",
+            {
+              class: "btn primary",
+              type: "button",
+              onclick: () => {
+                closeDialog();
+                submitExam({ auto: true });
+              },
+            },
+            "重新交卷",
+          ),
+          h("a", { class: "btn", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 開啟"),
+        ],
+        kind: "expired",
+        dismissible: false,
+      });
+      void submitExam({ auto: true });
+    }
+
+    function ensureSubmission() {
+      if (submission) return Promise.resolve(submission);
+      if (starting) return starting;
+      setSave("saving", "開始作答…");
+      starting = startAttempt()
+        .then(() => setSave("saved", "已開始作答"))
+        .catch((error) => {
+          setSave("error", "無法開始作答", error.message);
+          throw error;
+        })
+        .finally(() => {
+          starting = null;
+        });
+      return starting;
+    }
+
+    if (storage) {
+      const leftTime = Number(storage.left_time);
+      if (Number.isFinite(leftTime)) left = Math.max(0, leftTime);
+      else if (exam.limit_time) left = exam.limit_time * 60;
+      if (answeredCount()) setSave("saved", "已載入作答");
+    }
+
+    paintClock();
+    paintProgress();
+    drawQuestion();
+    startClock();
+
+    const detach = [];
+    const listen = (target, type, handler, options) => {
+      target.addEventListener(type, handler, options);
+      detach.push(() => target.removeEventListener(type, handler, options));
+    };
+
+    const leaveLimit = Number(qualification.leaving_window_limit ?? exam.leaving_window_limit ?? 0) || 0;
+    const leaveTimeout = Number(qualification.leaving_window_timeout ?? exam.leaving_window_timeout ?? 0) || 0;
+    const guards = {
+      fullscreen: Boolean(qualification.is_fullscreen_mode || exam.is_fullscreen_mode),
+      leaving: Boolean(qualification.is_leaving_window_constrained || exam.is_leaving_window_constrained),
+      leavingTimeout: Boolean(qualification.is_leaving_window_timeout || exam.is_leaving_window_timeout),
+      copy: Boolean(qualification.disable_copy_paste || exam.disable_copy_paste),
+      right: Boolean(qualification.disable_right_click || exam.disable_right_click),
+    };
+
+    function resumeFullscreen() {
+      if (document.fullscreenElement) {
+        if (dialogKind === "fullscreen") closeDialog();
+        return;
+      }
+      enterFullscreen()
+        .then(() => {
+          if (document.fullscreenElement && dialogKind === "fullscreen") closeDialog();
+        })
+        .catch(() => {});
+    }
+
+    function resumeAfterFailedSubmit() {
+      enterFullscreen()
+        .then(() => {
+          if (!expired && !locked) {
+            setPaperDisabled(false);
+            paintProgress();
+            submitBtn.disabled = false;
+          }
+          closeDialog();
+        })
+        .catch(() => {});
+    }
+
+    function showFullscreenBlock() {
+      if (disposed || submitted || expired || locked) return;
+      openDialog({
+        title: "回到全螢幕",
+        message: h("p", null, "這份測驗必須在全螢幕中作答。請回到全螢幕後繼續；離開全螢幕時作答不會暫停。"),
+        actions: [
+          h("button", { class: "btn primary", type: "button", onclick: resumeFullscreen }, "回到全螢幕"),
+          h(
+            "button",
+            {
+              class: "btn",
+              type: "button",
+              onclick: () => {
+                closeDialog();
+                submitExam();
+              },
+            },
+            "交卷",
+          ),
+          fallback.cloneNode(true),
+        ],
+        kind: "fullscreen",
+        dismissible: false,
+      });
+    }
+
+    if (guards.fullscreen) {
+      listen(document, "fullscreenchange", () => {
+        if (disposed || submitted || expired) return;
+        if (!document.fullscreenElement) showFullscreenBlock();
+        else {
+          if (dialogKind === "fullscreen") closeDialog();
+          if (!submitting && !locked) {
+            setPaperDisabled(false);
+            paintProgress();
+            submitBtn.disabled = false;
+          }
+        }
+      });
+      if (!document.fullscreenElement) queueMicrotask(() => {
+        if (!disposed && !submitted && !expired && !document.fullscreenElement) showFullscreenBlock();
+      });
+    }
+
+    function stopLeaveCountdown() {
+      if (leaveTimer) {
+        clearInterval(leaveTimer);
+        leaveTimer = null;
+      }
+    }
+
+    function enforceLeaveSubmit(reason, label) {
+      if (disposed || submitted || expired || submitting) return;
+      locked = true;
+      stopLeaveCountdown();
+      closeDialog();
+      setPaperDisabled(true);
+      submitBtn.disabled = true;
+      void submitExam({ auto: true, reason, label });
+    }
+
+    function noteLeave() {
+      if (disposed || submitted || expired || locked || (!guards.leaving && !guards.leavingTimeout)) return;
+      if (dialogKind === "fullscreen") return;
+      const now = Date.now();
+      if (now - lastLeaveAt < 800) return;
+      lastLeaveAt = now;
+      leaves += 1;
+      if (guards.leaving && leaveLimit > 0 && leaves > leaveLimit) {
+        enforceLeaveSubmit("leave_window_limit", "已離開作答視窗太多次");
+        return;
+      }
+      stopLeaveCountdown();
+      const countdown = h("span", { class: "num" });
+      const message = h(
+        "p",
+        null,
+        `系統偵測到你離開作答視窗 ${leaves} 次${guards.leaving && leaveLimit > 0 ? `（上限 ${leaveLimit} 次）` : ""}。`,
+      );
+      if (guards.leavingTimeout && leaveTimeout > 0) {
+        countdown.textContent = String(leaveTimeout);
+        message.append("若 ", countdown, " 秒內沒有回到這個分頁，系統會自動交卷。");
+        let remaining = leaveTimeout;
+        leaveTimer = setInterval(() => {
+          remaining -= 1;
+          countdown.textContent = String(Math.max(0, remaining));
+          if (remaining <= 0) {
+            stopLeaveCountdown();
+            enforceLeaveSubmit("leave_window_timeout", "已離開作答視窗太久");
+          }
+        }, 1000);
+      } else {
+        message.append("請留在這個分頁完成測驗。");
+      }
+      openDialog({
+        title: "已離開作答視窗",
+        message,
+        actions: [
+          h(
+            "button",
+            {
+              class: "btn primary",
+              type: "button",
+              onclick: () => {
+                stopLeaveCountdown();
+                closeDialog();
+              },
+            },
+            "繼續作答",
+          ),
+          h(
+            "button",
+            {
+              class: "btn",
+              type: "button",
+              onclick: () => {
+                stopLeaveCountdown();
+                closeDialog();
+                submitExam();
+              },
+            },
+            "交卷",
+          ),
+          h("a", { class: "btn ghost", href: classicExamHref(courseId, examId), "data-classic": "" }, "在 TronClass 開啟"),
+        ],
+        kind: "leave",
+        dismissible: !(guards.leavingTimeout && leaveTimeout > 0),
+      });
+    }
+
+    if (guards.leaving || guards.leavingTimeout) {
+      listen(document, "visibilitychange", () => {
+        if (document.visibilityState === "hidden") noteLeave();
+        else stopLeaveCountdown();
+      });
+      listen(window, "blur", noteLeave);
+      listen(window, "focus", stopLeaveCountdown);
+    }
+    // Background tabs throttle timers; ask TronClass for the real remaining
+    // time as soon as the student comes back.
+    listen(document, "visibilitychange", () => {
+      if (document.visibilityState === "visible") refreshLeftTime();
+    });
+
+    if (guards.copy) {
+      const block = (event) => event.preventDefault();
+      listen(document, "copy", block);
+      listen(document, "cut", block);
+      listen(document, "paste", block);
+    }
+    if (guards.right) {
+      listen(document, "contextmenu", (event) => event.preventDefault());
+    }
+
+    listen(document, "keydown", (event) => {
+      if (event.key === "Escape" && dialog && dialogDismissible) closeDialog();
+    });
+
+    cleanup.push(() => {
+      disposed = true;
+      detach.forEach((fn) => fn());
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+        if (!submitted && !expired && !submitting) void flushSave();
+      }
+      clearInterval(tickTimer);
+      clearInterval(refreshTimer);
+      stopLeaveCountdown();
+      closeDialog();
+    });
+
+    if (!storage) void ensureSubmission().catch(() => {});
+    if (left != null && left <= 0) expire();
+
+    return [
+      h("a", { class: "back", href: examOverviewHref(courseId, examId) }, icon("left"), "測驗說明"),
+      head,
+      h("div", { class: "exam-layout" }, paperEl, side),
+    ];
   }
 
   // Same colours as the dashboard (the page has no #portalBackdrop, so no image).

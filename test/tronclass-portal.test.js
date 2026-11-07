@@ -16,7 +16,7 @@ test("the server serves /tronclass and relays only GET and POST to TronClass", a
   const relay = await read("../src/tronclass.js");
   assert.match(server, /url\.pathname === "\/tronclass" \|\| url\.pathname\.startsWith\("\/tronclass\/"\)/);
   assert.match(server, /serveStatic\(req, res, "\/tronclass\.html", \{ csp: TRONCLASS_CSP \}\)/);
-  assert.match(relay, /\["GET", "POST"\]\.includes\(req\.method\)/);
+  assert.match(relay, /\["GET", "POST", "PUT"\]\.includes\(req\.method\)/);
   assert.match(relay, /TRONCLASS_ORIGIN = "https:\/\/tc\.nutc\.edu\.tw"/);
 });
 
@@ -34,11 +34,117 @@ test("signing out of the portal also drops the TronClass session", async () => {
   assert.match(server, /\/api\/portal-logout"[\s\S]*?await clearTronclassSession\(\);/);
 });
 
-test("the TronClass pages never show the student's name and send exams to TronClass itself", async () => {
+test("the TronClass pages never show the student's name and keep TronClass as the exam fallback", async () => {
   const page = await read("../public/tronclass.js");
   assert.doesNotMatch(page, /user\.name/);
   assert.match(page, /const TRONCLASS = "https:\/\/tc\.nutc\.edu\.tw"/);
-  assert.match(page, /canStart \? h\("a", \{ class: "btn primary", href: classicHref\(\), "data-classic": "" \}/);
+  // The overview starts the rebuilt take view, and the original page stays an
+  // explicit fallback on the overview and inside the take view.
+  assert.match(page, /function examStartLink\(/);
+  assert.match(page, /href: examTakeHref\(courseId, examId\)/);
+  assert.match(page, /href: classicExamHref\(courseId, examId\), "data-classic": ""/);
+  // Invigilated, audio and IP-checked exams only work in TronClass, so the
+  // overview makes their fallback button primary instead of a dead start link.
+  assert.match(page, /const classicOnly = Boolean\(exam\.enable_invigilation \|\| exam\.has_audio \|\| exam\.check_submit_ip_consistency\)/);
+  assert.match(page, /canStart && !classicOnly \? examStartLink/);
+});
+
+test("the rebuilt exam take view has a route and uses the verified exam API", async () => {
+  const page = await read("../public/tronclass.js");
+  assert.match(page, /name: "examTake"/);
+  assert.match(page, /examTake: viewExamTake/);
+  assert.match(page, /#\\\/exam\\\/\(\\d\+\)\\\/take/);
+  assert.match(page, /\/api\/exam\/\$\{examId\}\/check-exam-qualification\?no-intercept=true&check_status=in_test/);
+  assert.match(page, /\/api\/exams\/\$\{examId\}\/distribute/);
+  assert.match(page, /\/api\/exams\/\$\{examId\}\/submissions\/storage/);
+  assert.match(page, /\/api\/exams\/submissions\/\$\{submission\.id\}\/multiple-subjects/);
+  assert.match(page, /\/api\/exams\/\$\{submission\.id\}\/left_time/);
+  assert.match(page, /\/api\/exams\/\$\{examId\}\/submissions`, \{\s*method: "POST"/);
+  assert.match(page, /reason: reason \|\| \(auto \? "time is up" : "user"\)/);
+  // A saved attachment survives editing the text of a short answer here.
+  assert.match(page, /attachments: answer\.attachments\.slice\(\)/);
+  assert.match(page, /submission_data\?\.subjects/);
+  // An audio question the exam summary does not flag still leaves the page,
+  // including one nested in a group container.
+  assert.match(page, /const hasAudio = \(items\) => \(items \|\| \[\]\)\.some\(\(item\) => item\.has_audio \|\| hasAudio\(item\.sub_subjects\)\)/);
+  // A question type this page cannot render sends the whole paper to TronClass
+  // instead of letting it be submitted with blanks.
+  assert.match(page, /const unsupported = questions\.filter\(\(question\) => !EXAM_TYPES\[question\.type\]\)/);
+  assert.match(page, /這份測驗要在 TronClass 作答/);
+  // Analysis groups are containers, not questions.
+  assert.match(page, /if \(item\.sub_subjects\?\.length\) \{\s*walk\(item\.sub_subjects, item\.id\);\s*continue;/);
+});
+
+test("the exam view debounces saves and renders every supported question type", async () => {
+  const page = await read("../public/tronclass.js");
+  assert.match(page, /setTimeout\(\(\) => \{\s*saveTimer = null;\s*flushSave\(\);\s*\}, 600\)/);
+  assert.match(page, /single_selection: \{ kind: "radio", label: "單選" \}/);
+  assert.match(page, /true_or_false: \{ kind: "radio", label: "是非" \}/);
+  assert.match(page, /multiple_selection: \{ kind: "check", label: "多選" \}/);
+  assert.match(page, /short_answer: \{ kind: "text", label: "簡答" \}/);
+  assert.match(page, /unsupportedNotice/);
+  assert.match(page, /需要在 TronClass 作答/);
+  // One hash navigation fires both popstate and hashchange; the take view must
+  // not create two attempts for one route change.
+  assert.match(page, /function scheduleRender\(/);
+  assert.match(page, /addEventListener\("popstate", scheduleRender\)/);
+  assert.match(page, /addEventListener\("hashchange", scheduleRender\)/);
+  assert.match(page, /if \(token !== renderToken\) return null;/);
+});
+
+test("submitting waits for an in-flight save and keeps the paper locked", async () => {
+  const page = await read("../public/tronclass.js");
+  assert.match(page, /submitting = true;\s*submitBtn\.disabled = true;\s*setPaperDisabled\(true\);/);
+  assert.match(page, /if \(saving\) \{\s*try \{\s*await saving;/);
+  // A submit that resolves after the student left must not touch the new page.
+  assert.match(page, /if \(token !== renderToken \|\| disposed\) \{\s*submitting = false;/);
+  // Reads may time out; a stalled save cannot block the hand-in forever.
+  assert.match(page, /AbortSignal\.timeout\?\.\(20000\)/);
+  assert.match(page, /submitBtn\.disabled = closedBook \|\| outOfFullscreen;/);
+  // At time-up nothing can be dismissed without a way to hand the paper in.
+  assert.match(page, /dismissible: !\(auto \|\| closedBook \|\| outOfFullscreen\)/);
+  // The save-state retry must submit when the clock has run out instead of
+  // offering an autosave that is refused at that point.
+  assert.match(page, /expired \? submitExam\(\{ auto: true \}\) : flushSave\(\)/);
+  // An empty storage answer is not an attempt: only an id can be saved into.
+  assert.match(page, /storageValue && storageValue\.id != null \? storageValue : null/);
+});
+
+test("the exam view enforces fullscreen, window-leave and copy guards without a bypass", async () => {
+  const page = await read("../public/tronclass.js");
+  assert.match(page, /function enterFullscreen\(/);
+  assert.match(page, /requestFullscreen/);
+  assert.match(page, /"fullscreenchange"/);
+  assert.match(page, /回到全螢幕/);
+  assert.match(page, /dialogDismissible/);
+  assert.match(page, /"visibilitychange"/);
+  assert.match(page, /listen\(window, "blur", noteLeave\)/);
+  // The leave rules of the original page: a limit ends the attempt, and a
+  // timeout auto-submits when the student stays away.
+  assert.match(page, /is_leaving_window_timeout/);
+  assert.match(page, /enforceLeaveSubmit\("leave_window_limit"/);
+  assert.match(page, /enforceLeaveSubmit\("leave_window_timeout"/);
+  // Leaving fullscreen while a submission is in flight must not re-enable
+  // the paper; the error dialog returns the student to fullscreen first.
+  assert.match(page, /function resumeAfterFailedSubmit\(/);
+  assert.match(page, /const outOfFullscreen = guards\.fullscreen && !document\.fullscreenElement/);
+  assert.match(page, /listen\(document, "contextmenu"/);
+  assert.match(page, /listen\(document, "copy", block\)/);
+  assert.match(page, /listen\(document, "paste", block\)/);
+  assert.match(page, /這份測驗需要監考/);
+  assert.match(page, /這份測驗包含音訊題/);
+});
+
+test("nothing with side effects runs before the checks that can block the paper", async () => {
+  const page = await read("../public/tronclass.js");
+  assert.match(page, /const \[examResult, qualificationResult\] = await Promise\.all/);
+  assert.match(
+    page,
+    /if \(exam\.enable_invigilation \|\| qualification\.enable_invigilation\)[\s\S]*?const \[storageResult, distributeResult\] = await Promise\.all/,
+  );
+  // A supported type without options is a broken paper, not a question to
+  // answer here with a misleading notice.
+  assert.match(page, /const optionless = questions\.filter/);
 });
 
 test("pages opened on TronClass itself sign the browser in through the ePortal handoff first", async () => {
@@ -53,6 +159,8 @@ test("pages opened on TronClass itself sign the browser in through the ePortal h
   assert.match(page, /\/go\/tronclass\?to=/);
   assert.match(page, /encodeURIComponent\(url\.href\)/);
   assert.match(page, /const popup = window\.open\(/);
+  // A blocked popup goes through the same handoff, never straight to TronClass.
+  assert.match(page, /if \(!popup\) location\.assign\(launch\)/);
   assert.doesNotMatch(page, /tronclass-open|TRONCLASS_SSO_SETTLE_MS/);
 
   const launch = await read("../public/launch.js");
