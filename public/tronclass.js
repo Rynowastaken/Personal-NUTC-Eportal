@@ -2293,7 +2293,7 @@ button.row:first-child { border-top: 0; }
       } else if (res.ok) {
         showAiMessage(message, h("p", null, "AI 沒有回傳內容，請稍後再試一次。"));
       } else {
-        showAiMessage(message, h("p", null, (data && data.error) || "AI 沒有回應，請稍後再試一次。"));
+        showAiMessage(message, h("p", null, (data && data.error) || "AI 沒有回應，請稍後再試一次；若持續發生，請到網站設定檢查 API 金鑰與模型。"));
       }
     }
 
