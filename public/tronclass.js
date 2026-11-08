@@ -1524,7 +1524,9 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     }
     if (!spec || typeof spec !== "object" || Array.isArray(spec)) return null;
     const columns = Array.isArray(spec.columns)
-      ? spec.columns.slice(0, 5).map((value) => aiChartLabel(value, 40))
+      // A comparative statement can carry several amount columns; the table
+      // scrolls sideways when they do not fit.
+      ? spec.columns.slice(0, 7).map((value) => aiChartLabel(value, 40))
       : [];
     if (columns.length < 2 || columns.some((value) => !value)) return null;
     const valueCount = columns.length - 1;
