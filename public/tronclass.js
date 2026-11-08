@@ -903,7 +903,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
           throwOnError: false,
           strict: "ignore",
           trust: false,
-          output: "html",
+          output: "htmlAndMathml",
           maxSize: 12,
           maxExpand: 400,
         });
