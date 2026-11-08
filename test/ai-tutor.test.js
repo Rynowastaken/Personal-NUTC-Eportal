@@ -203,6 +203,8 @@ test("buildTutorMessages builds the practice-question prompt", () => {
   assert.match(messages[0].content, /domain: \[a,b\]/);
   assert.match(messages[0].content, /categories/);
   assert.match(messages[0].content, /最多 6 條 series/);
+  assert.match(messages[0].content, /title、xLabel、yLabel/);
+  assert.match(messages[0].content, /純文字/);
 
   assert.equal(messages[1].role, "user");
   assert.match(messages[1].content, /題型：single_selection/);

@@ -157,7 +157,8 @@ const SYSTEM_PROMPT =
   "搭配每個 series 的 values: [數值,...]，數值個數要與 categories 相同。" +
   "function 可用 x、pi、e、+ - * / ^、括號，以及 sin、cos、tan、sqrt、abs、exp、ln、" +
   "log（以 10 為底），乘法請寫 *。最多 6 條 series，每個 chart 區塊只畫一張圖；" +
-  "只有圖能幫助理解時才畫，其餘情況保持純文字。JSON 不要加註解或結尾逗號。";
+  "只有圖能幫助理解時才畫，其餘情況保持純文字。JSON 不要加註解或結尾逗號。" +
+  "chart 的 title、xLabel、yLabel 與 series 的 label 請用純文字（例如 y = x²），不要放 LaTeX 或 $。";
 
 export function buildTutorMessages(question, history = []) {
   const type = question?.type || "未提供";
