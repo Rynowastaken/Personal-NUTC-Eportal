@@ -149,6 +149,14 @@ test("the AI provider settings live on the TronClass page", async () => {
   assert.match(page, /id: "tc-ai-save"/);
   assert.match(page, /"\/api\/preferences\/ai"/);
   assert.match(page, /aiTutorSettingListener/);
+  // The provider picker is the portal's own listbox, not a native select whose
+  // popup the browser draws in its light system style.
+  assert.match(page, /class: "provider-trigger"/);
+  assert.match(page, /role: "listbox"/);
+  assert.match(page, /class: "provider-option"/);
+  assert.match(page, /class: "provider-check"/);
+  assert.match(page, /setProviderSelection/);
+  assert.doesNotMatch(page, /h\(\s*"select",\s*\{\s*id: "tc-ai-provider"/);
   // The panel follows the portal's settings language and motion.
   assert.match(page, /settings-mark/);
   assert.match(page, /settings-close/);

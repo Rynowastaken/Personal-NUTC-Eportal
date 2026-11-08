@@ -389,42 +389,88 @@ button.row:first-child { border-top: 0; }
   display: flex; flex-direction: column; width: min(576px, 100%); max-height: calc(100dvh - 32px);
   padding: 0; overflow: hidden; border-color: rgba(255, 255, 255, .12); border-radius: 8px;
   background: rgba(14, 12, 16, .94); box-shadow: 0 24px 80px rgba(0, 0, 0, .46);
+  backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
 }
-.settings-head { display: flex; align-items: flex-start; gap: 14px; padding: 20px 20px 16px; }
+.ai-settings:focus, .ai-settings:focus-visible { outline: none; }
+.settings-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 20px 0; }
 .settings-mark { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 1px solid var(--primary-ring); border-radius: 6px; background: var(--primary-soft); color: var(--primary); }
 .settings-mark .i { width: 20px; height: 20px; }
 .settings-title { flex: 1; min-width: 0; }
-.settings-title h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.55; }
-.settings-title p { margin: 2px 0 0; color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.5; }
+.settings-title h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.025em; line-height: 1.55; }
+.settings-title p { margin: 2px 0 0; color: var(--muted); font-size: 12px; font-weight: 500; line-height: 16px; }
 .settings-close { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; border: 1px solid var(--edge); border-radius: 5px; background: rgba(255,255,255,.07); color: var(--muted); cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
-.settings-close:hover { background: rgba(255,255,255,.11); border-color: var(--edge-strong); color: var(--text); }
+.settings-close:hover { background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.18); color: var(--text); }
 .settings-close .i { width: 16px; height: 16px; }
-.settings-body { min-height: 0; overflow-y: auto; padding: 2px 20px 20px; }
-.settings-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--edge); }
+.settings-body { min-height: 0; overflow-y: auto; padding: 20px 20px 0; overscroll-behavior: contain; }
+.settings-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, .10); }
 .settings-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-.settings-section h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 16px; font-weight: 400; }
+.settings-section h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; font-weight: 600; line-height: 20px; }
 .settings-section h3 .i { width: 16px; height: 16px; color: var(--primary); }
-.settings-section .fields { display: grid; gap: 14px; }
-.ai-settings .field { display: grid; gap: 6px; }
-.ai-settings .field > span { font-size: 14px; font-weight: 600; color: var(--text); }
-.ai-settings .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
-.ai-settings input:not([type="checkbox"]), .ai-settings select {
-  width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 5px;
+.settings-section .fields { display: grid; gap: 16px; }
+.ai-settings .field { display: grid; gap: 8px; }
+.ai-settings .field > span { font-size: 14px; font-weight: 600; line-height: 20px; color: var(--text); }
+.ai-settings .hint { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 20px; }
+.ai-settings input:not([type="checkbox"]) {
+  width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 5px;
   background: rgba(255, 255, 255, .07); color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
 }
-.ai-settings select { cursor: pointer; }
 .ai-settings input::placeholder { color: var(--muted); font-weight: 500; }
-.ai-settings input:focus, .ai-settings select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-ring); }
-.settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--edge); border-radius: 5px; background: rgba(255, 255, 255, .05); cursor: pointer; }
-.settings-toggle span { display: grid; gap: 2px; }
-.settings-toggle strong { font-size: 14px; font-weight: 600; }
-.settings-toggle small { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.5; }
+.ai-settings input:not([type="checkbox"]):focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-ring); }
+.provider-field { position: relative; }
+.provider-trigger {
+  display: flex; width: 100%; min-height: 46px; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 12px 9px 14px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 5px;
+  background: rgba(255, 255, 255, .07); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  color: var(--text); font: inherit; font-size: 14px; font-weight: 600; line-height: 20px; text-align: left; cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+.provider-trigger:hover:not(:disabled) { border-color: rgba(255, 255, 255, .20); background: rgba(255, 255, 255, .10); }
+.provider-trigger:focus-visible { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-ring); }
+.provider-trigger:disabled { opacity: .48; cursor: not-allowed; }
+.provider-chevron {
+  display: grid; flex: none; width: 24px; height: 24px; place-items: center; border-radius: 4px;
+  background: rgba(255, 255, 255, .05); color: var(--muted);
+  transition: transform .22s cubic-bezier(.22, 1, .36, 1);
+}
+.provider-chevron .i { width: 16px; height: 16px; }
+.provider-trigger[aria-expanded="true"] .provider-chevron { transform: rotate(180deg); }
+.provider-menu {
+  position: absolute; inset-inline: 0; top: calc(100% + 7px); z-index: 70; padding: 6px;
+  border: 1px solid rgba(255, 255, 255, .14); border-radius: 6px; background: rgba(24, 20, 29, .97);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, .36);
+  backdrop-filter: blur(22px) saturate(160%); -webkit-backdrop-filter: blur(22px) saturate(160%);
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate3d(0, -8px, 0) scale(.985);
+  transform-origin: top center;
+  transition: opacity .18s ease, transform .24s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .24s;
+}
+.provider-menu[data-state="open"] {
+  opacity: 1; visibility: visible; pointer-events: auto; transform: translate3d(0, 0, 0) scale(1);
+  transition: opacity .2s ease, transform .24s cubic-bezier(.22, 1, .36, 1), visibility 0s;
+}
+.provider-option {
+  display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 12px; border: 1px solid transparent; border-radius: 5px; background: transparent;
+  color: var(--text); text-align: left; font: inherit; font-size: 14px; font-weight: 500; line-height: 20px; cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+}
+.provider-option:hover, .provider-option:focus-visible { outline: none; border-color: rgba(255, 255, 255, .11); background: rgba(255, 255, 255, .085); }
+.provider-option[aria-selected="true"] { background: var(--primary-soft); border-color: var(--primary-ring); font-weight: 600; }
+.provider-check {
+  display: grid; flex: none; width: 24px; height: 24px; place-items: center; border-radius: 50%;
+  background: var(--primary-soft); color: var(--primary);
+}
+.provider-check .i { width: 14px; height: 14px; }
+.provider-option[aria-selected="false"] .provider-check { visibility: hidden; }
+.settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 12px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 5px; background: rgba(255, 255, 255, .05); cursor: pointer; }
+.settings-toggle span { display: grid; gap: 4px; }
+.settings-toggle strong { font-size: 14px; font-weight: 600; line-height: 20px; }
+.settings-toggle small { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 20px; }
 .settings-toggle input { width: 20px; height: 20px; flex: none; accent-color: var(--primary); }
-.settings-check { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--soft); font-size: 14px; font-weight: 500; cursor: pointer; }
-.settings-check input { width: 16px; height: 16px; flex: none; accent-color: var(--primary); }
-.settings-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.settings-foot { display: flex; align-items: center; gap: 12px; padding: 14px 20px 20px; border-top: 1px solid var(--edge); background: rgba(14, 12, 16, .6); }
-.settings-status { flex: 1; min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.settings-check { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--soft); font-size: 14px; font-weight: 500; line-height: 20px; cursor: pointer; }
+.settings-check input { width: 20px; height: 20px; flex: none; accent-color: var(--primary); }
+.settings-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; font-weight: 500; line-height: 20px; }
+.settings-foot { display: flex; align-items: center; gap: 12px; padding: 24px 20px 20px; }
+.settings-status { flex: 1; min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 20px; }
 .settings-status[data-tone="error"] { color: var(--danger); }
 .settings-status[data-tone="saved"] { color: var(--success); }
 .settings-actions { display: flex; flex: none; gap: 8px; }
@@ -545,6 +591,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     left: '<path d="m15 18-6-6 6-6"/>',
     right: '<path d="m9 18 6-6-6-6"/>',
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
@@ -1031,6 +1078,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   let settingsModal = null;
   let settingsReturnFocus = null;
   let settingsEscape = null;
+  let settingsMenuDismiss = null;
   let aiTutorSettingListener = null;
 
   let lockScrollY = 0;
@@ -1086,6 +1134,10 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       document.removeEventListener("keydown", settingsEscape);
       settingsEscape = null;
     }
+    if (settingsMenuDismiss) {
+      document.removeEventListener("pointerdown", settingsMenuDismiss);
+      settingsMenuDismiss = null;
+    }
     for (const element of document.querySelectorAll("body > header, body > main")) element.inert = false;
     syncScrollLock();
     const target = settingsReturnFocus;
@@ -1108,12 +1160,55 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     settingsReturnFocus = document.activeElement;
     const status = h("p", { class: "settings-status", id: "tc-ai-status", role: "status", "aria-live": "polite" });
     const enabled = h("input", { type: "checkbox", id: "tc-ai-enabled" });
-    const provider = h(
-      "select",
-      { id: "tc-ai-provider" },
-      h("option", { value: "opencode-go" }, "OpenCode Go"),
-      h("option", { value: "openai" }, "OpenAI 相容 API"),
+    const providerChoices = [
+      { value: "opencode-go", label: "OpenCode Go" },
+      { value: "openai", label: "OpenAI 相容 API" },
+    ];
+    let providerValue = providerChoices[0].value;
+    const providerValueLabel = h("span", { id: "tc-ai-provider-value" }, providerChoices[0].label);
+    const providerOptions = h(
+      "div",
+      {
+        class: "provider-menu",
+        id: "tc-ai-provider-options",
+        role: "listbox",
+        "aria-label": "服務提供者",
+        "data-state": "closed",
+        "aria-hidden": "true",
+        inert: true,
+      },
+      providerChoices.map((choice) =>
+        h(
+          "button",
+          {
+            class: "provider-option",
+            type: "button",
+            role: "option",
+            tabindex: "-1",
+            "data-provider": choice.value,
+            "aria-selected": String(choice.value === providerValue),
+          },
+          h("span", null, choice.label),
+          h("span", { class: "provider-check", "aria-hidden": "true" }, icon("check")),
+        ),
+      ),
     );
+    const provider = h(
+      "button",
+      {
+        class: "provider-trigger",
+        id: "tc-ai-provider",
+        type: "button",
+        "aria-haspopup": "listbox",
+        "aria-expanded": "false",
+        "aria-controls": "tc-ai-provider-options",
+        "aria-labelledby": "tc-ai-provider-label tc-ai-provider-value",
+      },
+      providerValueLabel,
+      h("span", { class: "provider-chevron", "aria-hidden": "true" }, icon("chevron-down")),
+    );
+    const providerField = h("div", { class: "provider-field" }, provider, providerOptions);
+    const providerChoiceButtons = [...providerOptions.querySelectorAll("[data-provider]")];
     const baseUrl = h("input", {
       type: "url",
       id: "tc-ai-base-url",
@@ -1150,10 +1245,10 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     };
 
     const applyDefaults = () => {
-      const preset = presets[provider.value];
+      const preset = presets[providerValue];
       if (!preset) return;
       const otherDefault = (value, key) =>
-        Object.entries(presets).some(([id, item]) => id !== provider.value && item[key] && item[key] === value.trim());
+        Object.entries(presets).some(([id, item]) => id !== providerValue && item[key] && item[key] === value.trim());
       if (preset.baseUrl && (!baseUrl.value.trim() || otherDefault(baseUrl.value, "baseUrl"))) {
         baseUrl.value = preset.baseUrl;
       } else if (!preset.baseUrl && otherDefault(baseUrl.value, "baseUrl")) {
@@ -1166,7 +1261,85 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       }
     };
 
-    provider.addEventListener("change", applyDefaults);
+    const setProviderSelection = (value, { emit = true } = {}) => {
+      if (!providerChoices.some((choice) => choice.value === value)) return;
+      providerValue = value;
+      providerValueLabel.textContent = providerChoices.find((choice) => choice.value === value).label;
+      for (const choice of providerChoiceButtons) {
+        choice.setAttribute("aria-selected", String(choice.dataset.provider === value));
+      }
+      if (emit) applyDefaults();
+    };
+
+    const setProviderMenuOpen = (open, { focusSelected = false, returnFocus = false } = {}) => {
+      const visible = Boolean(open && !provider.disabled);
+      providerOptions.dataset.state = visible ? "open" : "closed";
+      providerOptions.inert = !visible;
+      providerOptions.setAttribute("aria-hidden", String(!visible));
+      provider.setAttribute("aria-expanded", String(visible));
+      if (visible && focusSelected) {
+        providerChoiceButtons
+          .find((choice) => choice.dataset.provider === providerValue)
+          ?.focus({ preventScroll: true });
+      } else if (!visible && returnFocus) {
+        provider.focus({ preventScroll: true });
+      }
+    };
+
+    const moveProviderFocus = (key, startingIndex) => {
+      let targetIndex = startingIndex;
+      if (key === "Home") targetIndex = 0;
+      if (key === "End") targetIndex = providerChoiceButtons.length - 1;
+      if (key === "ArrowDown") targetIndex = (startingIndex + 1) % providerChoiceButtons.length;
+      if (key === "ArrowUp") targetIndex = (startingIndex - 1 + providerChoiceButtons.length) % providerChoiceButtons.length;
+      setProviderMenuOpen(true);
+      providerChoiceButtons[targetIndex]?.focus();
+    };
+
+    provider.addEventListener("click", () => {
+      const wasOpen = provider.getAttribute("aria-expanded") === "true";
+      setProviderMenuOpen(!wasOpen, { focusSelected: !wasOpen });
+    });
+    provider.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && provider.getAttribute("aria-expanded") === "true") {
+        event.preventDefault();
+        event.stopPropagation();
+        setProviderMenuOpen(false);
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const selectedIndex = providerChoiceButtons.findIndex((choice) => choice.dataset.provider === providerValue);
+      moveProviderFocus(event.key, selectedIndex);
+    });
+    providerChoiceButtons.forEach((choice, index) => {
+      choice.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setProviderSelection(choice.dataset.provider);
+        setProviderMenuOpen(false, { returnFocus: true });
+      });
+      choice.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          setProviderMenuOpen(false, { returnFocus: true });
+        } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+          event.preventDefault();
+          moveProviderFocus(event.key, index);
+        } else if (event.key === "Tab") {
+          setProviderMenuOpen(false);
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setProviderSelection(choice.dataset.provider);
+          setProviderMenuOpen(false, { returnFocus: true });
+        }
+      });
+    });
+    settingsMenuDismiss = (event) => {
+      if (!providerField.contains(event.target)) setProviderMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", settingsMenuDismiss);
 
     // Keep the form inert until the stored settings arrive so a slow load can
     // never overwrite something the student has already changed.
@@ -1179,7 +1352,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       setStatus("正在儲存…");
       const body = {
         enabled: enabled.checked,
-        provider: provider.value,
+        provider: providerValue,
         baseUrl: baseUrl.value.trim(),
         model: model.value.trim(),
         clearKey: clearKey.checked,
@@ -1197,7 +1370,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         if (!response.ok) throw new Error(data.error || `儲存失敗（${response.status}）`);
         const ai = data.ai || {};
         enabled.checked = ai.enabled === true;
-        provider.value = ai.provider === "openai" ? "openai" : "opencode-go";
+        setProviderSelection(ai.provider === "openai" ? "openai" : "opencode-go", { emit: false });
         baseUrl.value = ai.baseUrl || baseUrl.value;
         model.value = ai.model || model.value;
         apiKey.value = "";
@@ -1254,7 +1427,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
           h(
             "div",
             { class: "fields" },
-            aiSettingsField("服務提供者", provider),
+            h("div", { class: "field" }, h("span", { id: "tc-ai-provider-label" }, "服務提供者"), providerField),
             aiSettingsField("API 位址", baseUrl),
             aiSettingsField("模型", model),
           ),
@@ -1275,7 +1448,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         h(
           "div",
           { class: "settings-actions" },
-          h("button", { class: "btn", type: "button", onclick: closeAiSettings }, "關閉"),
+          h("button", { class: "btn primary", type: "button", onclick: closeAiSettings }, "關閉"),
           save,
         ),
       ),
@@ -1305,7 +1478,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         if (!settingsModal) return;
         const ai = data?.ai || {};
         enabled.checked = ai.enabled === true;
-        provider.value = ai.provider === "openai" ? "openai" : "opencode-go";
+        setProviderSelection(ai.provider === "openai" ? "openai" : "opencode-go", { emit: false });
         baseUrl.value = ai.baseUrl || "";
         model.value = ai.model || "";
         apiKey.value = "";
