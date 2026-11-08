@@ -1080,6 +1080,20 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   function aiChartText(value, max) {
     return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
   }
+  // Chart labels are plain text, but a model may still write x^2. Render a
+  // simple integer exponent as a real superscript instead of showing a caret.
+  const AI_SUPERSCRIPTS = {
+    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+    "+": "⁺", "-": "⁻",
+  };
+  const aiSuperscript = (exponent) =>
+    [...exponent].map((character) => AI_SUPERSCRIPTS[character] || character).join("");
+  function aiChartLabel(value, max) {
+    return aiChartText(value, max)
+      .replace(/\^\{([+-]?\d{1,4})\}/g, (_, exponent) => aiSuperscript(exponent))
+      .replace(/\^([+-]?\d{1,4})(?![\dA-Za-z])/g, (_, exponent) => aiSuperscript(exponent));
+  }
   function sampleAiFunction(source, domain) {
     const fn = compileAiExpression(source);
     const points = [];
@@ -1102,16 +1116,16 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     const type = ["line", "bar", "scatter"].includes(spec.type) ? spec.type : "line";
     const base = {
       type,
-      title: aiChartText(spec.title, 120),
-      xLabel: aiChartText(spec.xLabel, 40),
-      yLabel: aiChartText(spec.yLabel, 40),
+      title: aiChartLabel(spec.title, 120),
+      xLabel: aiChartLabel(spec.xLabel, 40),
+      yLabel: aiChartLabel(spec.yLabel, 40),
     };
     const rawSeries = Array.isArray(spec.series) ? spec.series.slice(0, AI_CHART_MAX_SERIES) : [];
 
     if (type === "bar") {
       const categories =
         Array.isArray(spec.categories) && spec.categories.length <= 12
-          ? spec.categories.map((value) => aiChartText(value, 24))
+          ? spec.categories.map((value) => aiChartLabel(value, 24))
           : [];
       if (!categories.length || categories.some((value) => !value)) return null;
       const series = [];
@@ -1119,7 +1133,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         if (!item || typeof item !== "object") continue;
         const values = Array.isArray(item.values) ? item.values.slice(0, categories.length) : [];
         if (values.length !== categories.length || !values.every(aiChartNumber)) continue;
-        series.push({ label: aiChartText(item.label, 60) || `系列 ${series.length + 1}`, values });
+        series.push({ label: aiChartLabel(item.label, 60) || `系列 ${series.length + 1}`, values });
       }
       return series.length ? { ...base, categories, series } : null;
     }
@@ -1127,7 +1141,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     const series = [];
     for (const item of rawSeries) {
       if (!item || typeof item !== "object") continue;
-      const label = aiChartText(item.label, 60) || `系列 ${series.length + 1}`;
+      const label = aiChartLabel(item.label, 60) || `系列 ${series.length + 1}`;
       if (Array.isArray(item.points)) {
         const points = item.points
           .slice(0, AI_CHART_MAX_POINTS)
