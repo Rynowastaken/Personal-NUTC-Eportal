@@ -130,8 +130,19 @@ test("the Ask AI button is practice-only and posts a plain-text question", async
   assert.match(page, /ai-followup-hint/);
   assert.match(page, /resizeInput/);
   assert.match(page, /追問這題/);
-  assert.match(page, /history: trimHistory\(history\)/);
-  assert.match(page, /history\.push\(\{ role: "assistant", content: result\.answer \}\)/);
+  // The dialogue belongs to the question: it is kept for the tab and restored
+  // when the dialog is reopened, so the provider is not asked again, and a
+  // second request is never sent while one is already in flight.
+  assert.match(page, /const AI_CHAT_PREFIX = "eportal\.tronclass\.ai-chat\.v1:"/);
+  assert.match(page, /function readAiChat\(key\)/);
+  assert.match(page, /function writeAiChat\(key, turns\)/);
+  assert.match(page, /aiChatStorageKey\(examId, question\.id\)/);
+  assert.match(page, /turns: readAiChat\(key\)/);
+  assert.match(page, /const persist = \(\) => writeAiChat\(/);
+  assert.match(page, /if \(chatState\.pending\) return chatState\.pending;/);
+  assert.match(page, /history: trimHistory\(historyMessages\(\)\)/);
+  // Handing the paper in clears the saved dialogue for that exam.
+  assert.match(page, /submitted = true;[\s\S]*?clearAiChats\(examId\);/);
 });
 
 test("the AI provider settings live on the TronClass page", async () => {

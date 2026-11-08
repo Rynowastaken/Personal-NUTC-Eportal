@@ -770,6 +770,62 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     }
   }
 
+  // The AI tutor's dialogue belongs to the question, not to the dialog. Keep
+  // it for the tab (sessionStorage survives a reload) so closing and reopening
+  // "問 AI 這題" shows the same conversation instead of asking again.
+  const AI_CHAT_PREFIX = "eportal.tronclass.ai-chat.v1:";
+  const AI_CHAT_MAX_TURNS = 40;
+  const AI_CHAT_MAX_TURN_CHARS = 12000;
+  const AI_CHAT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+  const aiChats = new Map();
+  const aiChatStorageKey = (examId, questionId) => `${AI_CHAT_PREFIX}${examId}:${questionId}`;
+  function readAiChat(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return [];
+      const saved = JSON.parse(raw);
+      const fresh = saved && typeof saved.savedAt === "number" && Date.now() - saved.savedAt < AI_CHAT_MAX_AGE_MS;
+      const turns = fresh && Array.isArray(saved.turns)
+        ? saved.turns
+            .filter((item) => item && (item.role === "ai" || item.role === "user") && typeof item.content === "string" && item.content)
+            .slice(-AI_CHAT_MAX_TURNS)
+        : [];
+      if (!turns.length) sessionStorage.removeItem(key);
+      return turns;
+    } catch {
+      return [];
+    }
+  }
+  function writeAiChat(key, turns) {
+    try {
+      if (!turns.length) {
+        sessionStorage.removeItem(key);
+        return;
+      }
+      const trimmed = turns.slice(-AI_CHAT_MAX_TURNS).map((item) => ({
+        role: item.role,
+        content: item.content.slice(0, AI_CHAT_MAX_TURN_CHARS),
+      }));
+      sessionStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), turns: trimmed }));
+    } catch {
+      // Private mode or a full storage area only costs the cache.
+    }
+  }
+  // A handed-in paper ends its dialogue: a later attempt starts clean.
+  function clearAiChats(examId) {
+    for (const key of [...aiChats.keys()]) {
+      if (key.startsWith(`${examId}:`)) aiChats.delete(key);
+    }
+    try {
+      for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+        const key = sessionStorage.key(index);
+        if (key && key.startsWith(`${AI_CHAT_PREFIX}${examId}:`)) sessionStorage.removeItem(key);
+      }
+    } catch {
+      // Storage unavailable: only the persisted copy is lost.
+    }
+  }
+
   // Record that a material was opened or a stretch of video was played,
   // exactly as TronClass's own pages do.
   function logRead(activityId, data) {
@@ -2819,6 +2875,15 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       };
       if (type && type.kind === "text") payload.question.text = answer.text;
 
+      // The dialogue belongs to the question: reopening this dialog, or coming
+      // back after a reload, shows the saved conversation instead of asking again.
+      const key = aiChatStorageKey(examId, question.id);
+      let chatState = aiChats.get(key);
+      if (!chatState) {
+        chatState = { key, turns: readAiChat(key), pending: null, pendingKind: "" };
+        aiChats.set(key, chatState);
+      }
+
       const chat = h("div", { class: "ai-chat" });
       const input = h("textarea", {
         rows: "1",
@@ -2836,8 +2901,6 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         h("div", { class: "ai-followup-row" }, input, send),
         h("span", { class: "ai-followup-hint" }, "Enter 送出 · Shift+Enter 換行"),
       );
-      const loading = h("div", { class: "ai-loading" }, icon("refresh"), h("span", null, "正在請 AI 看這題…"));
-      chat.append(loading);
       openDialog({
         kind: "ai",
         title: "AI 解說",
@@ -2848,7 +2911,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 
       const live = () => dialogKind === "ai" && chat.isConnected;
       const scrollTo = (node) => {
-        chat.scrollTop = Math.max(0, node.offsetTop - 8);
+        if (node) chat.scrollTop = Math.max(0, node.offsetTop - 8);
       };
       const turn = (role, text) => {
         const node = h("div", { class: `ai-turn ${role}` });
@@ -2856,7 +2919,30 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         chat.append(node);
         return node;
       };
-      const history = [];
+      const resizeInput = () => {
+        input.style.height = "auto";
+        input.style.height = `${Math.min(120, Math.max(40, input.scrollHeight))}px`;
+      };
+      const persist = () => writeAiChat(chatState.key, chatState.turns);
+      // Render the turns not on screen yet; a failed question the request
+      // removed from the saved dialogue is taken off the screen too.
+      let rendered = 0;
+      const renderTurns = () => {
+        while (rendered > chatState.turns.length) {
+          const last = chat.lastElementChild;
+          if (!last || !last.classList.contains("ai-turn")) break;
+          last.remove();
+          rendered -= 1;
+        }
+        while (rendered < chatState.turns.length) {
+          const item = chatState.turns[rendered];
+          turn(item.role, item.content);
+          rendered += 1;
+        }
+      };
+      const showFollow = () => {
+        follow.hidden = !chatState.turns.some((item) => item.role === "ai");
+      };
       // Keep the follow-up request small enough for the server's history
       // validator and for the provider's context window.
       const trimHistory = (messages) => {
@@ -2871,6 +2957,8 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         }
         return kept;
       };
+      const historyMessages = () =>
+        chatState.turns.map((item) => ({ role: item.role === "user" ? "user" : "assistant", content: item.content }));
 
       const requestTurn = async (withHistory) => {
         let res;
@@ -2880,7 +2968,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
             method: "POST",
             credentials: "same-origin",
             headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify(withHistory ? { ...payload, history: trimHistory(history) } : payload),
+            body: JSON.stringify(withHistory ? { ...payload, history: trimHistory(historyMessages()) } : payload),
             signal: AbortSignal.timeout?.(60000),
           });
           data = await res.json().catch(() => null);
@@ -2899,59 +2987,96 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         return { error: (data && data.error) || "AI 沒有回應，請稍後再試一次；若持續發生，請到「AI 助手設定」檢查 API 金鑰與模型。" };
       };
 
-      void (async () => {
-        const result = await requestTurn(false);
+      // One request per question at a time: closing the dialog while an answer
+      // is on its way and reopening it joins that request, not a second one.
+      const startTurn = (withHistory, kind) => {
+        if (chatState.pending) return chatState.pending;
+        const settleTurn = (result) => {
+          chatState.pending = null;
+          chatState.pendingKind = "";
+          // A failed follow-up is dropped so the saved dialogue never ends
+          // with a question that was never answered.
+          if (result.answer) chatState.turns.push({ role: "ai", content: result.answer });
+          else if (kind === "followup") chatState.turns.pop();
+          persist();
+          return result;
+        };
+        chatState.pendingKind = kind;
+        chatState.pending = requestTurn(withHistory).then(settleTurn, () => settleTurn({ error: "AI 沒有回應，請稍後再試一次。" }));
+        return chatState.pending;
+      };
+
+      let loadingNode = null;
+      const showLoading = (text) => {
+        if (!loadingNode) {
+          loadingNode = h("div", { class: "ai-loading" }, icon("refresh"), h("span", null, text));
+          chat.append(loadingNode);
+        }
+        scrollTo(loadingNode);
+      };
+      const hideLoading = () => {
+        loadingNode?.remove();
+        loadingNode = null;
+      };
+      const settle = async (promise, { kind, submittedText = "" }) => {
+        send.disabled = true;
+        input.disabled = true;
+        showLoading(kind === "followup" ? "正在回答…" : "正在請 AI 看這題…");
+        const result = await promise;
         if (!live()) return;
-        loading.remove();
+        hideLoading();
+        send.disabled = false;
+        input.disabled = false;
+        renderTurns();
         if (result.answer) {
-          const node = turn("ai", result.answer);
-          history.push({ role: "assistant", content: result.answer });
-          follow.hidden = false;
+          showFollow();
+          // After a follow-up, keep the question in view; the answer sits under it.
+          scrollTo(kind === "followup" ? chat.children[chat.children.length - 2] : chat.lastElementChild);
           input.focus({ preventScroll: true });
-          scrollTo(node);
         } else {
           scrollTo(turn("error", result.error));
+          if (submittedText) {
+            input.value = submittedText;
+            resizeInput();
+            input.focus({ preventScroll: true });
+          }
         }
-      })();
-
-      const resizeInput = () => {
-        input.style.height = "auto";
-        input.style.height = `${Math.min(120, Math.max(40, input.scrollHeight))}px`;
       };
-      input.addEventListener("input", resizeInput);
 
-      follow.addEventListener("submit", async (event) => {
+      // Restore the saved dialogue before anything else; only a question with
+      // no answer yet sends the first request.
+      renderTurns();
+      showFollow();
+      if (chatState.turns.length) chat.scrollTop = chat.scrollHeight;
+      const lastTurn = chatState.turns[chatState.turns.length - 1];
+      if (chatState.pending) {
+        void settle(chatState.pending, { kind: chatState.pendingKind || "initial" });
+      } else if (lastTurn && lastTurn.role === "user") {
+        // A reload while an answer was on its way leaves the question without
+        // its reply; ask once more rather than showing a dead end.
+        void settle(startTurn(true, "followup"), { kind: "followup", submittedText: lastTurn.content });
+      } else if (!chatState.turns.some((item) => item.role === "ai")) {
+        void settle(startTurn(false, "initial"), { kind: "initial" });
+      } else {
+        input.focus({ preventScroll: true });
+      }
+
+      input.addEventListener("input", resizeInput);
+      follow.addEventListener("submit", (event) => {
         event.preventDefault();
         const text = input.value.trim();
-        if (!text || send.disabled) return;
+        if (!text || send.disabled || chatState.pending) return;
         send.disabled = true;
         input.disabled = true;
         input.value = "";
         resizeInput();
-        const userNode = turn("user", text);
-        const bubble = h("div", { class: "ai-loading" }, icon("refresh"), h("span", null, "正在回答…"));
-        chat.append(bubble);
-        scrollTo(userNode);
-        history.push({ role: "user", content: text });
-        const result = await requestTurn(true);
-        if (!live()) return;
-        bubble.remove();
-        send.disabled = false;
-        input.disabled = false;
-        if (result.answer) {
-          turn("ai", result.answer);
-          history.push({ role: "assistant", content: result.answer });
-          input.focus({ preventScroll: true });
-          // Keep the follow-up question in view; the answer starts beneath it.
-          scrollTo(userNode);
-        } else {
-          history.pop();
-          scrollTo(userNode);
-          turn("error", result.error);
-          input.value = text;
-          resizeInput();
-          input.focus({ preventScroll: true });
-        }
+        // The question joins the saved dialogue before it is sent, so a reload
+        // while the answer is on its way keeps both halves of the exchange.
+        chatState.turns.push({ role: "user", content: text });
+        persist();
+        renderTurns();
+        scrollTo(chat.lastElementChild);
+        void settle(startTurn(true, "followup"), { kind: "followup", submittedText: text });
       });
 
       input.addEventListener("keydown", (event) => {
@@ -3047,6 +3172,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
           // The paper is handed in even though this view is gone; drop the
           // cached exam so the next page sees the new state.
           forgetExam(courseId, examId);
+          clearAiChats(examId);
           submitting = false;
           return;
         }
@@ -3054,6 +3180,8 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         clearInterval(tickTimer);
         clearInterval(refreshTimer);
         forgetExam(courseId, examId);
+        // A handed-in paper ends its tutor dialogue; a later attempt starts clean.
+        clearAiChats(examId);
         // Replace the take entry so Back cannot reopen a submitted paper.
         navigate(examOverviewHref(courseId, examId), { replace: true });
       } catch (error) {
