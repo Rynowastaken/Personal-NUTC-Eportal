@@ -206,6 +206,26 @@ test("the AI provider settings live on the TronClass page", async () => {
   assert.match(page, /@keyframes turn-rise/);
 });
 
+test("the exam view can export every question as Markdown or JSON", async () => {
+  const page = await read("../public/tronclass.js");
+  // The export lives with the paper and downloads a blob, so nothing leaves
+  // the browser and the server never sees the questions leave.
+  assert.match(page, /const exportRows = \(\) =>/);
+  assert.match(page, /const examMarkdown = \(rows\) =>/);
+  assert.match(page, /const examJson = \(rows\) =>/);
+  assert.match(page, /function openExportDialog\(\)/);
+  assert.match(page, /class: "btn", type: "button", onclick: \(\) => openExportDialog\(\)/);
+  assert.match(page, /downloadText\(exportName\("md"\)/);
+  assert.match(page, /downloadText\(exportName\("json"\)/);
+  assert.match(page, /text\/markdown;charset=utf-8/);
+  assert.match(page, /application\/json;charset=utf-8/);
+  assert.match(page, /不包含答案或你的作答內容/);
+  // Only the question text and options are collected for the file.
+  assert.match(page, /stem: plainText\(question\.description\)/);
+  assert.match(page, /text: plainText\(option\.content\)/);
+  assert.doesNotMatch(page, /questions: rows[\s\S]{0,200}answerFor/);
+});
+
 test("the exam view enforces fullscreen, window-leave and copy guards without a bypass", async () => {
   const page = await read("../public/tronclass.js");
   assert.match(page, /function enterFullscreen\(/);

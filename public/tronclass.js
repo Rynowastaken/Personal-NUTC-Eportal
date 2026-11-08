@@ -3225,6 +3225,130 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     };
     const answeredCount = () => questions.filter(isAnswered).length;
 
+    // Export the paper as a study file. Questions and options only: the portal
+    // never receives an answer key, and the student's own answers stay out.
+    const exportRows = () =>
+      questions.map((question, index) => {
+        const type = typeOf(question);
+        const options = [...(question.options || [])]
+          .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+          .map((option, optionIndex) => ({ number: optionIndex + 1, text: plainText(option.content) }));
+        return {
+          number: index + 1,
+          id: question.id,
+          type: question.type,
+          typeLabel: type?.label || question.type,
+          points: Number(question.point) || 0,
+          stem: plainText(question.description),
+          options,
+        };
+      });
+    const exportStamp = () =>
+      new Intl.DateTimeFormat("zh-TW", {
+        timeZone: TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date());
+    const exportName = (extension) => {
+      const base =
+        String(exam.title || "exam")
+          .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/^[-. ]+|[-. ]+$/g, "")
+          .slice(0, 60) || "exam";
+      const date = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+      return `${base}-${examId}-${date}.${extension}`;
+    };
+    const examMarkdown = (rows) => {
+      const meta = [
+        `- 測驗編號：${examId}`,
+        `- 課程編號：${courseId}`,
+        `- 題數：${rows.length} 題`,
+        `- 總分：${formatPoint(exam.total_points ?? totalPoints)} 分`,
+        exam.limit_time ? `- 限時：${exam.limit_time} 分鐘` : "- 限時：不限時",
+        `- 匯出時間：${exportStamp()}`,
+      ];
+      const body = rows.map((row) => {
+        const lines = [`## 第 ${row.number} 題（${row.typeLabel}，${formatPoint(row.points)} 分）`, "", row.stem || "（題目內容為空）", ""];
+        for (const option of row.options) lines.push(`${option.number}. ${option.text.replace(/\s*\n+\s*/g, " ").trim()}`);
+        if (row.options.length) lines.push("");
+        return lines.join("\n");
+      });
+      return [`# ${exam.title || "測驗"}`, "", ...meta, "", "---", "", ...body].join("\n").trimEnd() + "\n";
+    };
+    const examJson = (rows) =>
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          exam: {
+            id: examId,
+            courseId,
+            title: exam.title || "測驗",
+            totalQuestions: rows.length,
+            totalPoints: Number(exam.total_points) || totalPoints,
+            limitMinutes: exam.limit_time ? Number(exam.limit_time) : null,
+            practice: Boolean(exam.is_practice_mode),
+          },
+          questions: rows,
+        },
+        null,
+        2,
+      ) + "\n";
+    const downloadText = (filename, text, type) => {
+      const url = URL.createObjectURL(new Blob([text], { type }));
+      const link = h("a", { href: url, download: filename, hidden: true });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    function openExportDialog() {
+      openDialog({
+        kind: "export",
+        title: "匯出試題",
+        dismissible: true,
+        message: h(
+          "p",
+          null,
+          `將這份測驗的 ${total} 題匯出成檔案，內容包含題目與選項，不包含答案或你的作答內容。`,
+        ),
+        actions: [
+          h(
+            "button",
+            {
+              class: "btn primary",
+              type: "button",
+              onclick: () => {
+                const rows = exportRows();
+                closeDialog();
+                downloadText(exportName("md"), examMarkdown(rows), "text/markdown;charset=utf-8");
+              },
+            },
+            "Markdown (.md)",
+          ),
+          h(
+            "button",
+            {
+              class: "btn",
+              type: "button",
+              onclick: () => {
+                const rows = exportRows();
+                closeDialog();
+                downloadText(exportName("json"), examJson(rows), "application/json;charset=utf-8");
+              },
+            },
+            "JSON (.json)",
+          ),
+          h("button", { class: "btn ghost", type: "button", onclick: closeDialog }, "取消"),
+        ],
+      });
+    }
+
     let submission = storage || null;
     let starting = null;
     let current = 0;
@@ -3253,6 +3377,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     const clockText = h("span", null, "不限時");
     const clockEl = h("span", { class: "exam-clock num" }, icon("clock"), clockText);
     const submitBtn = h("button", { class: "btn primary", type: "button", onclick: () => openSubmitDialog() }, icon("check"), "交卷");
+    const exportBtn = h("button", { class: "btn", type: "button", onclick: () => openExportDialog() }, icon("download"), "匯出試題");
     const fallback = h("a", { class: "btn", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 開啟");
 
     const head = h(
@@ -3275,7 +3400,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
           exam.limit_time ? h("span", null, `限時 ${exam.limit_time} 分鐘`) : h("span", null, "不限時"),
         ),
       ),
-      h("div", { class: "exam-tools" }, clockEl, submitBtn, fallback),
+      h("div", { class: "exam-tools" }, clockEl, exportBtn, submitBtn, fallback),
       h("div", { class: "exam-progress" }, h("span", { class: "bar-track" }, barFill), progressText, saveStatus),
     );
 
