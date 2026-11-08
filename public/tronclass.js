@@ -31,6 +31,7 @@
   const classicHref = () => {
     const route = matchRoute(location);
     if (route?.name === "examTake") return classicExamHref(route.courseId, route.examId);
+    if (route?.name === "examResult") return `${TRONCLASS}/exam/${route.examId}/subjects#/submission/${route.submissionId}`;
     return tcHref(location.href);
   };
 
@@ -48,6 +49,8 @@
       if (!hash || hash === "#" || hash === "#/") return { name: "course", courseId };
       let h = hash.match(/^#\/exam\/(\d+)\/take\/?(?:[?#].*)?$/);
       if (h) return { name: "examTake", courseId, examId: +h[1] };
+      h = hash.match(/^#\/exam\/(\d+)\/result\/(\d+)\/?(?:[?#].*)?$/);
+      if (h) return { name: "examResult", courseId, examId: +h[1], submissionId: +h[2] };
       h = hash.match(/^#\/exam\/(\d+)\/?(?:[?#].*)?$/);
       if (h) return { name: "exam", courseId, examId: +h[1] };
       h = hash.match(/^#\/(\d+)\/?(?:[?#].*)?$/);
@@ -350,6 +353,50 @@ button.row:first-child { border-top: 0; }
 .q-nav .btn { min-width: 92px; }
 .q-nav .btn[disabled] { opacity: .35; }
 
+.review-list { display: grid; gap: 16px; margin-top: 16px; }
+.review-tally { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.review-paper { border-color: var(--edge); }
+.review-paper[data-verdict="correct"] { border-color: color-mix(in srgb, var(--success) 32%, var(--edge)); }
+.review-paper[data-verdict="wrong"] { border-color: color-mix(in srgb, var(--danger) 34%, var(--edge)); }
+.review-head-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.review-verdict {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px;
+  border-radius: 99px; background: rgba(255, 255, 255, .06); color: var(--muted);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.review-verdict .i { width: 13px; height: 13px; }
+.review-verdict.correct { background: var(--success-soft); color: var(--success); }
+.review-verdict.wrong { background: var(--danger-soft); color: var(--danger); }
+.review-choices { margin-top: 14px; }
+.review-choice { cursor: default; }
+.review-choice[data-state="correct"], .review-choice[data-state="both"] {
+  border-color: color-mix(in srgb, var(--success) 48%, var(--edge)); background: var(--success-soft);
+}
+.review-choice[data-state="wrong"] {
+  border-color: color-mix(in srgb, var(--danger) 48%, var(--edge)); background: var(--danger-soft);
+}
+.review-choice[data-state="correct"]:hover, .review-choice[data-state="both"]:hover { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 48%, var(--edge)); }
+.review-choice[data-state="wrong"]:hover { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 48%, var(--edge)); }
+.review-flags { display: flex; flex-wrap: wrap; gap: 6px; align-self: center; }
+.review-flag {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 8px;
+  border-radius: 99px; font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.review-flag.chosen { background: var(--primary-soft); color: var(--primary); }
+.review-flag.correct { background: var(--success-soft); color: var(--success); }
+.review-answers { display: grid; gap: 10px; margin-top: 16px; }
+.review-answer { padding: 12px 14px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--sunken); }
+.review-answer-label { margin-bottom: 6px; color: var(--faint); font-size: 11.5px; font-weight: 700; letter-spacing: .04em; }
+.review-text { color: var(--text); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-explain { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--edge); border-left: 3px solid var(--primary-ring); border-radius: var(--radius); background: var(--raised); }
+.review-explain .prose { max-width: none; }
+.review-explain .prose p:last-child { margin-bottom: 0; }
+.review-missing { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; color: var(--faint); font-size: 13px; }
+.review-missing .i { width: 15px; height: 15px; margin-top: 2px; }
+.history-group { margin-top: 32px; }
+.history-title { color: var(--text); }
+.history-title:hover { color: var(--primary); }
+
 .exam-side { position: sticky; top: 72px; display: grid; gap: 12px; }
 .exam-card { padding: 16px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); }
 .exam-card h2 { margin: 0 0 12px; font-size: 14px; }
@@ -588,6 +635,10 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   .pager a.next { grid-column: 1; }
   .prose td, .prose th { padding: 5px 4px; font-size: 14px; }
   .q-prompt .prose tr > :first-child { width: 40%; }
+  .review-choice { flex-wrap: wrap; }
+  .review-flags { width: 100%; padding-left: 30px; }
+  .review-paper .q-head { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
+  .history-group .section-head { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 545px) {
   /* Two fact columns: let a trailing odd fact use the full row. */
@@ -707,6 +758,15 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 
   const TZ = "Asia/Taipei";
   const dateTime = new Intl.DateTimeFormat("zh-TW", { timeZone: TZ, month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const fullDateTime = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
   const monthDay = new Intl.DateTimeFormat("zh-TW", { timeZone: TZ, month: "numeric", day: "numeric" });
 
   const toDate = (iso) => {
@@ -715,6 +775,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     return Number.isNaN(d.getTime()) ? null : d;
   };
   const when = (iso) => (toDate(iso) ? dateTime.format(toDate(iso)) : "");
+  const whenFull = (iso) => (toDate(iso) ? fullDateTime.format(toDate(iso)) : "");
   const day = (iso) => (toDate(iso) ? monthDay.format(toDate(iso)) : "");
 
   function span(ms) {
@@ -733,6 +794,38 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     if (ms < 0) return h("span", { class: "chip" }, "已截止");
     const level = ms < 864e5 ? "urgent" : ms < 3 * 864e5 ? "soon" : "";
     return h("span", { class: `chip num ${level}`, title: when(iso) }, `剩 ${span(ms)}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Downloads
+
+  // A study file is built in the page and downloaded from a blob, so the
+  // questions, answers and the student's own work never travel to the server.
+  const exportBase = (title) =>
+    String(title || "exam")
+      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[-. ]+|[-. ]+$/g, "")
+      .slice(0, 60) || "exam";
+  const exportStamp = () =>
+    new Intl.DateTimeFormat("zh-TW", {
+      timeZone: TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date());
+  const exportDay = (iso) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(toDate(iso) || new Date());
+  function downloadText(filename, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const link = h("a", { href: url, download: filename, hidden: true });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // ---------------------------------------------------------------------------
@@ -1768,6 +1861,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 
   const examOverviewHref = (courseId, examId) => `${BASE}/course/${courseId}/learning-activity#/exam/${examId}`;
   const examTakeHref = (courseId, examId) => `${examOverviewHref(courseId, examId)}/take`;
+  const examResultHref = (courseId, examId, submissionId) => `${examOverviewHref(courseId, examId)}/result/${submissionId}`;
   const classicExamHref = (courseId, examId) => tcHref(examOverviewHref(courseId, examId));
 
   const itemHref = (courseId, item) =>
@@ -1998,6 +2092,57 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         requestAnimationFrame(() => window.scrollTo(0, restore));
       }
     }
+  }
+
+  // One modal dialog shared by the take view (hand-in, AI, export) and the
+  // submitted-attempt view (export). It is declared here so both can open it.
+  let dialog = null;
+  let dialogKind = "";
+  let dialogDismissible = false;
+  let dialogReturnFocus = null;
+
+  function closeDialog() {
+    dialog?.remove();
+    dialog = null;
+    dialogKind = "";
+    dialogDismissible = false;
+    for (const element of document.querySelectorAll("body > header, body > main")) element.inert = false;
+    syncScrollLock();
+    const target = dialogReturnFocus;
+    dialogReturnFocus = null;
+    if (target && target.isConnected) target.focus({ preventScroll: true });
+  }
+
+  function openDialog({ title, message, actions, kind = "info", dismissible = true }) {
+    closeDialog();
+    dialogReturnFocus = document.activeElement;
+    dialogKind = kind;
+    dialogDismissible = dismissible;
+    const panel = h(
+      "div",
+      { class: "exam-dialog", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "exam-dialog-title" },
+      h("h2", { id: "exam-dialog-title" }, title),
+      typeof message === "string" ? h("p", null, message) : message,
+      h("div", { class: "actions" }, actions),
+    );
+    panel.dataset.kind = kind;
+    dialog = h(
+      "div",
+      {
+        class: "exam-modal",
+        onclick: (event) => {
+          if (dismissible && event.target === dialog) closeDialog();
+        },
+      },
+      panel,
+    );
+    const scrollY = window.scrollY;
+    document.body.append(dialog);
+    syncScrollLock(scrollY);
+    for (const element of document.querySelectorAll("body > header, body > main")) element.inert = true;
+    const focusable = panel.querySelector("button, a");
+    if (focusable) focusable.focus({ preventScroll: true });
+    restoreLockedScroll();
   }
 
   function closeAiSettings() {
@@ -2381,6 +2526,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       } catch {}
     });
     cleanup = [];
+    closeDialog();
     menu.hidden = true;
     renderMenu();
 
@@ -2396,7 +2542,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     main.replaceChildren(h("div", { class: "loading", role: "progressbar", "aria-label": "載入中" }));
     window.scrollTo(0, 0);
 
-    const views = { home: viewHome, courses: viewCourses, course: viewCourse, activity: viewActivity, exam: viewExam, examTake: viewExamTake };
+    const views = { home: viewHome, courses: viewCourses, course: viewCourse, activity: viewActivity, exam: viewExam, examTake: viewExamTake, examResult: viewExamResult };
     try {
       const content = await views[route.name](route, token);
       // A view that hands the page back to TronClass returns nothing.
@@ -2591,6 +2737,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     const tabList = [
       ["content", "課程內容", () => outline(courseId, bundle)],
       ["scores", "成績", () => scores(courseId, bundle)],
+      ["history", "測驗紀錄", () => examHistory(courseId, bundle)],
     ];
     const select = async (key) => {
       tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.key === key)));
@@ -2660,6 +2807,91 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       "div",
       { style: "margin-top:24px" },
       rows.length ? h("div", { class: "list" }, rows) : h("div", { class: "list" }, h("div", { class: "empty" }, h("strong", null, "這門課還沒有作業或測驗"))),
+    );
+  }
+
+  function attemptRow(courseId, examId, submission) {
+    return h(
+      "a",
+      { class: "row", href: examResultHref(courseId, examId, submission.id) },
+      h("span", { class: "row-icon" }, icon("clip")),
+      h(
+        "span",
+        { style: "min-width:0" },
+        h("div", { class: "row-title num" }, `第 ${submission.attempt} 次 · ${when(submission.submitted_at) || "未記錄時間"}`),
+        h("div", { class: "row-sub" }, submission.submit_method_text || "已交卷"),
+      ),
+      h("span", { class: "row-end" }, h("span", { class: "chip accent" }, "查看答案"), h("span", { class: "chev" }, icon("right"))),
+    );
+  }
+
+  async function examHistory(courseId, bundle) {
+    const [submitted, scores] = await Promise.all([
+      soft(get(`/api/courses/${courseId}/submitted-exams?no-intercept=true`), { exam_ids: [] }),
+      soft(get(`/api/courses/${courseId}/exam-scores?no-intercept=true`), { exam_scores: [] }),
+    ]);
+    const scoreByExam = new Map((scores.exam_scores || []).map((entry) => [entry.activity_id, entry.score]));
+    const ids = [...new Set((submitted.exam_ids || []).map(Number).filter((id) => Number.isFinite(id) && id > 0))];
+    const known = new Map(bundle.ordered.filter((item) => item.kind === "exam").map((item) => [item.id, item.title]));
+    const groups = (
+      await Promise.all(
+        ids.map(async (examId) => {
+          const list = await soft(get(`/api/exams/${examId}/submissions`), { submissions: [] });
+          const submissions = [...(list.submissions || [])]
+            .filter((submission) => submission && submission.id != null)
+            .sort((a, b) => (toDate(a.submitted_at) || 0) - (toDate(b.submitted_at) || 0))
+            .map((submission, index) => ({ ...submission, attempt: index + 1 }));
+          if (!submissions.length) return null;
+          let title = known.get(examId);
+          if (!title) {
+            const exam = await soft(get(`/api/exams/${examId}`), null);
+            title = exam?.title || `測驗 ${examId}`;
+          }
+          return { examId, title, submissions };
+        }),
+      )
+    )
+      .filter(Boolean)
+      .sort((a, b) => {
+        const latest = (group) => toDate(group.submissions[group.submissions.length - 1]?.submitted_at) || 0;
+        return latest(b) - latest(a);
+      });
+
+    if (!groups.length) {
+      return h(
+        "div",
+        { style: "margin-top:24px" },
+        h(
+          "div",
+          { class: "list" },
+          h("div", { class: "empty" }, h("strong", null, "這門課還沒有已交卷的測驗"), "交卷後，題目、你的答案與正確答案會出現在這裡。"),
+        ),
+      );
+    }
+
+    return h(
+      "div",
+      { style: "margin-top:8px" },
+      groups.map((group) => {
+        const latest = group.submissions[group.submissions.length - 1];
+        const score = scoreByExam.get(group.examId);
+        return h(
+          "section",
+          { class: "section history-group" },
+          h(
+            "div",
+            { class: "section-head" },
+            h(
+              "div",
+              null,
+              h("h2", null, h("a", { class: "history-title", href: examOverviewHref(courseId, group.examId) }, group.title)),
+              h("div", { class: "row-sub num" }, `${group.submissions.length} 次作答 · 最後繳交 ${when(latest.submitted_at) || "未記錄"}`),
+            ),
+            score != null ? h("span", { class: "chip accent num" }, `${score} 分`) : h("span", { class: "chip" }, "成績未公布"),
+          ),
+          h("div", { class: "list" }, group.submissions.slice().reverse().map((submission) => attemptRow(courseId, group.examId, submission))),
+        );
+      }),
     );
   }
 
@@ -2988,15 +3220,20 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   }
 
   async function viewExam({ courseId, examId }) {
-    const [bundle, exam, scores] = await Promise.all([
+    const [bundle, exam, scores, attemptList] = await Promise.all([
       courseBundle(courseId),
       get(`/api/exams/${examId}`),
       soft(get(`/api/courses/${courseId}/exam-scores?no-intercept=true`), { exam_scores: [] }),
+      soft(get(`/api/exams/${examId}/submissions`), { submissions: [] }),
     ]);
     const item = bundle.ordered.find((i) => i.kind === "exam" && i.id === examId) || { kind: "exam", id: exam.id, title: exam.title, end: exam.end_time, state: "none" };
     const state = examState(exam);
     const { notOpen, closed, outOfTries, used, limit, canStart } = state;
     const score = (scores.exam_scores || []).find((s) => s.activity_id === examId)?.score;
+    const attempts = [...(attemptList.submissions || [])]
+      .filter((submission) => submission && submission.id != null)
+      .sort((a, b) => (toDate(a.submitted_at) || 0) - (toDate(b.submitted_at) || 0));
+    const latestAttempt = attempts[attempts.length - 1];
 
     const facts = h(
       "dl",
@@ -3018,6 +3255,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       "div",
       { class: "actions" },
       canStart && !classicOnly ? examStartLink(courseId, examId, exam, startLabel) : null,
+      latestAttempt ? h("a", { class: "btn", href: examResultHref(courseId, examId, latestAttempt.id) }, icon("eye"), "查看上次作答") : null,
       h("a", { class: classicOnly && canStart ? "btn primary" : "btn", href: classicExamHref(courseId, examId), "data-classic": "" }, icon("external"), "在 TronClass 開啟"),
       notOpen ? h("span", { class: "chip" }, icon("clock"), `${when(exam.start_time)} 開放`) : null,
       closed ? h("span", { class: "chip" }, "已結束") : null,
@@ -3049,9 +3287,398 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       );
     }
     parts.push(actions);
+    if (attempts.length) {
+      parts.push(
+        h(
+          "section",
+          { class: "section" },
+          h("div", { class: "section-head" }, h("h2", null, "我的作答紀錄"), h("span", { class: "meta num" }, `${attempts.length} 次`)),
+          h(
+            "div",
+            { class: "list" },
+            attempts
+              .map((submission, index) => ({ ...submission, attempt: index + 1 }))
+              .reverse()
+              .map((submission) => attemptRow(courseId, examId, submission)),
+          ),
+        ),
+      );
+    }
     if (exam.description) parts.push(h("section", { class: "section" }, h("h2", null, "說明"), richText(exam.description)));
     parts.push(pager(courseId, bundle, item));
     return parts;
+  }
+
+  // ---------------------------------------------------------------------------
+  // A submitted attempt: the paper, the student's answer, the announced answer
+  // and what TronClass marked. Only the signed-in student's own submission is
+  // requested; the session lives on the portal server.
+
+  const VERDICT_TEXT = { correct: "答對", wrong: "答錯", unanswered: "未作答", unknown: "無法判定" };
+
+  function reviewRows(result) {
+    const questions = examQuestions(result?.subjects_data?.subjects || []);
+    const answers = new Map();
+    for (const entry of result?.submission_data?.subjects || []) {
+      if (entry?.subject_id != null) answers.set(String(entry.subject_id), entry);
+    }
+    const announced = new Map();
+    for (const entry of result?.correct_answers_data?.correct_answers || []) {
+      if (entry?.subject_id == null) continue;
+      announced.set(String(entry.subject_id), {
+        ids: (entry.answer_option_ids || []).map(String),
+        content: entry.content || "",
+      });
+    }
+    for (const question of questions) {
+      const key = String(question.id);
+      if (announced.has(key)) continue;
+      const ids = (question.options || []).filter((option) => option.is_answer).map((option) => String(option.id));
+      if (ids.length) announced.set(key, { ids, content: "" });
+    }
+    const graded = result?.correct_data || {};
+
+    return questions.map((question, index) => {
+      const key = String(question.id);
+      const entry = answers.get(key);
+      const correct = announced.get(key);
+      const chosenIds = (entry?.answer_option_ids || []).map(String);
+      let studentText = "";
+      for (const field of ["answer", "answer_text", "text", "content"]) {
+        if (typeof entry?.[field] === "string" && entry[field].trim()) {
+          studentText = entry[field].trim();
+          break;
+        }
+      }
+      const answered = chosenIds.length > 0 || studentText.length > 0;
+      let state = "unknown";
+      if (!answered) state = "unanswered";
+      else if (typeof graded[key] === "boolean") state = graded[key] ? "correct" : "wrong";
+      else if (correct?.ids?.length) {
+        state = [...chosenIds].sort().join(",") === [...correct.ids].sort().join(",") ? "correct" : "wrong";
+      }
+
+      const type = EXAM_TYPES[question.type];
+      const options = [...(question.options || [])]
+        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+        .map((option, optionIndex) => {
+          const id = String(option.id);
+          return {
+            number: optionIndex + 1,
+            id,
+            html: option.content || "",
+            text: plainText(option.content) || "（空白選項）",
+            chosen: chosenIds.includes(id),
+            isCorrect: Boolean(correct?.ids?.includes(id)),
+          };
+        });
+      const chosenOptions = options.filter((option) => option.chosen);
+      const correctOptions = options.filter((option) => option.isCorrect);
+      const chosenText = chosenOptions.length
+        ? chosenOptions.map((option) => `${option.number}. ${option.text.replace(/\s*\n+\s*/g, " ").trim()}`).join("、")
+        : studentText;
+      const correctText = correctOptions.length
+        ? correctOptions.map((option) => `${option.number}. ${option.text.replace(/\s*\n+\s*/g, " ").trim()}`).join("、")
+        : correct?.content
+          ? plainText(correct.content)
+          : "";
+
+      return {
+        number: index + 1,
+        id: question.id,
+        type: question.type,
+        typeLabel: type?.label || question.type || "題目",
+        typeKind: type?.kind || "",
+        points: Number(question.point) || 0,
+        stemHtml: question.description || "",
+        stemText: plainText(question.description),
+        options,
+        chosenIds,
+        studentText,
+        chosenText,
+        correctIds: correct?.ids || [],
+        correctText,
+        hasCorrect: Boolean(correct?.ids?.length || correct?.content),
+        state,
+        answered,
+        explanationCorrect: question.answer_explanation || "",
+        explanationWrong: question.wrong_explanation || "",
+        explanation:
+          state === "correct" ? question.answer_explanation || question.wrong_explanation : question.wrong_explanation || question.answer_explanation,
+      };
+    });
+  }
+
+  function reviewCard(row) {
+    const prompt = h("div", { class: "q-prompt" });
+    prompt.append(row.stemHtml ? richText(row.stemHtml) : h("p", null, "這題沒有題目內容。"));
+    const body = h("div", { class: "q-body" }, prompt);
+
+    if (row.options.length) {
+      const list = h("ul", { class: "choices review-choices" });
+      for (const option of row.options) {
+        const flags = h("span", { class: "review-flags" });
+        if (option.chosen) flags.append(h("span", { class: "review-flag chosen" }, "你的答案"));
+        if (option.isCorrect) flags.append(h("span", { class: "review-flag correct" }, "正確答案"));
+        const optionState = option.chosen && option.isCorrect ? "both" : option.chosen ? "wrong" : option.isCorrect ? "correct" : "";
+        list.append(
+          h(
+            "li",
+            null,
+            h(
+              "div",
+              { class: "choice review-choice", "data-state": optionState || null },
+              h("span", { class: "choice-index num" }, String(option.number)),
+              h("div", { class: "choice-text" }, option.html ? richText(option.html) : h("span", null, "（空白選項）")),
+              flags.childNodes.length ? flags : null,
+            ),
+          ),
+        );
+      }
+      body.append(list);
+    }
+
+    if (row.typeKind === "text") {
+      body.append(
+        h(
+          "div",
+          { class: "review-answers" },
+          h(
+            "div",
+            { class: "review-answer" },
+            h("div", { class: "review-answer-label" }, "你的答案"),
+            row.studentText ? h("div", { class: "review-text" }, row.studentText) : h("div", { class: "meta" }, "未作答"),
+          ),
+          h(
+            "div",
+            { class: "review-answer" },
+            h("div", { class: "review-answer-label" }, "正確答案"),
+            row.correctText ? h("div", { class: "review-text" }, row.correctText) : h("div", { class: "meta" }, "未公布"),
+          ),
+        ),
+      );
+    } else if (!row.hasCorrect) {
+      body.append(h("div", { class: "review-missing" }, icon("alert"), h("span", null, "這題沒有公布正確答案。")));
+    }
+
+    if (row.explanation) {
+      body.append(h("div", { class: "review-explain" }, h("div", { class: "review-answer-label" }, "解析"), richText(row.explanation)));
+    }
+
+    const verdictIcon =
+      row.state === "correct" ? icon("check") : row.state === "wrong" ? icon("close") : row.state === "unknown" ? icon("alert") : null;
+    return h(
+      "article",
+      { class: "exam-paper review-paper", "data-verdict": row.state },
+      h(
+        "div",
+        { class: "q-head" },
+        h("span", { class: "q-number num" }, `第 ${row.number} 題`),
+        h(
+          "span",
+          { class: "review-head-tags" },
+          h("span", { class: "meta" }, row.typeLabel),
+          h("span", { class: `review-verdict ${row.state}` }, verdictIcon, VERDICT_TEXT[row.state]),
+        ),
+        h("span", { class: "q-points num" }, row.points ? `${formatPoint(row.points)} 分` : ""),
+      ),
+      body,
+    );
+  }
+
+  async function viewExamResult({ courseId, examId, submissionId }) {
+    const [bundle, exam, result] = await Promise.all([
+      courseBundle(courseId),
+      get(`/api/exams/${examId}`),
+      get(`/api/exams/${examId}/submissions/${submissionId}`),
+    ]);
+    const rows = reviewRows(result);
+    const total = rows.length;
+    const totalPoints = rows.reduce((sum, row) => sum + row.points, 0) || Number(exam.total_points) || 0;
+    const answered = rows.filter((row) => row.answered).length;
+    const correct = rows.filter((row) => row.state === "correct").length;
+    const wrong = rows.filter((row) => row.state === "wrong").length;
+    const unanswered = rows.filter((row) => row.state === "unanswered").length;
+    const unknown = rows.filter((row) => row.state === "unknown").length;
+    const score = (() => {
+      for (const holder of [result, result?.submission_data]) {
+        for (const key of ["score", "final_score", "total_score"]) {
+          const value = holder?.[key];
+          if (value != null && value !== "") return value;
+        }
+      }
+      return null;
+    })();
+    const submittedAt = result?.submitted_at || "";
+    const item = bundle.ordered.find((i) => i.kind === "exam" && i.id === examId) || { kind: "exam", id: exam.id, title: exam.title, state: "none" };
+    setTitle(`${exam.title || "測驗"} · 作答紀錄`, bundle.course.name);
+
+    const facts = h(
+      "dl",
+      { class: "facts" },
+      fact("繳交時間", when(submittedAt) || "未記錄"),
+      fact("繳交方式", result?.submit_method_text || "已交卷"),
+      fact("作答進度", `${answered} / ${total} 題`),
+      fact("成績", score != null ? `${score} 分` : "未公布"),
+    );
+    const tally = h(
+      "div",
+      { class: "review-tally", role: "group", "aria-label": "答題結果" },
+      h("span", { class: "chip done" }, icon("check"), `答對 ${correct} 題`),
+      h("span", { class: "chip urgent" }, icon("close"), `答錯 ${wrong} 題`),
+      h("span", { class: "chip" }, `未作答 ${unanswered} 題`),
+      unknown ? h("span", { class: "chip" }, icon("alert"), `無法判定 ${unknown} 題`) : null,
+    );
+
+    const fileBase = `${exportBase(exam.title)}-${examId}-attempt-${submissionId}-${exportDay(submittedAt)}`;
+    const oneLine = (text) => String(text || "").replace(/\s*\n+\s*/g, " ").trim();
+    const attemptMarkdown = () => {
+      const meta = [
+        `- 測驗編號：${examId}`,
+        `- 課程編號：${courseId}`,
+        `- 作答紀錄：${submissionId}`,
+        `- 繳交時間：${whenFull(submittedAt) || "未記錄"}`,
+        `- 繳交方式：${result?.submit_method_text || "已交卷"}`,
+        `- 作答進度：${answered} / ${total} 題`,
+        `- 答對 ${correct} 題 · 答錯 ${wrong} 題 · 未作答 ${unanswered} 題`,
+        `- 成績：${score != null ? `${score} 分` : "未公布"}`,
+        `- 匯出時間：${exportStamp()}`,
+      ];
+      const body = rows.map((row) => {
+        const lines = [
+          `## 第 ${row.number} 題（${row.typeLabel}，${formatPoint(row.points)} 分）— ${VERDICT_TEXT[row.state]}`,
+          "",
+          row.stemText || "（題目內容為空）",
+          "",
+        ];
+        for (const option of row.options) {
+          const marks = [];
+          if (option.chosen) marks.push("你的答案");
+          if (option.isCorrect) marks.push("正確答案");
+          lines.push(`${option.number}. ${oneLine(option.text)}${marks.length ? `（${marks.join("、")}）` : ""}`);
+        }
+        if (row.options.length) lines.push("");
+        lines.push(`- 你的答案：${row.chosenText || "未作答"}`);
+        lines.push(`- 正確答案：${row.correctText || "未公布"}`);
+        if (row.explanation) lines.push("", "**解析**", "", plainText(row.explanation));
+        lines.push("");
+        return lines.join("\n");
+      });
+      return [`# ${exam.title || "測驗"} — 作答紀錄`, "", ...meta, "", "---", "", ...body].join("\n").trimEnd() + "\n";
+    };
+    const attemptJson = () =>
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          exam: {
+            id: examId,
+            courseId,
+            title: exam.title || "測驗",
+            practice: Boolean(exam.is_practice_mode),
+            totalQuestions: total,
+            totalPoints: Number(exam.total_points) || totalPoints,
+          },
+          attempt: {
+            id: submissionId,
+            submittedAt: submittedAt || null,
+            submitMethod: result?.submit_method_text || "",
+            answered,
+            correct,
+            wrong,
+            unanswered,
+            unknown,
+            score: score != null ? Number(score) : null,
+          },
+          questions: rows.map((row) => ({
+            number: row.number,
+            id: row.id,
+            type: row.type,
+            typeLabel: row.typeLabel,
+            points: row.points,
+            stem: row.stemText,
+            options: row.options.map((option) => ({
+              number: option.number,
+              id: option.id,
+              text: option.text,
+              chosen: option.chosen,
+              correct: option.isCorrect,
+            })),
+            yourAnswer: { optionIds: row.chosenIds, text: row.studentText || null, display: row.chosenText || null },
+            correctAnswer: { optionIds: row.correctIds, display: row.correctText || null },
+            result: row.state,
+            answerExplanation: row.explanationCorrect ? plainText(row.explanationCorrect) : null,
+            wrongExplanation: row.explanationWrong ? plainText(row.explanationWrong) : null,
+          })),
+        },
+        null,
+        2,
+      ) + "\n";
+
+    function openAttemptExportDialog() {
+      openDialog({
+        kind: "export",
+        title: "匯出作答紀錄",
+        dismissible: true,
+        message: h("p", null, `將這份作答紀錄的 ${total} 題匯出成檔案，內容包含題目、你的答案、正確答案與解析。`),
+        actions: [
+          h(
+            "button",
+            {
+              class: "btn primary",
+              type: "button",
+              onclick: () => {
+                const text = attemptMarkdown();
+                closeDialog();
+                downloadText(`${fileBase}.md`, text, "text/markdown;charset=utf-8");
+              },
+            },
+            "Markdown (.md)",
+          ),
+          h(
+            "button",
+            {
+              class: "btn",
+              type: "button",
+              onclick: () => {
+                const text = attemptJson();
+                closeDialog();
+                downloadText(`${fileBase}.json`, text, "application/json;charset=utf-8");
+              },
+            },
+            "JSON (.json)",
+          ),
+          h("button", { class: "btn ghost", type: "button", onclick: closeDialog }, "取消"),
+        ],
+      });
+    }
+
+    return [
+      h("a", { class: "back", href: examOverviewHref(courseId, examId) }, icon("left"), "測驗說明"),
+      h("h1", null, exam.title || "作答紀錄"),
+      h(
+        "div",
+        { class: "meta-row" },
+        h("span", { class: "chip accent" }, "作答紀錄"),
+        exam.is_practice_mode ? h("span", { class: "chip" }, "練習") : null,
+        h("span", { class: "num" }, when(submittedAt) || ""),
+      ),
+      facts,
+      tally,
+      h(
+        "div",
+        { class: "actions" },
+        h("button", { class: "btn primary", type: "button", onclick: () => openAttemptExportDialog() }, icon("download"), "匯出作答紀錄"),
+        h("a", { class: "btn", href: classicHref(), "data-classic": "" }, icon("external"), "在 TronClass 開啟"),
+      ),
+      h(
+        "section",
+        { class: "section" },
+        h("div", { class: "section-head" }, h("h2", null, "題目與答案"), h("span", { class: "meta num" }, `${total} 題`)),
+        h("div", { class: "review-list" }, rows.map(reviewCard)),
+      ),
+      pager(courseId, bundle, item),
+      classicFooter(),
+    ];
   }
 
   // Taking an exam in the rebuilt page. The anti-cheat flags come from the
@@ -3243,24 +3870,8 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
           options,
         };
       });
-    const exportStamp = () =>
-      new Intl.DateTimeFormat("zh-TW", {
-        timeZone: TZ,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-      }).format(new Date());
     const exportName = (extension) => {
-      const base =
-        String(exam.title || "exam")
-          .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-")
-          .replace(/\s+/g, " ")
-          .trim()
-          .replace(/^[-. ]+|[-. ]+$/g, "")
-          .slice(0, 60) || "exam";
+      const base = exportBase(exam.title);
       const date = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
       return `${base}-${examId}-${date}.${extension}`;
     };
@@ -3299,14 +3910,6 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         null,
         2,
       ) + "\n";
-    const downloadText = (filename, text, type) => {
-      const url = URL.createObjectURL(new Blob([text], { type }));
-      const link = h("a", { href: url, download: filename, hidden: true });
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    };
     function openExportDialog() {
       openDialog({
         kind: "export",
@@ -3363,10 +3966,6 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     let saveTimer = null;
     let saving = null;
     let saveAgain = false;
-    let dialog = null;
-    let dialogKind = "";
-    let dialogDismissible = false;
-    let dialogReturnFocus = null;
     let leaves = 0;
     let lastLeaveAt = 0;
     let leaveTimer = null;
@@ -3439,50 +4038,6 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         ),
       ),
     );
-
-    function closeDialog() {
-      dialog?.remove();
-      dialog = null;
-      dialogKind = "";
-      dialogDismissible = false;
-      for (const element of document.querySelectorAll("body > header, body > main")) element.inert = false;
-      syncScrollLock();
-      const target = dialogReturnFocus;
-      dialogReturnFocus = null;
-      if (target && target.isConnected) target.focus({ preventScroll: true });
-    }
-
-    function openDialog({ title, message, actions, kind = "info", dismissible = true }) {
-      closeDialog();
-      dialogReturnFocus = document.activeElement;
-      dialogKind = kind;
-      dialogDismissible = dismissible;
-      const panel = h(
-        "div",
-        { class: "exam-dialog", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "exam-dialog-title" },
-        h("h2", { id: "exam-dialog-title" }, title),
-        typeof message === "string" ? h("p", null, message) : message,
-        h("div", { class: "actions" }, actions),
-      );
-      panel.dataset.kind = kind;
-      dialog = h(
-        "div",
-        {
-          class: "exam-modal",
-          onclick: (event) => {
-            if (dismissible && event.target === dialog) closeDialog();
-          },
-        },
-        panel,
-      );
-      const scrollY = window.scrollY;
-      document.body.append(dialog);
-      syncScrollLock(scrollY);
-      for (const element of document.querySelectorAll("body > header, body > main")) element.inert = true;
-      const focusable = panel.querySelector("button, a");
-      if (focusable) focusable.focus({ preventScroll: true });
-      restoreLockedScroll();
-    }
 
     function setSave(tone, text, title = "") {
       saveStatus.dataset.tone = tone || "";

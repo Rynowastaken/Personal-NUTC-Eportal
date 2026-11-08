@@ -226,6 +226,53 @@ test("the exam view can export every question as Markdown or JSON", async () => 
   assert.doesNotMatch(page, /questions: rows[\s\S]{0,200}answerFor/);
 });
 
+test("submitted exams open a review of the student's answers and the answer key", async () => {
+  const page = await read("../public/tronclass.js");
+  // The review is a hash route of the exam page, so a deep link survives a
+  // reload and TronClass's own submission page stays one click away.
+  assert.match(page, /name: "examResult"/);
+  assert.match(page, /examResult: viewExamResult/);
+  assert.match(page, /#\\\/exam\\\/\(\\d\+\)\\\/result\\\/\(\\d\+\)/);
+  assert.match(page, /\/exam\/\$\{route\.examId\}\/subjects#\/submission\/\$\{route\.submissionId\}/);
+  assert.match(page, /const examResultHref = \(courseId, examId, submissionId\) =>/);
+  // Past attempts come from TronClass's submission list, and the course's
+  // exam tab lists every submitted exam and attempt.
+  assert.match(page, /\/api\/exams\/\$\{examId\}\/submissions`/);
+  assert.match(page, /\/api\/exams\/\$\{examId\}\/submissions\/\$\{submissionId\}/);
+  assert.match(page, /\/api\/courses\/\$\{courseId\}\/submitted-exams\?no-intercept=true/);
+  assert.match(page, /\["history", "測驗紀錄", \(\) => examHistory\(courseId, bundle\)\]/);
+  assert.match(page, /function examHistory\(/);
+  assert.match(page, /我的作答紀錄/);
+  assert.match(page, /查看上次作答/);
+  assert.match(page, /查看答案/);
+  // The review joins the paper, the student's answers and the announced key.
+  assert.match(page, /function reviewRows\(/);
+  assert.match(page, /result\?\.subjects_data\?\.subjects/);
+  assert.match(page, /result\?\.submission_data\?\.subjects/);
+  assert.match(page, /result\?\.correct_answers_data\?\.correct_answers/);
+  assert.match(page, /result\?\.correct_data/);
+  assert.match(page, /answer_option_ids/);
+  assert.match(page, /is_answer/);
+  assert.match(page, /answer_explanation/);
+  assert.match(page, /wrong_explanation/);
+  assert.match(page, /function reviewCard\(/);
+  assert.match(page, /review-verdict/);
+  assert.match(page, /你的答案/);
+  assert.match(page, /正確答案/);
+  assert.match(page, /未作答/);
+  // An attempt exports the questions, both answers, the mark and the notes.
+  assert.match(page, /function openAttemptExportDialog\(\)/);
+  assert.match(page, /匯出作答紀錄/);
+  assert.match(page, /const attemptMarkdown = \(\) =>/);
+  assert.match(page, /const attemptJson = \(\) =>/);
+  assert.match(page, /yourAnswer: \{ optionIds: row\.chosenIds/);
+  assert.match(page, /correctAnswer: \{ optionIds: row\.correctIds/);
+  assert.match(page, /result: row\.state/);
+  assert.match(page, /內容包含題目、你的答案、正確答案與解析/);
+  assert.match(page, /attempt-\$\{submissionId\}/);
+});
+
+
 test("the exam view enforces fullscreen, window-leave and copy guards without a bypass", async () => {
   const page = await read("../public/tronclass.js");
   assert.match(page, /function enterFullscreen\(/);
