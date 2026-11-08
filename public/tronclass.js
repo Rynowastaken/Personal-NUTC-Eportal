@@ -385,23 +385,60 @@ button.row:first-child { border-top: 0; }
 .exam-dialog .facts { margin-top: 12px; grid-template-columns: 1fr 1fr; }
 .exam-dialog .actions { margin-top: 16px; justify-content: flex-end; }
 .exam-dialog[data-kind="ai"] { width: min(640px, 100%); }
-.ai-settings { width: min(560px, 100%); }
-.ai-settings .fields { display: grid; gap: 14px; margin-top: 16px; }
+.ai-settings {
+  display: flex; flex-direction: column; width: min(576px, 100%); max-height: calc(100dvh - 32px);
+  padding: 0; overflow: hidden; border-color: rgba(255, 255, 255, .12); border-radius: 8px;
+  background: rgba(14, 12, 16, .94); box-shadow: 0 24px 80px rgba(0, 0, 0, .46);
+}
+.settings-head { display: flex; align-items: flex-start; gap: 14px; padding: 20px 20px 16px; }
+.settings-mark { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 1px solid var(--primary-ring); border-radius: 6px; background: var(--primary-soft); color: var(--primary); }
+.settings-mark .i { width: 20px; height: 20px; }
+.settings-title { flex: 1; min-width: 0; }
+.settings-title h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.55; }
+.settings-title p { margin: 2px 0 0; color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.5; }
+.settings-close { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; border: 1px solid var(--edge); border-radius: 5px; background: rgba(255,255,255,.07); color: var(--muted); cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+.settings-close:hover { background: rgba(255,255,255,.11); border-color: var(--edge-strong); color: var(--text); }
+.settings-close .i { width: 16px; height: 16px; }
+.settings-body { min-height: 0; overflow-y: auto; padding: 2px 20px 20px; }
+.settings-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--edge); }
+.settings-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.settings-section h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 16px; font-weight: 400; }
+.settings-section h3 .i { width: 16px; height: 16px; color: var(--primary); }
+.settings-section .fields { display: grid; gap: 14px; }
 .ai-settings .field { display: grid; gap: 6px; }
-.ai-settings .field > span { font-size: 13px; font-weight: 600; color: var(--soft); }
+.ai-settings .field > span { font-size: 14px; font-weight: 600; color: var(--text); }
+.ai-settings .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .ai-settings input:not([type="checkbox"]), .ai-settings select {
-  width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid var(--edge); border-radius: var(--radius);
-  background: var(--sunken); color: var(--text); font: inherit; font-size: 14px;
+  width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 5px;
+  background: rgba(255, 255, 255, .07); color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
 }
 .ai-settings select { cursor: pointer; }
-.ai-settings input:focus, .ai-settings select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
-.ai-settings .check { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--soft); cursor: pointer; }
-.ai-settings .check input { width: 16px; height: 16px; flex: none; accent-color: var(--primary); }
-.ai-settings .hint { color: var(--faint); font-size: 12px; }
-.ai-settings .settings-status { min-height: 18px; margin: 12px 0 0; color: var(--muted); font-size: 12.5px; }
-.ai-settings .settings-status[data-tone="error"] { color: var(--danger); }
-.ai-settings .settings-status[data-tone="saved"] { color: var(--success); }
-.ai-settings .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.ai-settings input::placeholder { color: var(--muted); font-weight: 500; }
+.ai-settings input:focus, .ai-settings select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-ring); }
+.settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--edge); border-radius: 5px; background: rgba(255, 255, 255, .05); cursor: pointer; }
+.settings-toggle span { display: grid; gap: 2px; }
+.settings-toggle strong { font-size: 14px; font-weight: 600; }
+.settings-toggle small { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.5; }
+.settings-toggle input { width: 20px; height: 20px; flex: none; accent-color: var(--primary); }
+.settings-check { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--soft); font-size: 14px; font-weight: 500; cursor: pointer; }
+.settings-check input { width: 16px; height: 16px; flex: none; accent-color: var(--primary); }
+.settings-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.settings-foot { display: flex; align-items: center; gap: 12px; padding: 14px 20px 20px; border-top: 1px solid var(--edge); background: rgba(14, 12, 16, .6); }
+.settings-status { flex: 1; min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.settings-status[data-tone="error"] { color: var(--danger); }
+.settings-status[data-tone="saved"] { color: var(--success); }
+.settings-actions { display: flex; flex: none; gap: 8px; }
+.settings-actions .btn { min-height: 44px; border-radius: 5px; padding: 0 16px; }
+@keyframes modal-fade { from { opacity: 0; } }
+@keyframes panel-rise { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+@keyframes menu-drop { from { opacity: 0; transform: translateY(-4px) scale(.985); } }
+@keyframes turn-rise { from { opacity: 0; transform: translateY(4px); } }
+.exam-modal { animation: modal-fade .15s ease-out; }
+.exam-dialog { animation: panel-rise .18s cubic-bezier(.16, 1, .3, 1); }
+.menu { animation: menu-drop .12s ease-out; }
+.ai-turn, .ai-loading { animation: turn-rise .16s cubic-bezier(.16, 1, .3, 1); }
+html.modal-open { overflow: hidden; }
+html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 .ai-chat { position: relative; display: grid; gap: 10px; max-height: 55vh; overflow: auto; padding-right: 2px; }
 .ai-answer, .ai-turn { white-space: pre-wrap; line-height: 1.7; color: var(--soft); overflow-wrap: anywhere; }
 .ai-turn.user { justify-self: end; max-width: 92%; padding: 9px 12px; border: 1px solid var(--primary-ring); border-radius: var(--radius); background: var(--primary-soft); color: var(--text); }
@@ -996,6 +1033,52 @@ button.row:first-child { border-top: 0; }
   let settingsEscape = null;
   let aiTutorSettingListener = null;
 
+  let lockScrollY = 0;
+  let scrollGuard = null;
+
+  function restoreLockedScroll() {
+    if (document.querySelector(".exam-modal") && window.scrollY !== lockScrollY) {
+      window.scrollTo(0, lockScrollY);
+    }
+  }
+
+  function syncScrollLock(preferredY) {
+    const html = document.documentElement;
+    if (document.querySelector(".exam-modal")) {
+      if (!html.classList.contains("modal-open")) {
+        lockScrollY = Number.isFinite(preferredY)
+          ? preferredY
+          : window.scrollY || html.scrollTop || 0;
+        const gap = Math.max(0, window.innerWidth - html.clientWidth);
+        html.style.setProperty("--scroll-lock", `${gap}px`);
+        html.classList.add("modal-open");
+      }
+      // Focusing the panel can otherwise scroll the page behind the overlay.
+      // The scroll guard catches the focus scroll, which lands after the focus
+      // event and would otherwise defeat a one-off restore.
+      if (!scrollGuard) {
+        scrollGuard = () => restoreLockedScroll();
+        window.addEventListener("scroll", scrollGuard, { passive: true });
+      }
+      restoreLockedScroll();
+      setTimeout(restoreLockedScroll, 0);
+      requestAnimationFrame(restoreLockedScroll);
+    } else {
+      const restore = lockScrollY;
+      lockScrollY = 0;
+      html.classList.remove("modal-open");
+      html.style.removeProperty("--scroll-lock");
+      if (scrollGuard) {
+        window.removeEventListener("scroll", scrollGuard);
+        scrollGuard = null;
+      }
+      if (restore) {
+        window.scrollTo(0, restore);
+        requestAnimationFrame(() => window.scrollTo(0, restore));
+      }
+    }
+  }
+
   function closeAiSettings() {
     settingsModal?.remove();
     settingsModal = null;
@@ -1004,6 +1087,7 @@ button.row:first-child { border-top: 0; }
       settingsEscape = null;
     }
     for (const element of document.querySelectorAll("body > header, body > main")) element.inert = false;
+    syncScrollLock();
     const target = settingsReturnFocus;
     settingsReturnFocus = null;
     if (target && target.isConnected) target.focus({ preventScroll: true });
@@ -1129,30 +1213,81 @@ button.row:first-child { border-top: 0; }
       }
     });
 
+    const closeHeader = h(
+      "button",
+      { class: "settings-close", type: "button", "aria-label": "關閉 AI 助手設定", onclick: closeAiSettings },
+      icon("close"),
+    );
     const panel = h(
       "div",
       { class: "exam-dialog ai-settings", role: "dialog", "aria-modal": "true", "aria-labelledby": "tc-ai-title", tabindex: "-1" },
-      h("h2", { id: "tc-ai-title" }, "AI 助手設定"),
-      h("p", null, "練習測驗的「問 AI 這題」按鈕會使用這裡的設定。API 金鑰只會儲存在 Server，不會傳回瀏覽器。"),
+      h(
+        "header",
+        { class: "settings-head" },
+        h("span", { class: "settings-mark", "aria-hidden": "true" }, icon("sparkles")),
+        h(
+          "div",
+          { class: "settings-title" },
+          h("h2", { id: "tc-ai-title" }, "AI 助手設定"),
+          h("p", null, "練習測驗的 AI 解說與供應商設定。"),
+        ),
+        closeHeader,
+      ),
       h(
         "div",
-        { class: "fields" },
-        h("label", { class: "check" }, enabled, h("span", null, "啟用 AI 助手")),
-        aiSettingsField("服務提供者", provider),
-        aiSettingsField("API 位址", baseUrl),
-        aiSettingsField("模型", model),
-        aiSettingsField("API 金鑰", apiKey, "留空會保留目前的金鑰。"),
-        h("label", { class: "check" }, clearKey, h("span", null, "清除已儲存的金鑰")),
+        { class: "settings-body" },
+        h(
+          "section",
+          { class: "settings-section" },
+          h("h3", null, icon("sparkles"), "AI 服務"),
+          h(
+            "label",
+            { class: "settings-toggle" },
+            h(
+              "span",
+              null,
+              h("strong", null, "啟用 AI 助手"),
+              h("small", null, "在練習考試頁面顯示「問 AI 這題」按鈕。"),
+            ),
+            enabled,
+          ),
+          h(
+            "div",
+            { class: "fields" },
+            aiSettingsField("服務提供者", provider),
+            aiSettingsField("API 位址", baseUrl),
+            aiSettingsField("模型", model),
+          ),
+        ),
+        h(
+          "section",
+          { class: "settings-section" },
+          h("h3", null, icon("shield"), "存取金鑰"),
+          h("div", { class: "fields" }, aiSettingsField("API 金鑰", apiKey, "留空會保留目前的金鑰。")),
+          h("label", { class: "settings-check" }, clearKey, h("span", null, "清除已儲存的金鑰")),
+          h("p", { class: "settings-note" }, "金鑰只會儲存在這台 Server，不會傳回瀏覽器。"),
+        ),
       ),
-      status,
-      h("div", { class: "actions" }, h("button", { class: "btn ghost", type: "button", onclick: closeAiSettings }, "關閉"), save),
+      h(
+        "footer",
+        { class: "settings-foot" },
+        status,
+        h(
+          "div",
+          { class: "settings-actions" },
+          h("button", { class: "btn", type: "button", onclick: closeAiSettings }, "關閉"),
+          save,
+        ),
+      ),
     );
 
     settingsModal = h("div", { class: "exam-modal" }, panel);
     settingsModal.addEventListener("click", (event) => {
       if (event.target === settingsModal) closeAiSettings();
     });
+    const scrollY = window.scrollY;
     document.body.append(settingsModal);
+    syncScrollLock(scrollY);
     for (const element of document.querySelectorAll("body > header, body > main")) element.inert = true;
     settingsEscape = (event) => {
       if (event.key === "Escape") closeAiSettings();
@@ -1160,6 +1295,7 @@ button.row:first-child { border-top: 0; }
     document.addEventListener("keydown", settingsEscape);
 
     panel.focus({ preventScroll: true });
+    restoreLockedScroll();
     fetch("/api/preferences", { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1192,6 +1328,7 @@ button.row:first-child { border-top: 0; }
 
   async function render() {
     const token = ++renderToken;
+    closeAiSettings();
     cleanup.forEach((fn) => {
       try {
         fn();
@@ -2138,6 +2275,7 @@ button.row:first-child { border-top: 0; }
       dialogKind = "";
       dialogDismissible = false;
       for (const element of document.querySelectorAll("body > header, body > main")) element.inert = false;
+      syncScrollLock();
       const target = dialogReturnFocus;
       dialogReturnFocus = null;
       if (target && target.isConnected) target.focus({ preventScroll: true });
@@ -2166,10 +2304,13 @@ button.row:first-child { border-top: 0; }
         },
         panel,
       );
+      const scrollY = window.scrollY;
       document.body.append(dialog);
+      syncScrollLock(scrollY);
       for (const element of document.querySelectorAll("body > header, body > main")) element.inert = true;
       const focusable = panel.querySelector("button, a");
       if (focusable) focusable.focus({ preventScroll: true });
+      restoreLockedScroll();
     }
 
     function setSave(tone, text, title = "") {

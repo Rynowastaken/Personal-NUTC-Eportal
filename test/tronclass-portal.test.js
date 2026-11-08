@@ -149,6 +149,13 @@ test("the AI provider settings live on the TronClass page", async () => {
   assert.match(page, /id: "tc-ai-save"/);
   assert.match(page, /"\/api\/preferences\/ai"/);
   assert.match(page, /aiTutorSettingListener/);
+  // The panel follows the portal's settings language and motion.
+  assert.match(page, /settings-mark/);
+  assert.match(page, /settings-close/);
+  assert.match(page, /settings-section/);
+  assert.match(page, /syncScrollLock/);
+  assert.match(page, /@keyframes panel-rise/);
+  assert.match(page, /@keyframes turn-rise/);
 });
 
 test("the exam view enforces fullscreen, window-leave and copy guards without a bypass", async () => {
