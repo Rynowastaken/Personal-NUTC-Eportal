@@ -152,6 +152,11 @@ test("the Ask AI button is practice-only and posts a plain-text question", async
   assert.match(page, /function renderAiChart\(/);
   assert.match(page, /function aiChartLabel\(/);
   assert.match(page, /AI_SUPERSCRIPTS/);
+  // Financial statements render as real tables, not code blocks.
+  assert.match(page, /function parseAiTable\(/);
+  assert.match(page, /function renderAiTable\(/);
+  assert.match(page, /language === "table"/);
+  assert.match(page, /class: "ai-table"/);
   assert.match(page, /if \(role === "ai"\) renderAiAnswer\(node, text\);/);
   // Handing the paper in clears the saved dialogue for that exam.
   assert.match(page, /submitted = true;[\s\S]*?clearAiChats\(examId\);/);

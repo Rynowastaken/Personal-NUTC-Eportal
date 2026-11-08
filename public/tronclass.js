@@ -547,6 +547,26 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 .ai-chart .s3 { --series: #8fc7e8; }
 .ai-chart .s4 { --series: var(--danger); }
 .ai-chart .s5 { --series: #c5a3ef; }
+.ai-table { margin: 12px 0 4px; white-space: normal; min-width: 0; }
+.ai-table-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin-bottom: 6px; }
+.ai-table-title { color: var(--text); font-size: 13px; font-weight: 600; line-height: 20px; }
+.ai-table-sub, .ai-table-unit { color: var(--muted); font-size: 11px; line-height: 18px; }
+.ai-table-unit { margin-left: auto; }
+.ai-table-scroll { overflow-x: auto; }
+.ai-table table { width: 100%; min-width: 320px; border-collapse: collapse; font-size: 12.5px; line-height: 1.5; }
+.ai-table th, .ai-table td { padding: 5px 8px; border: 0; vertical-align: baseline; }
+.ai-table thead th { border-bottom: 1px solid var(--edge-strong); color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+.ai-table thead th.label { text-align: left; }
+.ai-table thead th.value { text-align: right; }
+.ai-table tbody th { color: var(--soft); font-weight: 500; text-align: left; }
+.ai-table tbody td { color: var(--soft); text-align: right; font-variant-numeric: tabular-nums; }
+.ai-table tbody tr.section th { padding-top: 12px; color: var(--text); font-size: 12px; font-weight: 700; letter-spacing: .03em; }
+.ai-table tbody tr.subtotal th, .ai-table tbody tr.subtotal td { border-top: 1px solid var(--edge); color: var(--text); font-weight: 600; }
+.ai-table tbody tr.total th, .ai-table tbody tr.total td { border-top: 1px solid var(--edge-strong); border-bottom: 3px double var(--edge-strong); color: var(--text); font-weight: 700; }
+.ai-table .indent-1 { padding-left: 22px; }
+.ai-table .indent-2 { padding-left: 38px; }
+.ai-table .indent-3 { padding-left: 54px; }
+.ai-table-note { margin: 6px 0 0; color: var(--faint); font-size: 11px; line-height: 1.5; }
 .q-tools { display: flex; justify-content: flex-end; margin-top: 12px; }
 .q-ai { color: var(--primary); }
 .q-ai.btn.ghost, .q-ai.btn.ghost:hover { color: var(--primary); }
@@ -1474,6 +1494,111 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     return figure;
   }
 
+  // Financial statements arrive as a table block: balance sheets, income
+  // statements, trial balances and journal entries all fit one shape.
+  const AI_TABLE_MAX_ROWS = 80;
+  const aiAmountFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+  function formatAiAmount(value) {
+    const formatted = aiAmountFormat.format(Math.abs(value));
+    // Accounting convention: negatives are shown in parentheses.
+    return value < 0 ? `(${formatted})` : formatted;
+  }
+  function aiTableCell(value) {
+    if (value === null || value === undefined || value === "") return { text: "—", negative: false };
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return null;
+      return { text: formatAiAmount(value), negative: value < 0 };
+    }
+    if (typeof value !== "string") return null;
+    const text = value.replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!text) return { text: "—", negative: false };
+    const negative = /^\(.*\)$/.test(text) || /^[-−]/.test(text);
+    return { text, negative };
+  }
+  function parseAiTable(raw) {
+    let spec;
+    try {
+      spec = JSON.parse(String(raw || "").trim());
+    } catch {
+      return null;
+    }
+    if (!spec || typeof spec !== "object" || Array.isArray(spec)) return null;
+    const columns = Array.isArray(spec.columns)
+      ? spec.columns.slice(0, 5).map((value) => aiChartLabel(value, 40))
+      : [];
+    if (columns.length < 2 || columns.some((value) => !value)) return null;
+    const valueCount = columns.length - 1;
+    const rows = [];
+    for (const item of (Array.isArray(spec.rows) ? spec.rows : []).slice(0, AI_TABLE_MAX_ROWS)) {
+      if (!item || typeof item !== "object") continue;
+      const label = aiChartLabel(item.label, 120);
+      if (!label) continue;
+      const kind = ["section", "subtotal", "total"].includes(item.kind) ? item.kind : "normal";
+      if (kind === "section") {
+        rows.push({ kind, label });
+        continue;
+      }
+      const rawValues = Array.isArray(item.values) ? item.values.slice(0, valueCount) : [];
+      const values = [];
+      for (let index = 0; index < valueCount; index += 1) {
+        const cell = aiTableCell(rawValues[index]);
+        if (!cell) break;
+        values.push(cell);
+      }
+      // A row with missing columns would put every later amount under the
+      // wrong heading, so a partial row is dropped instead of shifted.
+      if (values.length !== valueCount) continue;
+      const indent = Math.max(0, Math.min(3, Number(item.indent) || 0));
+      rows.push({ kind, label, values, indent });
+    }
+    if (!rows.length) return null;
+    return {
+      title: aiChartLabel(spec.title, 120),
+      subtitle: aiChartLabel(spec.subtitle, 80),
+      unit: aiChartLabel(spec.unit, 40),
+      note: aiChartLabel(spec.note, 200),
+      columns,
+      rows,
+    };
+  }
+  function renderAiTable(spec) {
+    const figure = h("figure", { class: "ai-table" });
+    const head = h("div", { class: "ai-table-head" });
+    if (spec.title) head.append(h("span", { class: "ai-table-title" }, spec.title));
+    if (spec.subtitle) head.append(h("span", { class: "ai-table-sub" }, spec.subtitle));
+    if (spec.unit) head.append(h("span", { class: "ai-table-unit" }, spec.unit));
+    if (head.childNodes.length) figure.append(head);
+
+    const table = h("table");
+    table.setAttribute("aria-label", spec.title || "表格");
+    const thead = h("thead");
+    const headRow = h("tr");
+    spec.columns.forEach((column, index) => {
+      headRow.append(h("th", { scope: "col", class: index === 0 ? "label" : "value" }, column));
+    });
+    thead.append(headRow);
+    table.append(thead);
+
+    const tbody = h("tbody");
+    for (const row of spec.rows) {
+      const tr = h("tr", { class: row.kind === "normal" ? null : row.kind });
+      if (row.kind === "section") {
+        tr.append(h("th", { scope: "rowgroup", colspan: spec.columns.length }, row.label));
+        tbody.append(tr);
+        continue;
+      }
+      tr.append(h("th", { scope: "row", class: `label indent-${row.indent}` }, row.label));
+      for (const cell of row.values) {
+        tr.append(h("td", { class: cell.negative ? "value negative" : "value" }, cell.text));
+      }
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    figure.append(h("div", { class: "ai-table-scroll" }, table));
+    if (spec.note) figure.append(h("p", { class: "ai-table-note" }, spec.note));
+    return figure;
+  }
+
   function renderAiAnswer(host, text) {
     const fragment = document.createDocumentFragment();
     const source = String(text || "");
@@ -1497,6 +1622,9 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         if (language === "chart" || language === "json") {
           const spec = parseAiChart(body);
           fragment.append(spec ? renderAiChart(spec) : h("pre", { class: "ai-code" }, body));
+        } else if (language === "table") {
+          const spec = parseAiTable(body);
+          fragment.append(spec ? renderAiTable(spec) : h("pre", { class: "ai-code" }, body));
         } else {
           fragment.append(h("pre", { class: "ai-code" }, body));
         }

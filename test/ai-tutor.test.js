@@ -205,6 +205,12 @@ test("buildTutorMessages builds the practice-question prompt", () => {
   assert.match(messages[0].content, /最多 6 條 series/);
   assert.match(messages[0].content, /title、xLabel、yLabel/);
   assert.match(messages[0].content, /純文字/);
+  // Accounting statements use the table block the page renders.
+  assert.match(messages[0].content, /```table/);
+  assert.match(messages[0].content, /資產負債表/);
+  assert.match(messages[0].content, /"kind":"total"/);
+  assert.match(messages[0].content, /values 的數量要和數字欄相同/);
+  assert.match(messages[0].content, /indent 用 0 到 3/);
 
   assert.equal(messages[1].role, "user");
   assert.match(messages[1].content, /題型：single_selection/);
@@ -334,7 +340,7 @@ test("askTutor calls opencode-go with auth and session headers", async () => {
   assert.equal(captured.headers["x-opencode-session"], "portal-session");
   assert.equal(captured.body.model, "deepseek-v4.1-flash");
   assert.equal(captured.body.temperature, 0.2);
-  assert.equal(captured.body.max_tokens, 1600);
+  assert.equal(captured.body.max_tokens, 2600);
   assert.equal(captured.body.messages[0].role, "system");
   assert.equal(captured.body.messages[1].role, "user");
   assert.ok(captured.init.signal, "a 60 s timeout signal is attached");
