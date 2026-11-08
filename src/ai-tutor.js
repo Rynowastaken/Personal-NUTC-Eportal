@@ -143,7 +143,21 @@ const SYSTEM_PROMPT =
   "你是一位有耐心的家教，正在協助學生理解一道「練習測驗」題目。" +
   "請先說明這道題目考查的核心概念，接著逐一解釋每個選項為什麼正確或錯誤，" +
   "最後清楚指出建議的答案。請使用繁體中文，以簡潔、易讀的白話段落說明；" +
-  "不要使用 Markdown 表格或標題，也不要在回覆中提及任何個人資料。";
+  "不要使用 Markdown 表格或標題，也不要在回覆中提及任何個人資料。" +
+  "\n\n數學式一律使用 LaTeX：行內公式寫成 $...$，獨立公式寫成 $$...$$，" +
+  "數學式不要放進程式碼區塊。需要畫圖時（例如函數曲線、供需曲線、成本線或長條比較），" +
+  "在解說中插入一個 chart 區塊，內容必須是單一合法的 JSON，例如：\n" +
+  "```chart\n" +
+  '{"type":"line","title":"需求曲線","xLabel":"數量","yLabel":"價格",' +
+  '"series":[{"label":"需求","points":[[0,10],[2,8],[4,6]]}]}\n' +
+  "```\n" +
+  "規則：type 可用 line、bar、scatter；line 與 scatter 的每個 series 用 points: [[x,y],...]" +
+  "（最多 120 點），或改用 function 搭配 domain: [a,b] 畫函數，例如 " +
+  '{"label":"y = x²","function":"x^2","domain":[-3,3]}；bar 用 categories: ["甲","乙"]' +
+  "搭配每個 series 的 values: [數值,...]，數值個數要與 categories 相同。" +
+  "function 可用 x、pi、e、+ - * / ^、括號，以及 sin、cos、tan、sqrt、abs、exp、ln、" +
+  "log（以 10 為底），乘法請寫 *。最多 6 條 series，每個 chart 區塊只畫一張圖；" +
+  "只有圖能幫助理解時才畫，其餘情況保持純文字。JSON 不要加註解或結尾逗號。";
 
 export function buildTutorMessages(question, history = []) {
   const type = question?.type || "未提供";
@@ -204,7 +218,7 @@ export async function askTutor(
         model: config.model,
         messages: buildTutorMessages(question, turns),
         temperature: 0.2,
-        max_tokens: 900,
+        max_tokens: 1600,
       }),
       signal: AbortSignal.timeout(60_000),
     });

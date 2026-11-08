@@ -141,8 +141,30 @@ test("the Ask AI button is practice-only and posts a plain-text question", async
   assert.match(page, /const persist = \(\) => writeAiChat\(/);
   assert.match(page, /if \(chatState\.pending\) return chatState\.pending;/);
   assert.match(page, /history: trimHistory\(historyMessages\(\)\)/);
+  // Answers can carry LaTeX and charts, but provider text never becomes markup:
+  // KaTeX runs with trust disabled, charts are built from validated JSON.
+  assert.match(page, /function renderAiAnswer\(/);
+  assert.match(page, /function loadKatex\(/);
+  assert.match(page, /\/vendor\/katex\/katex\.min\.js/);
+  assert.match(page, /trust: false/);
+  assert.match(page, /function parseAiChart\(/);
+  assert.match(page, /function compileAiExpression\(/);
+  assert.match(page, /function renderAiChart\(/);
+  assert.match(page, /if \(role === "ai"\) renderAiAnswer\(node, text\);/);
   // Handing the paper in clears the saved dialogue for that exam.
   assert.match(page, /submitted = true;[\s\S]*?clearAiChats\(examId\);/);
+});
+
+test("the AI answer renderer ships KaTeX locally for the self-only CSP", async () => {
+  const script = await readFile(
+    new URL("../public/vendor/katex/katex.min.js", import.meta.url),
+  );
+  const styles = await read(
+    "../public/vendor/katex/katex.min.css",
+  );
+  assert.ok(script.length > 100_000);
+  assert.match(styles, /KaTeX_Main-Regular\.woff2/);
+  assert.doesNotMatch(styles, /\.woff\) format\("woff"\)/);
 });
 
 test("the AI provider settings live on the TronClass page", async () => {

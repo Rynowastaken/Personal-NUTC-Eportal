@@ -486,6 +486,7 @@ button.row:first-child { border-top: 0; }
 html.modal-open { overflow: hidden; }
 html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 .ai-chat { position: relative; display: grid; gap: 10px; max-height: 55vh; overflow: auto; padding-right: 2px; }
+.ai-chat > * { min-width: 0; }
 .ai-answer, .ai-turn { white-space: pre-wrap; line-height: 1.7; color: var(--soft); overflow-wrap: anywhere; }
 .ai-turn.user { justify-self: end; max-width: 92%; padding: 9px 12px; border: 1px solid var(--primary-ring); border-radius: var(--radius); background: var(--primary-soft); color: var(--text); }
 .ai-turn.ai { padding: 9px 12px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--sunken); }
@@ -515,6 +516,37 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 .ai-loading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .ai-loading .i { animation: ai-spin 1.1s linear infinite; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
+.ai-math { color: inherit; }
+.ai-math-display { margin: 10px 0; overflow-x: auto; overflow-y: hidden; }
+.ai-math .katex { font-size: 1.05em; }
+.ai-math-display .katex-display { margin: 0; }
+.ai-code {
+  margin: 10px 0; padding: 10px 12px; border: 1px solid var(--edge); border-radius: var(--radius);
+  background: var(--bg); color: var(--soft); white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ai-chart { margin: 12px 0 4px; white-space: normal; min-width: 0; }
+.ai-chart-plot { overflow-x: auto; overflow-y: hidden; }
+.ai-chart-plot svg { display: block; width: 100%; min-width: 480px; height: auto; }
+.ai-chart-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 4px; }
+.ai-chart-title { color: var(--text); font-size: 13px; font-weight: 600; line-height: 20px; }
+.ai-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 11px; line-height: 18px; }
+.ai-chart-key { display: inline-flex; align-items: center; gap: 5px; }
+.ai-chart-key .swatch { width: 8px; height: 8px; flex: none; border-radius: 2px; background: var(--series, var(--primary)); }
+.ai-chart-axis { stroke: var(--edge-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ai-chart-grid-line { stroke: var(--edge); stroke-width: 1; stroke-dasharray: 3 5; vector-effect: non-scaling-stroke; }
+.ai-chart-zero { stroke: var(--edge-strong); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.ai-chart-tick { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ai-chart-label { fill: var(--faint); font-size: 10.5px; letter-spacing: .02em; }
+.ai-chart-line { fill: none; stroke: var(--series, var(--primary)); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.ai-chart-dot { fill: var(--series, var(--primary)); }
+.ai-chart-bar { fill: var(--series, var(--primary)); }
+.ai-chart .s0 { --series: var(--primary); }
+.ai-chart .s1 { --series: var(--accent); }
+.ai-chart .s2 { --series: var(--success); }
+.ai-chart .s3 { --series: #8fc7e8; }
+.ai-chart .s4 { --series: var(--danger); }
+.ai-chart .s5 { --series: #c5a3ef; }
 .q-tools { display: flex; justify-content: flex-end; margin-top: 12px; }
 .q-ai { color: var(--primary); }
 .q-ai.btn.ghost, .q-ai.btn.ghost:hover { color: var(--primary); }
@@ -824,6 +856,647 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     } catch {
       // Storage unavailable: only the persisted copy is lost.
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rich AI answers: LaTeX and charts
+  //
+  // The provider's answer is untrusted text. Math is rendered by the locally
+  // vendored KaTeX with trust disabled, charts come from a validated JSON
+  // specification built with DOM/SVG nodes, and everything else stays a text
+  // node, so provider output never becomes markup.
+
+  const KATEX_SCRIPT = "/vendor/katex/katex.min.js";
+  const KATEX_STYLES = "/vendor/katex/katex.min.css";
+  let katexLoading = null;
+  function loadKatex() {
+    if (window.katex && typeof window.katex.renderToString === "function") return Promise.resolve(window.katex);
+    if (katexLoading) return katexLoading;
+    katexLoading = new Promise((resolve) => {
+      if (!document.querySelector("link[data-ai-katex]")) {
+        const link = h("link", { rel: "stylesheet", href: KATEX_STYLES });
+        link.dataset.aiKatex = "";
+        document.head.append(link);
+      }
+      const script = h("script", { src: KATEX_SCRIPT, async: true });
+      script.dataset.aiKatex = "";
+      script.addEventListener(
+        "load",
+        () => resolve(window.katex && typeof window.katex.renderToString === "function" ? window.katex : null),
+        { once: true },
+      );
+      script.addEventListener("error", () => resolve(null), { once: true });
+      document.head.append(script);
+    });
+    return katexLoading;
+  }
+
+  function aiMathNode(tex, display) {
+    const node = h(display ? "div" : "span", { class: display ? "ai-math ai-math-display" : "ai-math" });
+    // Show the raw TeX until KaTeX is ready, and keep it if it never is.
+    node.textContent = tex;
+    void loadKatex().then((katex) => {
+      if (!katex || !node.isConnected) return;
+      try {
+        node.innerHTML = katex.renderToString(tex, {
+          displayMode: display,
+          throwOnError: false,
+          strict: "ignore",
+          trust: false,
+          output: "html",
+          maxSize: 12,
+          maxExpand: 400,
+        });
+        node.classList.add("ai-math-ready");
+      } catch {
+        // The raw TeX stays visible when an expression cannot be rendered.
+      }
+    });
+    return node;
+  }
+
+  // CJK and full-width punctuation mean a `$...$` pair is money, not math.
+  const AI_MATH_REJECT = /[　-〿㐀-鿿＀-￯]/;
+  function inlineMathTex(raw) {
+    if (!raw || raw !== raw.trim() || raw.length > 300) return "";
+    if (AI_MATH_REJECT.test(raw)) return "";
+    if (!/[0-9A-Za-z\\^_=+\-*/()]/.test(raw)) return "";
+    return raw;
+  }
+
+  // Arithmetic for chart functions. This is a parser, not eval: no property
+  // access, no identifiers beyond x, the constants and the listed functions.
+  const AI_CHART_FUNCTIONS = {
+    sin: Math.sin,
+    cos: Math.cos,
+    tan: Math.tan,
+    asin: Math.asin,
+    acos: Math.acos,
+    atan: Math.atan,
+    sqrt: Math.sqrt,
+    abs: Math.abs,
+    exp: Math.exp,
+    ln: Math.log,
+    log: (value) => Math.log10(value),
+    floor: Math.floor,
+    ceil: Math.ceil,
+  };
+  function compileAiExpression(source) {
+    const text = String(source || "");
+    const tokens = [];
+    let index = 0;
+    while (index < text.length) {
+      const rest = text.slice(index);
+      if (/^\s+/.test(rest)) {
+        index += /^\s+/.exec(rest)[0].length;
+        continue;
+      }
+      const number = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest);
+      if (number) {
+        tokens.push({ type: "number", value: Number(number[0]) });
+        index += number[0].length;
+        continue;
+      }
+      const name = /^[A-Za-z]+/.exec(rest);
+      if (name) {
+        tokens.push({ type: "name", value: name[0].toLowerCase() });
+        index += name[0].length;
+        continue;
+      }
+      const symbol = text[index];
+      if ("+-*/^()".includes(symbol)) {
+        tokens.push({ type: symbol });
+        index += 1;
+        continue;
+      }
+      throw new Error("Unsupported chart expression.");
+    }
+    if (!tokens.length || tokens.length > 200) throw new Error("Empty chart expression.");
+
+    let position = 0;
+    const peek = () => tokens[position];
+    const eat = (type) => (peek() && peek().type === type ? tokens[position++] : null);
+    function primary() {
+      const token = peek();
+      if (!token) throw new Error("Unexpected end of chart expression.");
+      if (token.type === "number") {
+        position += 1;
+        return () => token.value;
+      }
+      if (token.type === "name") {
+        position += 1;
+        if (token.value === "x") return (x) => x;
+        if (token.value === "pi") return () => Math.PI;
+        if (token.value === "e") return () => Math.E;
+        const fn = AI_CHART_FUNCTIONS[token.value];
+        if (!fn) throw new Error("Unknown chart function.");
+        if (!eat("(")) throw new Error("Missing chart function parenthesis.");
+        const argument = expression();
+        if (!eat(")")) throw new Error("Missing chart function parenthesis.");
+        return (x) => fn(argument(x));
+      }
+      if (eat("(")) {
+        const inner = expression();
+        if (!eat(")")) throw new Error("Missing chart parenthesis.");
+        return inner;
+      }
+      throw new Error("Unexpected chart token.");
+    }
+    function unary() {
+      if (eat("-")) {
+        const inner = unary();
+        return (x) => -inner(x);
+      }
+      if (eat("+")) return unary();
+      return power();
+    }
+    function power() {
+      const base = primary();
+      if (!eat("^")) return base;
+      const exponent = unary();
+      return (x) => Math.pow(base(x), exponent(x));
+    }
+    function term() {
+      let left = unary();
+      for (;;) {
+        if (eat("*")) {
+          const right = unary();
+          const before = left;
+          left = (x) => before(x) * right(x);
+          continue;
+        }
+        if (eat("/")) {
+          const right = unary();
+          const before = left;
+          left = (x) => before(x) / right(x);
+          continue;
+        }
+        const next = peek();
+        // Implicit multiplication: 2x, 3(x+1), x(x-1).
+        if (next && (next.type === "number" || next.type === "name" || next.type === "(")) {
+          const right = unary();
+          const before = left;
+          left = (x) => before(x) * right(x);
+          continue;
+        }
+        break;
+      }
+      return left;
+    }
+    function expression() {
+      let left = term();
+      for (;;) {
+        if (eat("+")) {
+          const right = term();
+          const before = left;
+          left = (x) => before(x) + right(x);
+          continue;
+        }
+        if (eat("-")) {
+          const right = term();
+          const before = left;
+          left = (x) => before(x) - right(x);
+          continue;
+        }
+        break;
+      }
+      return left;
+    }
+
+    const evaluate = expression();
+    if (position !== tokens.length) throw new Error("Unexpected chart expression tail.");
+    return (x) => {
+      const value = evaluate(x);
+      return Number.isFinite(value) ? value : NaN;
+    };
+  }
+
+  const AI_CHART_MAX_SERIES = 6;
+  const AI_CHART_MAX_POINTS = 200;
+  const AI_CHART_SAMPLES = 241;
+  function aiChartNumber(value) {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+  function aiChartText(value, max) {
+    return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
+  }
+  function sampleAiFunction(source, domain) {
+    const fn = compileAiExpression(source);
+    const points = [];
+    for (let step = 0; step < AI_CHART_SAMPLES; step += 1) {
+      const x = domain[0] + ((domain[1] - domain[0]) * step) / (AI_CHART_SAMPLES - 1);
+      const y = fn(x);
+      if (Number.isFinite(y)) points.push([x, y]);
+    }
+    return points;
+  }
+
+  function parseAiChart(raw) {
+    let spec;
+    try {
+      spec = JSON.parse(String(raw || "").trim());
+    } catch {
+      return null;
+    }
+    if (!spec || typeof spec !== "object" || Array.isArray(spec)) return null;
+    const type = ["line", "bar", "scatter"].includes(spec.type) ? spec.type : "line";
+    const base = {
+      type,
+      title: aiChartText(spec.title, 120),
+      xLabel: aiChartText(spec.xLabel, 40),
+      yLabel: aiChartText(spec.yLabel, 40),
+    };
+    const rawSeries = Array.isArray(spec.series) ? spec.series.slice(0, AI_CHART_MAX_SERIES) : [];
+
+    if (type === "bar") {
+      const categories =
+        Array.isArray(spec.categories) && spec.categories.length <= 12
+          ? spec.categories.map((value) => aiChartText(value, 24))
+          : [];
+      if (!categories.length || categories.some((value) => !value)) return null;
+      const series = [];
+      for (const item of rawSeries) {
+        if (!item || typeof item !== "object") continue;
+        const values = Array.isArray(item.values) ? item.values.slice(0, categories.length) : [];
+        if (values.length !== categories.length || !values.every(aiChartNumber)) continue;
+        series.push({ label: aiChartText(item.label, 60) || `系列 ${series.length + 1}`, values });
+      }
+      return series.length ? { ...base, categories, series } : null;
+    }
+
+    const series = [];
+    for (const item of rawSeries) {
+      if (!item || typeof item !== "object") continue;
+      const label = aiChartText(item.label, 60) || `系列 ${series.length + 1}`;
+      if (Array.isArray(item.points)) {
+        const points = item.points
+          .slice(0, AI_CHART_MAX_POINTS)
+          .map((point) => (Array.isArray(point) && point.length >= 2 ? [Number(point[0]), Number(point[1])] : null))
+          .filter((point) => point && aiChartNumber(point[0]) && aiChartNumber(point[1]));
+        points.sort((a, b) => a[0] - b[0]);
+        if (points.length) series.push({ label, points });
+        continue;
+      }
+      if (typeof item.function === "string" && item.function.length <= 200) {
+        const domain = Array.isArray(item.domain) ? item.domain.map(Number) : [-5, 5];
+        if (
+          domain.length !== 2 ||
+          !domain.every(aiChartNumber) ||
+          domain[0] >= domain[1] ||
+          Math.abs(domain[1] - domain[0]) > 1e6
+        ) {
+          continue;
+        }
+        let points = [];
+        try {
+          points = sampleAiFunction(item.function, domain);
+        } catch {
+          points = [];
+        }
+        if (points.length >= 2) series.push({ label, points, sampled: true });
+      }
+    }
+    return series.length ? { ...base, series } : null;
+  }
+
+  function chartTicks(min, max, count) {
+    const span = max - min;
+    if (!(span > 0)) return { step: 1, ticks: [min] };
+    const rough = span / Math.max(1, count);
+    const power = Math.pow(10, Math.floor(Math.log10(rough)));
+    const norm = rough / power;
+    const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * power;
+    const ticks = [];
+    const start = Math.ceil(min / step) * step;
+    for (let value = start; value <= max + step * 1e-9 && ticks.length < 64; value += step) {
+      ticks.push(Number(value.toFixed(12)));
+    }
+    return { step, ticks };
+  }
+  function formatChartTick(value, step) {
+    if (!Number.isFinite(value)) return "";
+    if (Math.abs(value) < Math.abs(step) * 1e-6) return "0";
+    const abs = Math.abs(value);
+    if (abs >= 1e6 || abs < 1e-4) return value.toExponential(1).replace("e+", "e");
+    const decimals = Math.max(0, Math.min(4, -Math.floor(Math.log10(step))));
+    return value.toFixed(decimals).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+  }
+  function chartQuantile(values, q) {
+    if (!values.length) return 0;
+    const sorted = values.slice().sort((a, b) => a - b);
+    const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * q)));
+    return sorted[index];
+  }
+  function padChartRange(min, max, ratio = 0.06) {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    if (min === max) {
+      const delta = Math.abs(min) > 1 ? Math.abs(min) * 0.2 : 1;
+      return [min - delta, max + delta];
+    }
+    const pad = (max - min) * ratio;
+    return [min - pad, max + pad];
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs) {
+    const node = document.createElementNS(SVG_NS, tag);
+    if (attrs) {
+      for (const [key, value] of Object.entries(attrs)) {
+        if (value != null && value !== false) node.setAttribute(key, value);
+      }
+    }
+    return node;
+  }
+
+  let aiChartSerial = 0;
+  function renderAiChart(spec) {
+    const width = 640;
+    const height = 300;
+    const pad = { left: 52, right: 16, top: 26, bottom: 46 };
+    const plot = {
+      x: pad.left,
+      y: pad.top,
+      w: width - pad.left - pad.right,
+      h: height - pad.top - pad.bottom,
+    };
+    const bar = spec.type === "bar";
+    let xMin = 0;
+    let xMax = 1;
+    const yValues = [];
+
+    if (bar) {
+      xMin = 0;
+      xMax = spec.categories.length;
+      yValues.push(0);
+      for (const item of spec.series) yValues.push(...item.values);
+    } else {
+      const xs = [];
+      for (const item of spec.series) {
+        for (const point of item.points) xs.push(point[0]);
+        if (item.sampled) {
+          // A tangent's asymptote must not flatten the visible curve.
+          const local = item.points.map((point) => point[1]);
+          yValues.push(chartQuantile(local, 0.02), chartQuantile(local, 0.98));
+        } else {
+          for (const point of item.points) yValues.push(point[1]);
+        }
+      }
+      if (!xs.length || !yValues.length) return null;
+      xMin = Math.min(...xs);
+      xMax = Math.max(...xs);
+    }
+    if (!yValues.length) return null;
+
+    const [x0, x1] = bar ? [xMin - 0.5, xMax - 0.5] : padChartRange(xMin, xMax, 0.04);
+    const [y0, y1] = padChartRange(Math.min(...yValues), Math.max(...yValues), 0.08);
+    const xTicks = chartTicks(x0, x1, bar ? spec.categories.length : 6);
+    const yTicks = chartTicks(y0, y1, 5);
+    const sx = (value) => plot.x + ((value - x0) / (x1 - x0 || 1)) * plot.w;
+    const sy = (value) => plot.y + plot.h - ((value - y0) / (y1 - y0 || 1)) * plot.h;
+
+    const figure = h("figure", { class: "ai-chart", role: "img" });
+    figure.setAttribute(
+      "aria-label",
+      `${spec.title || "圖表"}${spec.series?.length ? `：${spec.series.map((item) => item.label).join("、")}` : ""}`,
+    );
+    const head = h("div", { class: "ai-chart-head" });
+    if (spec.title) head.append(h("span", { class: "ai-chart-title" }, spec.title));
+    if (spec.series.length > 1) {
+      const legend = h("div", { class: "ai-chart-legend" });
+      spec.series.forEach((item, index) => {
+        legend.append(
+          h(
+            "span",
+            { class: "ai-chart-key" },
+            h("i", { class: `swatch s${index}` }),
+            h("span", null, item.label),
+          ),
+        );
+      });
+      head.append(legend);
+    }
+    if (head.childNodes.length) figure.append(head);
+
+    const svg = svgEl("svg", {
+      viewBox: `0 0 ${width} ${height}`,
+      preserveAspectRatio: "xMidYMid meet",
+      "aria-hidden": "true",
+      focusable: "false",
+    });
+    const clipId = `ai-chart-clip-${(aiChartSerial += 1)}`;
+    const defs = svgEl("defs");
+    const clip = svgEl("clipPath", { id: clipId });
+    clip.append(svgEl("rect", { x: plot.x, y: plot.y, width: plot.w, height: plot.h }));
+    defs.append(clip);
+    svg.append(defs);
+
+    const grid = svgEl("g", { class: "ai-chart-grid" });
+    for (const tick of yTicks.ticks) {
+      grid.append(
+        svgEl("line", {
+          class: "ai-chart-grid-line",
+          x1: plot.x,
+          x2: plot.x + plot.w,
+          y1: sy(tick),
+          y2: sy(tick),
+        }),
+      );
+      const label = svgEl("text", {
+        class: "ai-chart-tick",
+        x: plot.x - 8,
+        y: sy(tick) + 3.5,
+        "text-anchor": "end",
+      });
+      label.textContent = formatChartTick(tick, yTicks.step);
+      grid.append(label);
+    }
+    if (!bar) {
+      for (const tick of xTicks.ticks) {
+        grid.append(
+          svgEl("line", {
+            class: "ai-chart-grid-line",
+            x1: sx(tick),
+            x2: sx(tick),
+            y1: plot.y,
+            y2: plot.y + plot.h,
+          }),
+        );
+        const label = svgEl("text", {
+          class: "ai-chart-tick",
+          x: sx(tick),
+          y: plot.y + plot.h + 16,
+          "text-anchor": "middle",
+        });
+        label.textContent = formatChartTick(tick, xTicks.step);
+        grid.append(label);
+      }
+    } else {
+      const band = plot.w / spec.categories.length;
+      const maxChars = Math.max(3, Math.floor(band / 11));
+      spec.categories.forEach((category, index) => {
+        const label = svgEl("text", {
+          class: "ai-chart-tick",
+          x: plot.x + band * (index + 0.5),
+          y: plot.y + plot.h + 16,
+          "text-anchor": "middle",
+        });
+        label.textContent =
+          category.length > maxChars ? `${category.slice(0, Math.max(1, maxChars - 1))}…` : category;
+        grid.append(label);
+      });
+    }
+    svg.append(grid);
+
+    svg.append(
+      svgEl("line", {
+        class: "ai-chart-axis",
+        x1: plot.x,
+        x2: plot.x + plot.w,
+        y1: plot.y + plot.h,
+        y2: plot.y + plot.h,
+      }),
+      svgEl("line", {
+        class: "ai-chart-axis",
+        x1: plot.x,
+        x2: plot.x,
+        y1: plot.y,
+        y2: plot.y + plot.h,
+      }),
+    );
+    if (y0 < 0 && y1 > 0) {
+      svg.append(
+        svgEl("line", {
+          class: "ai-chart-zero",
+          x1: plot.x,
+          x2: plot.x + plot.w,
+          y1: sy(0),
+          y2: sy(0),
+        }),
+      );
+    }
+    if (!bar && x0 < 0 && x1 > 0) {
+      svg.append(
+        svgEl("line", {
+          class: "ai-chart-zero",
+          x1: sx(0),
+          x2: sx(0),
+          y1: plot.y,
+          y2: plot.y + plot.h,
+        }),
+      );
+    }
+
+    const drawn = svgEl("g", { "clip-path": `url(#${clipId})` });
+    if (bar) {
+      const band = plot.w / spec.categories.length;
+      const inner = Math.max(6, band * 0.72);
+      const gap = spec.series.length > 1 ? Math.min(4, inner * 0.08) : 0;
+      const barWidth = Math.max(2, (inner - gap * (spec.series.length - 1)) / spec.series.length);
+      const groupWidth = barWidth * spec.series.length + gap * (spec.series.length - 1);
+      spec.series.forEach((item, seriesIndex) => {
+        item.values.forEach((value, categoryIndex) => {
+          const center = plot.x + band * (categoryIndex + 0.5);
+          const left = center - groupWidth / 2 + seriesIndex * (barWidth + gap);
+          const top = Math.min(sy(0), sy(value));
+          const heightPx = Math.abs(sy(value) - sy(0));
+          drawn.append(
+            svgEl("rect", {
+              class: `ai-chart-bar s${seriesIndex}`,
+              x: left,
+              y: top,
+              width: barWidth,
+              height: Math.max(0.5, heightPx),
+              rx: 2,
+            }),
+          );
+        });
+      });
+    } else {
+      spec.series.forEach((item, seriesIndex) => {
+        if (spec.type === "line") {
+          let d = "";
+          for (const [x, y] of item.points) {
+            d += `${d ? "L" : "M"}${sx(x).toFixed(2)} ${sy(y).toFixed(2)}`;
+          }
+          drawn.append(svgEl("path", { class: `ai-chart-line s${seriesIndex}`, d }));
+        }
+        if (spec.type === "scatter" || (spec.type === "line" && !item.sampled && item.points.length <= 30)) {
+          for (const [x, y] of item.points) {
+            drawn.append(
+              svgEl("circle", {
+                class: `ai-chart-dot s${seriesIndex}`,
+                cx: sx(x),
+                cy: sy(y),
+                r: spec.type === "scatter" ? 3.4 : 2.6,
+              }),
+            );
+          }
+        }
+      });
+    }
+    svg.append(drawn);
+
+    if (spec.xLabel) {
+      const label = svgEl("text", {
+        class: "ai-chart-label",
+        x: plot.x + plot.w / 2,
+        y: height - 8,
+        "text-anchor": "middle",
+      });
+      label.textContent = spec.xLabel;
+      svg.append(label);
+    }
+    if (spec.yLabel) {
+      const label = svgEl("text", {
+        class: "ai-chart-label",
+        x: plot.x,
+        y: plot.y - 10,
+        "text-anchor": "start",
+      });
+      label.textContent = spec.yLabel;
+      svg.append(label);
+    }
+    figure.append(h("div", { class: "ai-chart-plot" }, svg));
+    return figure;
+  }
+
+  function renderAiAnswer(host, text) {
+    const fragment = document.createDocumentFragment();
+    const source = String(text || "");
+    const pattern = /```[ \t]*([A-Za-z0-9_-]*)[ \t]*\r?\n([\s\S]*?)```|\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
+    let cursor = 0;
+    let match;
+    while ((match = pattern.exec(source))) {
+      const inline = match[4] !== undefined ? inlineMathTex(match[4]) : "";
+      if (match[4] !== undefined && !inline) {
+        // Not math after all (a price pair, for example). Keep the dollar
+        // sign as text and rescan from just after it.
+        fragment.append(source.slice(cursor, match.index + 1));
+        cursor = match.index + 1;
+        pattern.lastIndex = cursor;
+        continue;
+      }
+      if (match.index > cursor) fragment.append(source.slice(cursor, match.index));
+      if (match[2] !== undefined) {
+        const language = (match[1] || "").toLowerCase();
+        const body = match[2].replace(/^\s*\n|\s+$/g, "");
+        if (language === "chart" || language === "json") {
+          const spec = parseAiChart(body);
+          fragment.append(spec ? renderAiChart(spec) : h("pre", { class: "ai-code" }, body));
+        } else {
+          fragment.append(h("pre", { class: "ai-code" }, body));
+        }
+      } else if (match[3] !== undefined) {
+        const tex = match[3].trim();
+        if (tex) fragment.append(aiMathNode(tex, true));
+        else fragment.append(match[0]);
+      } else {
+        fragment.append(aiMathNode(inline, false));
+      }
+      cursor = pattern.lastIndex;
+    }
+    if (cursor < source.length) fragment.append(source.slice(cursor));
+    host.replaceChildren(fragment);
   }
 
   // Record that a material was opened or a stretch of video was played,
@@ -2915,7 +3588,8 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       };
       const turn = (role, text) => {
         const node = h("div", { class: `ai-turn ${role}` });
-        node.textContent = text;
+        if (role === "ai") renderAiAnswer(node, text);
+        else node.textContent = text;
         chat.append(node);
         return node;
       };

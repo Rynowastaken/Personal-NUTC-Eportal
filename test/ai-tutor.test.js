@@ -193,6 +193,16 @@ test("buildTutorMessages builds the practice-question prompt", () => {
   assert.match(messages[0].content, /選項/);
   assert.match(messages[0].content, /建議的答案/);
   assert.match(messages[0].content, /繁體中文/);
+  // The tutor is taught the answer format the page can render: LaTeX math and
+  // chart blocks with a strict JSON shape.
+  assert.match(messages[0].content, /LaTeX/);
+  assert.match(messages[0].content, /\$\.\.\.\$/);
+  assert.match(messages[0].content, /```chart/);
+  assert.match(messages[0].content, /"type":"line"/);
+  assert.match(messages[0].content, /points: \[\[x,y\],\.\.\.\]/);
+  assert.match(messages[0].content, /domain: \[a,b\]/);
+  assert.match(messages[0].content, /categories/);
+  assert.match(messages[0].content, /最多 6 條 series/);
 
   assert.equal(messages[1].role, "user");
   assert.match(messages[1].content, /題型：single_selection/);
@@ -322,7 +332,7 @@ test("askTutor calls opencode-go with auth and session headers", async () => {
   assert.equal(captured.headers["x-opencode-session"], "portal-session");
   assert.equal(captured.body.model, "deepseek-v4.1-flash");
   assert.equal(captured.body.temperature, 0.2);
-  assert.equal(captured.body.max_tokens, 900);
+  assert.equal(captured.body.max_tokens, 1600);
   assert.equal(captured.body.messages[0].role, "system");
   assert.equal(captured.body.messages[1].role, "user");
   assert.ok(captured.init.signal, "a 60 s timeout signal is attached");
