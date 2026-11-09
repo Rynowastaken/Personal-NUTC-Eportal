@@ -311,8 +311,8 @@
         hourCycle: "h23",
       }).format(new Date()),
     );
-    if (hour < 11) return "早安";
-    if (hour < 18) return "午安";
+    if (hour >= 5 && hour < 11) return "早安";
+    if (hour >= 11 && hour < 18) return "午安";
     return "晚安";
   }
 
