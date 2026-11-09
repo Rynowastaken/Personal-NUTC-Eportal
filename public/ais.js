@@ -462,13 +462,20 @@
     return h("span", { class: `chip${tone ? ` ${tone}` : ""}` }, label);
   }
 
-  function metaRow(parts) {
+  function metaRow(parts, className = "") {
     return h(
       "div",
-      { class: "meta-row" },
+      { class: `meta-row${className ? ` ${className}` : ""}` },
       parts
         .filter((part) => part != null && part !== "")
-        .map((part, index) => [index ? h("span", { class: "dot", "aria-hidden": "true" }) : null, part]),
+        .map((part, index) =>
+          h(
+            "span",
+            { class: "meta-part" },
+            index ? h("span", { class: "dot", "aria-hidden": "true" }) : null,
+            part,
+          ),
+        ),
     );
   }
 
@@ -1448,10 +1455,9 @@
           "div",
           { style: "min-width:0" },
           h("div", { class: "profile-name" }, profile.name || "—"),
-          h(
-            "div",
-            { class: "profile-meta" },
-            [profile.studentId, profile.division, profile.className].filter(Boolean).join(" · "),
+          metaRow(
+            [profile.studentId, profile.division, profile.className],
+            "profile-meta",
           ),
         ),
         profile.gender ? chip(profile.gender, "accent") : null,
