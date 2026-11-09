@@ -115,6 +115,8 @@
     check: '<path d="M20 6 9 17l-5-5"/>',
     clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+    "eye-off": '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   };
@@ -307,6 +309,29 @@
     return "晚安";
   }
 
+  const PRIVACY_KEY = "eportal.ais.privacy.v1";
+
+  function privacyHidden() {
+    try {
+      return localStorage.getItem(PRIVACY_KEY) !== "shown";
+    } catch {
+      return true;
+    }
+  }
+
+  function setPrivacyHidden(hidden) {
+    try {
+      localStorage.setItem(PRIVACY_KEY, hidden ? "hidden" : "shown");
+    } catch {
+      // The choice still applies to this render when storage is unavailable.
+    }
+    render();
+  }
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === PRIVACY_KEY) scheduleRender();
+  });
+
   function courseTone(name) {
     let hash = 0;
     for (const char of String(name || "")) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
@@ -411,15 +436,30 @@
 
   function renderMenu() {
     const profile = overviewData?.profile;
+    const hidden = privacyHidden();
     menu.replaceChildren(
       h(
         "div",
         { class: "menu-note" },
-        profile?.name ? `${profile.name}${profile.gender ? ` · ${profile.gender}` : ""}` : "NUTC 學生管理",
-        h("br"),
-        profile?.studentId || "資料由 AIS 提供",
+        hidden
+          ? ["隱私模式已開啟", h("br"), "個人資訊已隱藏"]
+          : [
+              profile?.name ? `${profile.name}${profile.gender ? ` · ${profile.gender}` : ""}` : "NUTC 學生管理",
+              h("br"),
+              profile?.studentId || "資料由 AIS 提供",
+            ],
       ),
       h("a", { href: "/", role: "menuitem" }, icon("home"), "回到 Portal"),
+      h(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          onclick: () => setPrivacyHidden(!hidden),
+        },
+        icon(hidden ? "eye" : "eye-off"),
+        hidden ? "顯示個人資訊" : "隱藏個人資訊",
+      ),
       h(
         "button",
         {
@@ -543,20 +583,33 @@
       [profile?.division, profile?.className].filter(Boolean).join(" ") || null,
       data.progress?.program || null,
     ];
+    const hidden = privacyHidden();
     return h(
       "div",
       { class: "hero" },
       h(
         "div",
         null,
-        h("h1", null, `${greeting()}，${name}`),
-        metaRow(parts),
+        h("h1", null, hidden ? greeting() : `${greeting()}，${name}`),
+        hidden
+          ? h("div", { class: "hero-private" }, icon("eye-off"), h("span", null, "個人資訊已隱藏"))
+          : metaRow(parts),
       ),
       h(
         "div",
         { class: "hero-side" },
         h("div", { class: "hero-date" }, todayLabel()),
         h("div", { class: "hero-term" }, data.termLabel || "目前學期"),
+        h(
+          "button",
+          {
+            class: "hero-privacy",
+            type: "button",
+            onclick: () => setPrivacyHidden(!hidden),
+          },
+          icon(hidden ? "eye" : "eye-off"),
+          hidden ? "顯示個人資訊" : "隱藏個人資訊",
+        ),
       ),
     );
   }
@@ -1441,6 +1494,28 @@
           { class: "notice" },
           icon("alert"),
           h("span", null, data.errors?.profile || "個人資料暫時無法讀取，請稍後重新整理。"),
+        ),
+      ];
+    }
+
+    if (privacyHidden()) {
+      return [
+        pageHead("個人資料", ["隱私模式已開啟"]),
+        h(
+          "div",
+          { class: "notice" },
+          icon("eye-off"),
+          h("span", null, "個人資料已隱藏。需要查看時再顯示。"),
+        ),
+        h(
+          "div",
+          { class: "actions" },
+          h(
+            "button",
+            { class: "btn primary", type: "button", onclick: () => setPrivacyHidden(false) },
+            icon("eye"),
+            "顯示個人資料",
+          ),
         ),
       ];
     }

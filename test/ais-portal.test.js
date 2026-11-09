@@ -70,6 +70,18 @@ test("the AIS page follows the dashboard theme and sanitizes announcement HTML",
   assert.match(page, /rel", "noopener noreferrer"/);
 });
 
+test("the AIS identity is hidden until the student chooses to show it", async () => {
+  const page = await read("../public/ais.js");
+  assert.match(page, /const PRIVACY_KEY = "eportal\.ais\.privacy\.v1"/);
+  assert.match(page, /function privacyHidden\(\)/);
+  assert.match(page, /localStorage\.getItem\(PRIVACY_KEY\) !== "shown"/);
+  assert.match(page, /hidden \? greeting\(\) : `\$\{greeting\(\)\}，\$\{name\}`/);
+  assert.match(page, /個人資訊已隱藏/);
+  assert.match(page, /顯示個人資訊/);
+  assert.match(page, /隱私模式已開啟/);
+  assert.match(page, /個人資料已隱藏/);
+});
+
 test("the rebuilt AIS pages cover the student tasks the old system scattered", async () => {
   const page = await read("../public/ais.js");
   for (const route of ["schedule", "grades", "absences", "announcements", "profile", "services"]) {

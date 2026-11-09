@@ -158,6 +158,16 @@ button.row:first-child { border-top: 0; }
 .hero-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
 .hero-date { font-size: 14px; font-weight: 500; }
 .hero-term { color: var(--muted); font-size: 13px; }
+.hero-private { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: var(--faint); font-size: 13px; }
+.hero-private .i { width: 15px; height: 15px; }
+.hero-privacy {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-top: 2px; padding: 0 10px;
+  border: 1px solid var(--edge); border-radius: 99px; background: transparent;
+  color: var(--muted); font-size: 12px; cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.hero-privacy:hover { color: var(--text); border-color: var(--edge-strong); background: rgba(255,255,255,.04); }
+.hero-privacy .i { width: 14px; height: 14px; }
 @media (max-width: 640px) {
   .hero { grid-template-columns: 1fr; align-items: start; }
   .hero-side { align-items: flex-start; text-align: left; }
