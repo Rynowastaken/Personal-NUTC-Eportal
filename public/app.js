@@ -47,6 +47,14 @@ const accountAvatarButton = document.querySelector("#accountAvatarButton");
 const accountAvatarImage = document.querySelector("#accountAvatarImage");
 const accountAvatarFallback = document.querySelector("#accountAvatarFallback");
 const welcomeUsername = document.querySelector("#welcomeUsername");
+const welcomeGreeting = document.querySelector("#welcomeGreeting");
+
+function dashboardGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "good morning";
+  if (hour >= 12 && hour < 18) return "good afternoon";
+  return "good evening";
+}
 const hitokotoEnabled = document.querySelector("#hitokotoEnabled");
 const hitokotoLanguageDropdown = document.querySelector("#hitokotoLanguageDropdown");
 const hitokotoLanguageSelect = document.querySelector("#hitokotoLanguageSelect");
@@ -332,6 +340,7 @@ function applyAccountProfile(profile = currentAccountProfile) {
   const username = profile?.username?.trim() || "User";
   const avatar = profile?.avatarUrl || "";
 
+  welcomeGreeting.textContent = dashboardGreeting();
   welcomeUsername.textContent = username;
 
   if (avatar) {

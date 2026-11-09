@@ -117,6 +117,7 @@
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
     "eye-off": '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>',
+    spark: '<path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   };
@@ -125,6 +126,12 @@
     const span = document.createElement("span");
     span.innerHTML = `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.file}</svg>`;
     return span.firstChild;
+  }
+
+  function spark() {
+    const svg = icon("spark");
+    svg.classList.add("claude-spark");
+    return svg;
   }
 
   function richText(html) {
@@ -590,7 +597,7 @@
       h(
         "div",
         null,
-        h("h1", null, hidden ? greeting() : `${greeting()}，${name}`),
+        h("h1", null, spark(), " ", hidden ? greeting() : `${greeting()}，${name}`),
         hidden
           ? h("div", { class: "hero-private" }, icon("eye-off"), h("span", null, "個人資訊已隱藏"))
           : metaRow(parts),

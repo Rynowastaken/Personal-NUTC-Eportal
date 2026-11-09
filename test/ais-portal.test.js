@@ -76,6 +76,7 @@ test("the AIS identity is hidden until the student chooses to show it", async ()
   assert.match(page, /function privacyHidden\(\)/);
   assert.match(page, /localStorage\.getItem\(PRIVACY_KEY\) !== "shown"/);
   assert.match(page, /hidden \? greeting\(\) : `\$\{greeting\(\)\}，\$\{name\}`/);
+  assert.match(page, /h\("h1", null, spark\(\), " "/);
   assert.match(page, /個人資訊已隱藏/);
   assert.match(page, /顯示個人資訊/);
   assert.match(page, /隱私模式已開啟/);

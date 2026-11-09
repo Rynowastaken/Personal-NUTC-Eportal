@@ -12,10 +12,12 @@ test("live dashboard has one large personalized welcome heading below the toolba
     "welcome heading must be outside the compact toolbar");
   assert.equal((html.match(/id="welcomeHeading"/g) || []).length, 1);
   assert.equal((html.match(/id="welcomeUsername"/g) || []).length, 1);
+  assert.equal((html.match(/id="welcomeGreeting"/g) || []).length, 1);
   assert.match(html, /<h1 id="welcomeHeading" class="portal-welcome-title">/);
-  assert.match(html, /Welcome: <span id="welcomeUsername">User<\/span>/);
+  assert.match(html, /class="claude-spark" aria-hidden="true"/);
+  assert.match(html, /<span id="welcomeGreeting">hello<\/span>, <span id="welcomeUsername">User<\/span>/);
   assert.match(html, /class="portal-welcome-subtitle">你的校園日常，一眼掌握。<\/p>/);
-  assert.match(html, /首頁會顯示為 Welcome: Username。/);
+  assert.match(html, /首頁會用這個名稱向你打招呼。/);
   assert.match(html, /\/dashboard\.css\?v=\d+/);
   assert.doesNotMatch(html, /Welcome! <span/);
 });
@@ -23,7 +25,10 @@ test("live dashboard has one large personalized welcome heading below the toolba
 test("existing account profile updates the hero username using safe textContent", async () => {
   const app = await read("public/app.js");
   assert.match(app, /const welcomeUsername = document\.querySelector\("#welcomeUsername"\)/);
+  assert.match(app, /const welcomeGreeting = document\.querySelector\("#welcomeGreeting"\)/);
+  assert.match(app, /function dashboardGreeting\(\)/);
   assert.match(app, /function applyAccountProfile\(profile = currentAccountProfile\)/);
+  assert.match(app, /welcomeGreeting\.textContent = dashboardGreeting\(\);/);
   assert.match(app, /welcomeUsername\.textContent = username;/);
   assert.doesNotMatch(app, /welcomeUsername\.innerHTML\s*=/);
 });
