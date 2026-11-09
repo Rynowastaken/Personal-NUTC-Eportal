@@ -85,4 +85,10 @@ test("the rebuilt AIS pages cover the student tasks the old system scattered", a
   assert.match(page, /課程標準/);
   assert.match(page, /缺曠紀錄/);
   assert.match(page, /在 AIS 開啟/);
+  // A service card first authenticates this browser through the portal's
+  // ePortal handoff, then sends the authenticated tab to the chosen AIS page.
+  assert.match(page, /function openAisService/);
+  assert.match(page, /window\.open\("\/go\/ais"/);
+  assert.match(page, /popup\.location\.replace\(target\)/);
+  assert.match(page, /首次開啟會先完成 ePortal 登入/);
 });

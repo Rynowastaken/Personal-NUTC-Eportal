@@ -1486,6 +1486,49 @@
     ["外部連結", "WebMail、教學資源與其他服務", "/student/apps/ex_services.aspx", "external"],
   ];
 
+  function openAisService(event, path) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+
+    const popup = window.open("/go/ais", "_blank");
+    if (!popup) {
+      // A blocked popup still gets a working AIS handoff in this tab.
+      location.assign("/go/ais");
+      return;
+    }
+
+    const target = `${AIS}${path}`;
+    const started = Date.now();
+    let crossOriginAt = 0;
+    const timer = setInterval(() => {
+      if (popup.closed || Date.now() - started > 30_000) {
+        clearInterval(timer);
+        return;
+      }
+
+      let onPortal = true;
+      try {
+        // Reading the location of a same-origin launch page succeeds; AIS is
+        // cross-origin, so the throw marks the completed SSO handoff.
+        void popup.location.href;
+      } catch {
+        onPortal = false;
+      }
+      if (onPortal) return;
+
+      if (!crossOriginAt) crossOriginAt = Date.now();
+      if (Date.now() - crossOriginAt < 3_000) return;
+
+      clearInterval(timer);
+      try {
+        popup.location.replace(target);
+      } catch {
+        // The handoff tab keeps the new AIS session from the SSO redirect.
+        popup.location.href = target;
+      }
+    }, 400);
+  }
+
   async function viewServices() {
     setTitle("服務");
     renderMenu();
@@ -1499,7 +1542,13 @@
           SERVICES.map(([title, sub, path, iconName]) =>
             h(
               "a",
-              { class: "service", href: `${AIS}${path}`, target: "_blank", rel: "noopener" },
+              {
+                class: "service",
+                href: "/go/ais",
+                target: "_blank",
+                rel: "noopener",
+                onclick: (event) => openAisService(event, path),
+              },
               h("span", { class: "service-icon" }, icon(iconName)),
               h("span", { class: "service-title" }, title),
               h("span", { class: "service-sub" }, sub),
@@ -1512,7 +1561,7 @@
         "div",
         { class: "notice", style: "margin-top:20px" },
         icon("alert"),
-        h("span", null, "這些功能仍由原 AIS 提供；若開啟後被導向登入頁，請直接使用 AIS 帳號登入。"),
+        h("span", null, "這些功能仍由原 AIS 提供；首次開啟會先完成 ePortal 登入，再前往所選功能。"),
       ),
     ];
   }
@@ -1657,6 +1706,13 @@
     for (const [name, link] of navLinks) {
       if (route.name === name) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
+    }
+    const currentLink = navLinks.get(route.name);
+    if (currentLink) {
+      const left = currentLink.offsetLeft;
+      if (left < nav.scrollLeft || left + currentLink.offsetWidth > nav.scrollLeft + nav.clientWidth) {
+        nav.scrollLeft = Math.max(0, left - 8);
+      }
     }
 
     main.classList.remove("enter");
