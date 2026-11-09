@@ -259,6 +259,31 @@
     return classes;
   }
 
+  function todayBlocks(schedule) {
+    const blocks = [];
+    for (const item of todayClasses(schedule)) {
+      const last = blocks[blocks.length - 1];
+      const sameCourse =
+        last &&
+        last.course.name === item.course.name &&
+        (last.course.room || "") === (item.course.room || "");
+      if (sameCourse) {
+        last.slots.push(item.slot);
+        last.endText = item.endText;
+        last.end = item.end;
+        last.current = last.current || item.current;
+      } else {
+        blocks.push({ ...item, slots: [item.slot] });
+      }
+    }
+    return blocks;
+  }
+
+  function blockLabel(block) {
+    if (block.slots.length <= 1) return `第 ${block.slots[0]} 節`;
+    return `第 ${block.slots[0]}–${block.slots[block.slots.length - 1]} 節`;
+  }
+
   function todayLabel() {
     return new Intl.DateTimeFormat("zh-TW", {
       timeZone: TZ,
@@ -529,9 +554,10 @@
   }
 
   function overviewStats(data) {
-    const today = todayClasses(data.schedule);
-    const current = today.find((item) => item.current);
-    const next = current || today.find((item) => item.start != null && item.start > nowMinutes());
+    const periods = todayClasses(data.schedule);
+    const blocks = todayBlocks(data.schedule);
+    const current = periods.find((item) => item.current);
+    const next = current || periods.find((item) => item.start != null && item.start > nowMinutes());
     const progress = data.progress;
     const requirements = progress?.requirements || {};
     const earned = progress?.earned || {};
@@ -545,14 +571,14 @@
       { class: "stat-grid" },
       statCard({
         label: "今天課程",
-        value: today.length,
-        unit: "堂",
+        value: blocks.length,
+        unit: "門",
         sub: next
           ? current
             ? `現在 ${next.course.name}`
             : `下一堂 ${next.startText} ${next.course.name}`
-          : today.length
-            ? "今天的課都結束了"
+          : blocks.length
+            ? `共 ${periods.length} 節，已結束`
             : "今天沒有課",
         iconName: "calendar",
       }),
@@ -580,7 +606,7 @@
   }
 
   function todaySection(data) {
-    const classes = todayClasses(data.schedule);
+    const blocks = todayBlocks(data.schedule);
     let content;
     if (!data.schedule) {
       content = h(
@@ -594,13 +620,13 @@
           data.errors?.schedule || "請稍後重新整理。",
         ),
       );
-    } else if (!classes.length) {
+    } else if (!blocks.length) {
       content = h("div", { class: "list" }, emptyBlock("今天沒有課", "好好休息，或先看看接下來的作業。", "check"));
     } else {
       content = h(
         "div",
         { class: "list" },
-        classes.map((item) =>
+        blocks.map((item) =>
           h(
             "button",
             {
@@ -620,14 +646,14 @@
               h("div", { class: "row-title" }, item.course.name),
               h("div", { class: "row-sub" }, [item.course.teacher, item.course.room].filter(Boolean).join(" · ") || "—"),
             ),
-            h("span", { class: "row-end" }, item.current ? chip("現在", "accent") : chip(`第 ${item.slot} 節`)),
+            h("span", { class: "row-end" }, item.current ? chip("現在", "accent") : chip(blockLabel(item))),
           ),
         ),
       );
     }
 
     return section("今天的課", content, {
-      count: classes.length || null,
+      count: blocks.length || null,
       action: h("a", { class: "btn ghost small", href: hrefFor("schedule") }, "整週課表", icon("right")),
     });
   }
@@ -1154,6 +1180,11 @@
     const summary = data.absences?.summary || {};
     const leaveTypes = summary.leaveTypes || {};
     const leaveEntries = Object.entries(leaveTypes).filter(([, value]) => Number(value) > 0);
+    const conduct = summary.conduct && summary.conduct !== "---" ? summary.conduct : "";
+    const chips = [
+      ...leaveEntries.map(([label, value]) => chip(`${label} ${value}`, "soon")),
+      conduct ? chip(`操行 ${conduct}`, "done") : null,
+    ].filter(Boolean);
 
     return [
       h(
@@ -1162,17 +1193,10 @@
         statCard({ label: "曠課", value: numberOrDash(summary.absent), unit: "節", sub: "每 1 節扣操行 1 分" , iconName: "alert" }),
         statCard({ label: "遲到", value: numberOrDash(summary.late), unit: "節", sub: "每 1 節扣 0.5 分" , iconName: "clock" }),
         statCard({ label: "早退", value: numberOrDash(summary.earlyLeave), unit: "節", sub: "每 1 節扣 0.5 分" , iconName: "clock" }),
-        statCard({ label: "請假", value: numberOrDash(summary.leaveTotal), unit: "節", sub: `操行 ${summary.conduct || "—"}` , iconName: "clipboard" }),
+        statCard({ label: "請假", value: numberOrDash(summary.leaveTotal), unit: "節", sub: conduct ? `操行 ${conduct}` : "本學期累計" , iconName: "clipboard" }),
       ),
-      h(
-        "div",
-        { class: "leave-chips" },
-        leaveEntries.length
-          ? leaveEntries.map(([label, value]) => chip(`${label} ${value}`, "soon"))
-          : chip("這學期沒有請假紀錄", "muted"),
-        summary.conduct && summary.conduct !== "---" ? chip(`操行 ${summary.conduct}`, "done") : null,
-      ),
-    ];
+      chips.length ? h("div", { class: "leave-chips" }, chips) : null,
+    ].filter(Boolean);
   }
 
   async function viewAbsences() {

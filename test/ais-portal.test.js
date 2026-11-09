@@ -76,6 +76,10 @@ test("the rebuilt AIS pages cover the student tasks the old system scattered", a
     assert.match(page, new RegExp(`${route}: view`));
   }
   assert.match(page, /今天的課/);
+  assert.match(page, /function todayBlocks/);
+  assert.match(page, /blockLabel\(item\)/);
+  assert.match(page, /共 \$\{periods\.length\} 節/);
+  assert.match(page, /本學期累計/);
   assert.match(page, /畢業學分/);
   assert.match(page, /修業進度/);
   assert.match(page, /課程標準/);

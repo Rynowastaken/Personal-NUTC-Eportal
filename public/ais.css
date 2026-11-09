@@ -171,7 +171,7 @@ button.row:first-child { border-top: 0; }
 .stat-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--faint); font-size: 12px; }
 .stat-top .i { width: 16px; height: 16px; color: var(--muted); }
 .stat-value { margin-top: 8px; font-size: 28px; font-weight: 300; line-height: 1.15; letter-spacing: -.03em; }
-.stat-value small { margin-left: 4px; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.stat-value small { margin-left: 6px; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
 .stat-sub { margin-top: auto; padding-top: 8px; color: var(--muted); font-size: 12.5px; line-height: 1.45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 860px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 400px) { .stat-value { font-size: 24px; } }
