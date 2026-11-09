@@ -46,6 +46,7 @@
     const link = event.target.closest("a[href]");
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (link.target === "_blank" || link.hasAttribute("download")) return;
+    if (link.target && link.target !== "_self") return;
     const url = new URL(link.href, location.origin);
     if (url.origin !== location.origin || !matchRoute(url)) return;
     event.preventDefault();
@@ -1488,45 +1489,52 @@
 
   function openAisService(event, path) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
 
-    const popup = window.open("/go/ais", "_blank");
-    if (!popup) {
-      // A blocked popup still gets a working AIS handoff in this tab.
-      location.assign("/go/ais");
-      return;
-    }
+    // The anchor itself opens the named AIS tab, so the browser's own
+    // navigation is never treated as a blocked popup. Keep that tab's handle,
+    // wait for the SSO handoff, then send it to the chosen service page.
+    setTimeout(() => {
+      const popup = window.open("", "ais-service");
+      if (!popup) return;
 
-    const target = `${AIS}${path}`;
-    const started = Date.now();
-    let crossOriginAt = 0;
-    const timer = setInterval(() => {
-      if (popup.closed || Date.now() - started > 30_000) {
+      try {
+        if (popup.location.href === "about:blank") popup.location.href = "/go/ais";
+      } catch {
+        // A previous AIS page is already cross-origin; the navigation from the
+        // anchor is still replacing it with the launch page.
+      }
+
+      const target = `${AIS}${path}`;
+      const started = Date.now();
+      let crossOriginAt = 0;
+      const timer = setInterval(() => {
+        if (popup.closed || Date.now() - started > 30_000) {
+          clearInterval(timer);
+          return;
+        }
+
+        let onPortal = true;
+        try {
+          // Reading the location of a same-origin launch page succeeds; AIS
+          // is cross-origin, so the throw marks the completed SSO handoff.
+          void popup.location.href;
+        } catch {
+          onPortal = false;
+        }
+        if (onPortal) return;
+
+        if (!crossOriginAt) crossOriginAt = Date.now();
+        if (Date.now() - crossOriginAt < 3_000) return;
+
         clearInterval(timer);
-        return;
-      }
-
-      let onPortal = true;
-      try {
-        // Reading the location of a same-origin launch page succeeds; AIS is
-        // cross-origin, so the throw marks the completed SSO handoff.
-        void popup.location.href;
-      } catch {
-        onPortal = false;
-      }
-      if (onPortal) return;
-
-      if (!crossOriginAt) crossOriginAt = Date.now();
-      if (Date.now() - crossOriginAt < 3_000) return;
-
-      clearInterval(timer);
-      try {
-        popup.location.replace(target);
-      } catch {
-        // The handoff tab keeps the new AIS session from the SSO redirect.
-        popup.location.href = target;
-      }
-    }, 400);
+        try {
+          popup.location.replace(target);
+        } catch {
+          // The handoff tab keeps the new AIS session from the SSO redirect.
+          popup.location.href = target;
+        }
+      }, 400);
+    }, 0);
   }
 
   async function viewServices() {
@@ -1545,8 +1553,7 @@
               {
                 class: "service",
                 href: "/go/ais",
-                target: "_blank",
-                rel: "noopener",
+                target: "ais-service",
                 onclick: (event) => openAisService(event, path),
               },
               h("span", { class: "service-icon" }, icon(iconName)),
