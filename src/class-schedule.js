@@ -1,6 +1,6 @@
 import { openAisWithServerSession } from "./portal-session.js";
 
-const AIS_SCHEDULE_URL =
+export const AIS_SCHEDULE_URL =
   "https://ais.nutc.edu.tw/student/courses/my_week_time.aspx";
 const CACHE_TTL_MS = 5 * 60_000;
 
@@ -40,6 +40,135 @@ function scheduleError(message, code, statusCode = 502) {
   return error;
 }
 
+// Read the weekly grid and the course-detail table from a page that is already
+// on my_week_time.aspx. The caller owns the AIS session, so the same page can
+// also be used for grades, announcements and the rest of the student hub.
+export async function readSchedule(page, { timeoutMs = 12_000 } = {}) {
+  await page.waitForFunction(
+    () =>
+      typeof globalThis.g_ClsTime === "object" &&
+      globalThis.g_ClsTime !== null,
+    null,
+    { timeout: timeoutMs },
+  );
+
+  const parsed = await page.evaluate(() => {
+    const clean = (value) => {
+      const element = document.createElement("div");
+      element.innerHTML = String(value ?? "");
+      return String(element.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
+
+    const source = globalThis.g_ClsTime || {};
+    const entries = [];
+
+    for (const [key, rawValue] of Object.entries(source)) {
+      const parts = String(key).split("-");
+      const day = Number(parts[0]);
+      const period = Number(parts[1]);
+
+      if (
+        !Number.isInteger(day) ||
+        day < 1 ||
+        day > 7 ||
+        !Number.isInteger(period) ||
+        period < 1 ||
+        period > 13
+      ) {
+        continue;
+      }
+
+      const fields = String(rawValue ?? "").split("\t");
+      const course = {
+        name: clean(fields[1]),
+        teacher: clean(fields[2]),
+        room: clean(fields[3]),
+      };
+
+      if (!course.name && !course.teacher && !course.room) continue;
+
+      entries.push({
+        dayIndex: day - 1,
+        periodIndex: period - 1,
+        course,
+      });
+    }
+
+    const selectedLabels = [...document.querySelectorAll("select option:checked")]
+      .map((option) => clean(option.textContent))
+      .filter(Boolean)
+      .filter((label) => /學年|學期|上學期|下學期/.test(label))
+      .slice(0, 2);
+
+    const tabLabel = [...document.querySelectorAll(".TabPaneBox")]
+      .map((node) => clean(node.textContent))
+      .find((text) => /^\d{2,3}年\([上下]\)/.test(text));
+    const termMatch = tabLabel?.match(/^(\d{2,3}年\([上下]\))/);
+
+    const courseHeader = [...document.querySelectorAll("table")].find((table) => {
+      const text = clean(table.textContent);
+      return /上課時間\/教室/.test(text) && /上課教師/.test(text) && /學分/.test(text);
+    });
+    const courses = [];
+
+    if (courseHeader) {
+      for (const row of courseHeader.querySelectorAll("tr")) {
+        const cells = [...row.querySelectorAll("td")];
+        if (cells.length < 8) continue;
+        const values = cells.map((cell) => clean(cell.textContent));
+        const action = row.querySelector("[onclick*='course_detail']");
+        const match = action?.getAttribute("onclick")?.match(/course_detail\((\d+)\)/);
+        if (!match) continue;
+
+        const creditParts = values[6].split("/").map(clean);
+        courses.push({
+          ccid: Number(match[1]),
+          className: values[1],
+          name: values[2],
+          group: values[3],
+          timeRoom: values[4],
+          required: values[5],
+          credits: creditParts[0] || "",
+          hours: creditParts[1] || creditParts[0] || "",
+          teacher: values[7],
+        });
+      }
+    }
+
+    return {
+      entries,
+      courses,
+      termLabel: (selectedLabels.join(" ") || termMatch?.[1] || "").trim(),
+    };
+  });
+
+  const periods = CLASS_SCHEDULE_TIME_SLOTS.map(({ slot, time }) => ({
+    slot,
+    time,
+    days: DAY_LABELS.map(() => ({})),
+  }));
+
+  for (const entry of parsed.entries) {
+    const period = periods[entry.periodIndex];
+    if (!period) continue;
+    period.days[entry.dayIndex] = entry.course;
+  }
+
+  return {
+    source: "NUTC AIS",
+    sourceUrl: AIS_SCHEDULE_URL,
+    timezone: "Asia/Taipei",
+    fetchedAt: new Date().toISOString(),
+    termLabel: parsed.termLabel || "",
+    dayLabels: DAY_LABELS,
+    periods,
+    courses: parsed.courses || [],
+    scheduledCells: parsed.entries.length,
+  };
+}
+
 async function fetchFreshSchedule() {
   const session = await openAisWithServerSession({
     headless: true,
@@ -70,97 +199,9 @@ async function fetchFreshSchedule() {
     session.aisAuth.assertValid();
     // AIS can report expired authentication using a blocking JS alert while
     // staying on the expected URL. Check again after page data has loaded.
-
-    await page.waitForFunction(
-      () =>
-        typeof globalThis.g_ClsTime === "object" &&
-        globalThis.g_ClsTime !== null,
-      null,
-      { timeout: 12_000 },
-    );
-
+    const schedule = await readSchedule(page);
     session.aisAuth.assertValid();
-    const parsed = await page.evaluate(() => {
-      const source = globalThis.g_ClsTime || {};
-      const clean = (value) => {
-        const element = document.createElement("div");
-        element.innerHTML = String(value ?? "");
-        return String(element.textContent || "")
-          .replace(/\s+/g, " ")
-          .trim();
-      };
-
-      const entries = [];
-
-      for (const [key, rawValue] of Object.entries(source)) {
-        const parts = String(key).split("-");
-        const day = Number(parts[0]);
-        const period = Number(parts[1]);
-
-        if (
-          !Number.isInteger(day) ||
-          day < 1 ||
-          day > 7 ||
-          !Number.isInteger(period) ||
-          period < 1 ||
-          period > 13
-        ) {
-          continue;
-        }
-
-        const fields = String(rawValue ?? "").split("\t");
-        const course = {
-          name: clean(fields[1]),
-          teacher: clean(fields[2]),
-          room: clean(fields[3]),
-        };
-
-        if (!course.name && !course.teacher && !course.room) continue;
-
-        entries.push({
-          dayIndex: day - 1,
-          periodIndex: period - 1,
-          course,
-        });
-      }
-
-      const selectedLabels = [...document.querySelectorAll("select option:checked")]
-        .map((option) => String(option.textContent || "").replace(/\s+/g, " ").trim())
-        .filter(Boolean)
-        .filter((label) => /學年|學期|上學期|下學期/.test(label))
-        .slice(0, 2);
-
-      return {
-        entries,
-        termLabel: selectedLabels.join(" "),
-      };
-    });
-
-    const periods = CLASS_SCHEDULE_TIME_SLOTS.map(({ slot, time }) => ({
-      slot,
-      time,
-      days: DAY_LABELS.map(() => ({})),
-    }));
-
-    for (const entry of parsed.entries) {
-      const period = periods[entry.periodIndex];
-      if (!period) continue;
-      period.days[entry.dayIndex] = entry.course;
-    }
-
-    const fetchedAt = new Date().toISOString();
-    const scheduledCells = parsed.entries.length;
-
-    return {
-      source: "NUTC AIS",
-      sourceUrl: AIS_SCHEDULE_URL,
-      timezone: "Asia/Taipei",
-      fetchedAt,
-      termLabel: parsed.termLabel || "",
-      dayLabels: DAY_LABELS,
-      periods,
-      scheduledCells,
-    };
+    return schedule;
   } catch (error) {
     session.aisAuth.assertValid();
     if (error?.code === "EPORTAL_LOGIN_REQUIRED") throw error;

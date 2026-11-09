@@ -13,6 +13,12 @@ import {
 } from "./src/activity-relay.js";
 import { askTutor, validateAiQuestion } from "./src/ai-tutor.js";
 import {
+  clearAisPortalCache,
+  getAisAnnouncement,
+  getAisAnnouncements,
+  getAisOverview,
+} from "./src/ais-portal.js";
+import {
   clearClassScheduleCache,
   getClassSchedule,
 } from "./src/class-schedule.js";
@@ -732,6 +738,7 @@ const server = http.createServer(async (req, res) => {
           clearActivityRelaySessions();
           clearClassScheduleCache();
           clearAbsenceListCache();
+          clearAisPortalCache();
 
           restartScheduled = true;
           // Give the browser time to receive one last progress response.
@@ -766,6 +773,7 @@ const server = http.createServer(async (req, res) => {
       clearActivityRelaySessions();
       clearClassScheduleCache();
       clearAbsenceListCache();
+      clearAisPortalCache();
 
       restartScheduled = true;
       sendJson(res, 202, {
@@ -849,12 +857,96 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/ais/overview") {
+      try {
+        const force = /^(1|true|yes)$/i.test(
+          String(url.searchParams.get("refresh") || ""),
+        );
+        sendJson(res, 200, await getAisOverview({ force }));
+      } catch (error) {
+        const status =
+          error?.statusCode ||
+          (error?.code === "EPORTAL_PROFILE_BUSY"
+            ? 409
+            : error?.code === "EPORTAL_LOGIN_REQUIRED"
+              ? 401
+              : 502);
+        sendError(
+          res,
+          status,
+          error?.message || "Unable to load AIS.",
+          error?.code || "AIS_UNAVAILABLE",
+        );
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/ais/announcements") {
+      try {
+        const page = Math.max(
+          1,
+          Math.min(999, Number(url.searchParams.get("page") || 1) || 1),
+        );
+        const force = /^(1|true|yes)$/i.test(
+          String(url.searchParams.get("refresh") || ""),
+        );
+        sendJson(res, 200, await getAisAnnouncements({ page, force }));
+      } catch (error) {
+        const status =
+          error?.statusCode ||
+          (error?.code === "EPORTAL_PROFILE_BUSY"
+            ? 409
+            : error?.code === "EPORTAL_LOGIN_REQUIRED"
+              ? 401
+              : 502);
+        sendError(
+          res,
+          status,
+          error?.message || "Unable to load AIS announcements.",
+          error?.code || "AIS_ANNOUNCEMENTS_UNAVAILABLE",
+        );
+      }
+      return;
+    }
+
+    const aisAnnouncementMatch =
+      req.method === "GET" &&
+      url.pathname.match(/^\/api\/ais\/announcements\/(\d+)$/);
+    if (aisAnnouncementMatch) {
+      try {
+        const force = /^(1|true|yes)$/i.test(
+          String(url.searchParams.get("refresh") || ""),
+        );
+        sendJson(
+          res,
+          200,
+          await getAisAnnouncement(Number(aisAnnouncementMatch[1]), { force }),
+        );
+      } catch (error) {
+        const status =
+          error?.statusCode ||
+          (error?.code === "EPORTAL_PROFILE_BUSY"
+            ? 409
+            : error?.code === "EPORTAL_LOGIN_REQUIRED"
+              ? 401
+              : 502);
+        sendError(
+          res,
+          status,
+          error?.message || "Unable to load the AIS announcement.",
+          error?.code || "AIS_ANNOUNCEMENT_UNAVAILABLE",
+        );
+      }
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/portal-logout") {
       try {
         const result = await logoutServerPortalSession();
         clearActivityRelaySessions();
         clearClassScheduleCache();
         clearAbsenceListCache();
+        clearAisPortalCache();
         await clearTronclassSession();
         sendJson(res, 200, result);
       } catch (error) {
@@ -887,6 +979,7 @@ const server = http.createServer(async (req, res) => {
         }
         clearClassScheduleCache();
         clearAbsenceListCache();
+        clearAisPortalCache();
         sendJson(
           res,
           200,
@@ -1298,6 +1391,15 @@ const server = http.createServer(async (req, res) => {
       if (await handleTronclassRequest(req, res, url, { sendJson, sendError })) return;
       if (req.method === "GET" || req.method === "HEAD") {
         await serveStatic(req, res, "/tronclass.html", { csp: TRONCLASS_CSP });
+        return;
+      }
+      sendError(res, 404, "Not found.");
+      return;
+    }
+
+    if (url.pathname === "/ais" || url.pathname.startsWith("/ais/")) {
+      if (req.method === "GET" || req.method === "HEAD") {
+        await serveStatic(req, res, "/ais.html");
         return;
       }
       sendError(res, 404, "Not found.");

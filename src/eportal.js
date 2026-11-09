@@ -14,6 +14,8 @@ export const MODULES = Object.freeze([
     sourceColor: "#a742ae",
     icon: "graduation-cap",
     serverHandoff: true,
+    // The portal's own rebuilt student hub; /go/ais still opens AIS itself.
+    appPath: "/ais",
   },
   {
     id: "webmail",

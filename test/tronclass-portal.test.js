@@ -8,7 +8,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("the dashboard's TronClass tile opens the portal's own TronClass pages", () => {
   const tronclass = publicModules().find((module) => module.id === "tronclass");
   assert.equal(tronclass.launchPath, "/tronclass");
-  assert.equal(publicModules().find((module) => module.id === "ais").launchPath, "/go/ais");
+  assert.equal(publicModules().find((module) => module.id === "ais").launchPath, "/ais");
 });
 
 test("the server serves /tronclass and relays only GET and POST to TronClass", async () => {
