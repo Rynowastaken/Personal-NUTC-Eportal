@@ -241,8 +241,8 @@ button.row:first-child { border-top: 0; }
 .week-cell.today { background: color-mix(in srgb, var(--primary) 4%, transparent); }
 .course-block {
   display: flex; flex-direction: column; justify-content: center; gap: 1px; width: 100%; height: 100%; min-height: 48px;
-  padding: 5px 7px; border: 0; border-left: 3px solid var(--tone, var(--primary)); border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--tone, var(--primary)) 17%, var(--surface));
+  padding: 5px 7px; border: 1px solid color-mix(in srgb, var(--tone, var(--primary)) 42%, var(--edge)); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--tone, var(--primary)) 15%, var(--surface));
   color: var(--text); text-align: left; cursor: pointer; overflow: hidden;
   transition: filter .15s, transform .15s;
 }
@@ -421,7 +421,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 .prose table { border-collapse: collapse; max-width: 100%; }
 .prose td, .prose th { border: 1px solid var(--edge); padding: 6px 8px; overflow-wrap: anywhere; }
 .prose ul, .prose ol { padding-left: 22px; }
-.prose blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid var(--edge-strong); color: var(--muted); }
+.prose blockquote { margin: 12px 0; padding: 10px 14px; border-radius: var(--radius-sm); background: rgba(255,255,255,.045); color: var(--muted); }
 .prose h1, .prose h2, .prose h3 { margin: 16px 0 8px; }
 
 @media (max-width: 720px) {
