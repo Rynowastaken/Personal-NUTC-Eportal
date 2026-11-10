@@ -43,6 +43,6 @@ test("welcome headline matches demo typography while remaining mobile-safe", asy
   assert.match(css, /#welcomeUsername\s*\{[\s\S]*?color: var\(--primary, #e6a4ad\);/);
   assert.match(css, /overflow-wrap: anywhere;/);
   assert.match(css, /@media \(max-width: 640px\)/);
-  assert.match(css, /font-size: clamp\(2\.4rem, 11vw, 3\.25rem\)/);
+  assert.match(css, /font-size: clamp\(1\.6rem, 9vw, 3\.25rem\)/);
   assert.match(css, /\.portal-welcome-title\s*\{[\s\S]*?overflow: clip;/);
 });

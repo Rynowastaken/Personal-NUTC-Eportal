@@ -71,12 +71,12 @@
   .portal-welcome {
     padding: 1rem 0 .4rem;
   }
-  /* Phones wrap the name onto its own line instead of clipping it. */
+  /* Phones keep the greeting on one line by scaling the headline down. */
   .portal-welcome-title {
-    font-size: clamp(2.4rem, 11vw, 3.25rem);
-    white-space: normal;
-    overflow-wrap: anywhere;
-    text-wrap: balance;
+    font-size: clamp(1.6rem, 9vw, 3.25rem);
+    white-space: nowrap;
+    overflow-wrap: normal;
+    text-wrap: nowrap;
   }
   .portal-welcome-subtitle {
     margin-top: .55rem;
