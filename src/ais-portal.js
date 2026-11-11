@@ -7,6 +7,8 @@ const AIS_PROFILE_URL = "https://ais.nutc.edu.tw/student/stu_info.aspx";
 const AIS_GRADES_URL = "https://ais.nutc.edu.tw/student/grade/my_hist_grade.aspx";
 const AIS_PROGRESS_URL = "https://ais.nutc.edu.tw/student/stu/progress_view.aspx";
 const AIS_BULLETIN_URL = "https://ais.nutc.edu.tw/student/bulletin_view.aspx";
+const AIS_COURSE_URL =
+  "https://ais.nutc.edu.tw/student/courses/course_details.aspx";
 
 const CACHE_TTL_MS = 5 * 60_000;
 
@@ -16,6 +18,8 @@ const announcementCache = new Map();
 const announcementInFlight = new Map();
 const detailCache = new Map();
 const detailInFlight = new Map();
+const courseCache = new Map();
+const courseInFlight = new Map();
 
 function aisError(message, code, statusCode = 502) {
   const error = new Error(message);
@@ -524,6 +528,7 @@ export function clearAisPortalCache() {
   cachedOverview = null;
   announcementCache.clear();
   detailCache.clear();
+  courseCache.clear();
 }
 
 export async function getAisOverview({ force = false } = {}) {
@@ -564,6 +569,229 @@ export async function getAisOverview({ force = false } = {}) {
   })();
 
   return overviewInFlight;
+}
+
+// ---------------------------------------------------------------------------
+// Course details
+
+export async function readAisCourseDetail(page) {
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelector("textarea[name='outline']") ||
+        document.querySelectorAll("table").length > 1,
+      null,
+      { timeout: 12_000 },
+    )
+    .catch(() => {});
+
+  return page.evaluate(() => {
+    const clean = (value) =>
+      String(value ?? "")
+        .replace(/\u00a0/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const lines = String(document.body?.innerText || "")
+      .split(/\r?\n/)
+      .map(clean)
+      .filter(Boolean);
+    const firstLine = lines[0] || "";
+    const teacherMatch = firstLine.match(/^(.*?)\s*\((.*)\)\s*$/);
+    const titleMatch = clean(document.title).match(
+      /^【(.+?)】\s*(.+?)\s*[－-]\s*課程內容/,
+    );
+
+    const tables = [...document.querySelectorAll("table")]
+      .map((table) =>
+        [...table.querySelectorAll("tr")]
+          .map((row) =>
+            [...row.querySelectorAll("th,td")].map((cell) =>
+              clean(cell.innerText),
+            ),
+          )
+          .filter((row) => row.length),
+      )
+      .filter((rows) => rows.length);
+
+    const findTable = (headers) =>
+      tables.find((rows) => {
+        const head = rows[0] || [];
+        return headers.every((label) =>
+          head.some((cell) => cell.includes(label)),
+        );
+      });
+
+    const columnIndex = (head, label) =>
+      head.findIndex((cell) => cell.includes(label));
+
+    const books = [];
+    const bookTable = findTable(["書名", "作者", "出版社"]);
+    if (bookTable) {
+      const head = bookTable[0];
+      const titleIndex = columnIndex(head, "書名");
+      const authorIndex = columnIndex(head, "作者");
+      const publisherIndex = columnIndex(head, "出版社");
+      const yearIndex = columnIndex(head, "出版年度");
+      const editionIndex = columnIndex(head, "版次");
+      const placeIndex = columnIndex(head, "出版地");
+
+      for (const row of bookTable.slice(1)) {
+        const title = titleIndex >= 0 ? row[titleIndex] || "" : "";
+        if (!title) continue;
+        books.push({
+          title,
+          author: authorIndex >= 0 ? row[authorIndex] || "" : "",
+          publisher: publisherIndex >= 0 ? row[publisherIndex] || "" : "",
+          year: yearIndex >= 0 ? row[yearIndex] || "" : "",
+          edition: editionIndex >= 0 ? row[editionIndex] || "" : "",
+          place: placeIndex >= 0 ? row[placeIndex] || "" : "",
+        });
+      }
+    }
+
+    const assessment = { items: [], midtermWarning: "" };
+    const assessmentTable = findTable(["評分項目", "比重"]);
+    if (assessmentTable) {
+      const head = assessmentTable[0];
+      const labelIndex = columnIndex(head, "評分項目");
+      const weightIndex = columnIndex(head, "比重");
+
+      for (const row of assessmentTable.slice(1)) {
+        const label = labelIndex >= 0 ? row[labelIndex] || "" : "";
+        const weight = weightIndex >= 0 ? row[weightIndex] || "" : "";
+        if (!label) continue;
+        if (/期中預警/.test(label)) {
+          assessment.midtermWarning = weight || "是";
+          continue;
+        }
+        assessment.items.push({ label, weight });
+      }
+    }
+
+    const weeks = [];
+    const weekTable = findTable(["周次", "主題內容", "備註"]);
+    if (weekTable) {
+      const head = weekTable[0];
+      const weekIndex = columnIndex(head, "周次");
+      const topicIndex = columnIndex(head, "主題內容");
+      const noteIndex = columnIndex(head, "備註");
+
+      for (const row of weekTable.slice(1)) {
+        const week = weekIndex >= 0 ? row[weekIndex] || "" : "";
+        const topic = topicIndex >= 0 ? row[topicIndex] || "" : "";
+        if (!week && !topic) continue;
+        weeks.push({
+          week,
+          topic,
+          note: noteIndex >= 0 ? row[noteIndex] || "" : "",
+        });
+      }
+    }
+
+    return {
+      className: titleMatch?.[1] || "",
+      name: titleMatch?.[2] || clean(document.querySelector("h1")?.textContent),
+      teacher: teacherMatch?.[1] || firstLine,
+      englishName: teacherMatch?.[2] || "",
+      outline: String(
+        document.querySelector("textarea[name='outline']")?.value || "",
+      ).trim(),
+      objective: String(
+        document.querySelector("textarea[name='objective']")?.value || "",
+      ).trim(),
+      reference: String(
+        document.querySelector("textarea[name='referece']")?.value ||
+          document.querySelector("textarea[name='reference']")?.value ||
+          "",
+      ).trim(),
+      books,
+      assessment,
+      weeks,
+    };
+  });
+}
+
+export async function getAisCourseDetail({ ccid, sem, force = false } = {}) {
+  const courseId = Number(ccid);
+  const term = String(sem || "")
+    .replace(/\D/g, "")
+    .slice(0, 4);
+
+  if (
+    !Number.isInteger(courseId) ||
+    courseId <= 0 ||
+    !/^\d{3,4}$/.test(term)
+  ) {
+    throw aisError("Unknown AIS course.", "AIS_COURSE_NOT_FOUND", 404);
+  }
+
+  const key = `${term}:${courseId}`;
+  const cached = courseCache.get(key);
+  if (!force && cached && Date.now() - cached.cachedAtMs < CACHE_TTL_MS) {
+    return { ...cached.value, cached: true, stale: false };
+  }
+  if (courseInFlight.has(key)) return courseInFlight.get(key);
+
+  const pending = (async () => {
+    const session = await openAisWithServerSession({
+      headless: true,
+      timeoutMs: 10_000,
+    });
+
+    try {
+      const { page } = session;
+      const url = `${AIS_COURSE_URL}?sem=${encodeURIComponent(term)}&ccid=${courseId}`;
+      await gotoAis(page, session, url, {
+        waitFor: `document.querySelector("textarea[name='outline']") || document.querySelectorAll("table").length > 1`,
+        settleMs: 300,
+      });
+
+      const detail = await readAisCourseDetail(page);
+      const value = {
+        source: "NUTC AIS",
+        sourceUrl: url,
+        fetchedAt: new Date().toISOString(),
+        sem: term,
+        ccid: courseId,
+        ...detail,
+      };
+      courseCache.set(key, { cachedAtMs: Date.now(), value });
+      return { ...value, cached: false, stale: false };
+    } catch (error) {
+      if (error?.code === "EPORTAL_LOGIN_REQUIRED") {
+        courseCache.delete(key);
+        throw error;
+      }
+      if (error?.name === "TimeoutError") {
+        throw aisError(
+          "AIS course details did not finish loading in time.",
+          "AIS_COURSE_TIMEOUT",
+          504,
+        );
+      }
+      const stale = courseCache.get(key);
+      if (stale) {
+        return {
+          ...stale.value,
+          cached: true,
+          stale: true,
+          refreshError:
+            error?.message || "Unable to refresh the AIS course.",
+        };
+      }
+      throw error;
+    } finally {
+      await session.context.close().catch(() => {});
+    }
+  })();
+
+  courseInFlight.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    courseInFlight.delete(key);
+  }
 }
 
 // ---------------------------------------------------------------------------

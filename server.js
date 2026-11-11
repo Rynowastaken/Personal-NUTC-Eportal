@@ -16,6 +16,7 @@ import {
   clearAisPortalCache,
   getAisAnnouncement,
   getAisAnnouncements,
+  getAisCourseDetail,
   getAisOverview,
 } from "./src/ais-portal.js";
 import {
@@ -876,6 +877,43 @@ const server = http.createServer(async (req, res) => {
           status,
           error?.message || "Unable to load AIS.",
           error?.code || "AIS_UNAVAILABLE",
+        );
+      }
+      return;
+    }
+
+    const aisCourseMatch =
+      req.method === "GET" &&
+      url.pathname.match(/^\/api\/ais\/course\/(\d+)$/);
+
+    if (aisCourseMatch) {
+      try {
+        const sem = String(url.searchParams.get("sem") || "");
+        const force = /^(1|true|yes)$/i.test(
+          String(url.searchParams.get("refresh") || ""),
+        );
+        sendJson(
+          res,
+          200,
+          await getAisCourseDetail({
+            ccid: Number(aisCourseMatch[1]),
+            sem,
+            force,
+          }),
+        );
+      } catch (error) {
+        const status =
+          error?.statusCode ||
+          (error?.code === "EPORTAL_PROFILE_BUSY"
+            ? 409
+            : error?.code === "EPORTAL_LOGIN_REQUIRED"
+              ? 401
+              : 502);
+        sendError(
+          res,
+          status,
+          error?.message || "Unable to load the AIS course.",
+          error?.code || "AIS_COURSE_UNAVAILABLE",
         );
       }
       return;

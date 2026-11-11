@@ -391,6 +391,49 @@ button.row:first-child { border-top: 0; }
 @media (max-width: 860px) { .service-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .service-grid { grid-template-columns: 1fr; } }
 
+/* Course detail */
+.course-facts { margin-top: 20px; }
+.course-copy-stack { display: grid; gap: 14px; }
+.course-copy {
+  padding: 16px; border: 1px solid var(--edge); border-radius: var(--radius);
+  background: var(--surface);
+}
+.course-copy h3 { margin-bottom: 8px; color: var(--soft); }
+.course-text {
+  margin: 0; color: var(--soft); line-height: 1.75;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.assessment-list { display: grid; gap: 10px; }
+.assessment-row {
+  display: grid; gap: 7px; padding: 12px 14px;
+  border: 1px solid var(--edge); border-radius: var(--radius);
+  background: var(--surface);
+}
+.assessment-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.assessment-head span { min-width: 0; }
+.assessment-head b { color: var(--primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.assessment-bar { height: 4px; border-radius: 99px; background: rgba(255,255,255,.06); overflow: hidden; }
+.assessment-bar i { display: block; height: 100%; border-radius: inherit; background: var(--primary); }
+.week-list {
+  border: 1px solid var(--edge); border-radius: var(--radius);
+  background: var(--surface); overflow: hidden;
+}
+.week-item {
+  display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px;
+  padding: 12px 14px; border-top: 1px solid var(--edge);
+}
+.week-item:first-child { border-top: 0; }
+.week-no {
+  display: grid; place-items: center; align-self: start; min-width: 28px; height: 24px;
+  border-radius: 99px; background: var(--primary-soft); color: var(--primary);
+  font-size: 11.5px; font-weight: 600;
+}
+.week-topic { font-weight: 500; line-height: 1.55; }
+.week-note { margin-top: 3px; color: var(--muted); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; }
+@media (max-width: 560px) {
+  .week-item { grid-template-columns: 34px minmax(0, 1fr); gap: 8px; padding: 11px 12px; }
+}
+
 /* States */
 .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
 .empty strong { display: block; color: var(--soft); font-weight: 600; margin-bottom: 2px; }

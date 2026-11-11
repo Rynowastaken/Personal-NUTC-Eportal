@@ -25,11 +25,24 @@
   function matchRoute(url) {
     if (url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) return null;
     const rest = url.pathname.slice(BASE.length).replace(/^\/+|\/+$/g, "");
+    const course = rest.match(/^course\/(\d+)$/);
+    if (course) {
+      const params = url.searchParams || new URL(url.href).searchParams;
+      return {
+        name: "course",
+        ccid: Number(course[1]),
+        sem: params.get("sem") || "",
+      };
+    }
     return { name: ROUTES[rest] || "home" };
   }
 
   function hrefFor(name) {
     return name === "home" ? BASE : `${BASE}/${name}`;
+  }
+
+  function courseHref(ccid, sem) {
+    return `${BASE}/course/${ccid}?sem=${encodeURIComponent(sem || "")}`;
   }
 
   function navigate(href, { replace = false } = {}) {
@@ -1011,6 +1024,245 @@
     ];
   }
 
+  function courseCopy(label, text) {
+    return h(
+      "div",
+      { class: "course-copy" },
+      h("h3", null, label),
+      h("p", { class: "course-text" }, text),
+    );
+  }
+
+  async function viewCourse(route) {
+    const data = await loadOverview();
+    renderMenu();
+    const info =
+      (data.schedule?.courses || []).find(
+        (course) => Number(course.ccid) === Number(route.ccid),
+      ) || null;
+    const termMatch = String(data.termLabel || "").match(
+      /(\d{2,3})年\(([上下])\)/,
+    );
+    const sem =
+      route.sem ||
+      (termMatch
+        ? `${termMatch[1]}${termMatch[2] === "上" ? 1 : 2}`
+        : "");
+    const detailPath = `/student/courses/course_details.aspx?sem=${encodeURIComponent(sem)}&ccid=${route.ccid}`;
+    const back = h(
+      "a",
+      { class: "back", href: hrefFor("schedule") },
+      icon("left"),
+      "回課表",
+    );
+
+    let detail = null;
+    let error = null;
+    try {
+      detail = await getJson(
+        `/api/ais/course/${route.ccid}?sem=${encodeURIComponent(sem)}`,
+      );
+    } catch (loadError) {
+      error = loadError;
+    }
+
+    const courseName = detail?.name || info?.name || "課程詳情";
+    setTitle(courseName);
+
+    if (!detail) {
+      return [
+        back,
+        pageHead(courseName, [data.termLabel]),
+        h(
+          "div",
+          { class: "notice" },
+          icon("alert"),
+          h("span", null, error?.message || "課程資料暫時無法讀取。"),
+        ),
+        h(
+          "div",
+          { class: "actions" },
+          h(
+            "a",
+            {
+              class: "btn",
+              href: "/go/ais",
+              target: "ais-page",
+              onclick: (event) => openAisPage(event, detailPath),
+            },
+            icon("external"),
+            "在 AIS 開啟",
+          ),
+          h("a", { class: "btn ghost", href: hrefFor("schedule") }, "回課表"),
+        ),
+      ];
+    }
+
+    const required =
+      info?.required === "必"
+        ? "必修"
+        : info?.required === "選"
+          ? "選修"
+          : info?.required || "—";
+    const facts = [
+      ["教師", detail.teacher || info?.teacher || "—"],
+      [
+        "學分",
+        info?.credits
+          ? `${info.credits} 學分${info.hours && info.hours !== info.credits ? ` · ${info.hours} 小時` : ""}`
+          : "—",
+      ],
+      ["修別", required],
+      ["上課時間", info?.timeRoom || "—"],
+      [
+        "開課班級",
+        detail.className || info?.className || data.profile?.className || "—",
+      ],
+      ["學期", data.termLabel || "—"],
+    ];
+
+    const intro = [];
+    if (detail.outline) intro.push(courseCopy("課程說明", detail.outline));
+    if (detail.objective) intro.push(courseCopy("具體教學目標", detail.objective));
+    if (!intro.length) {
+      intro.push(emptyBlock("尚未填寫課程簡介", "AIS 還沒有這門課的介紹。", "book"));
+    }
+
+    const books = [];
+    if (detail.books?.length) {
+      books.push(
+        h(
+          "div",
+          { class: "list" },
+          detail.books.map((book) =>
+            h(
+              "div",
+              { class: "row" },
+              h("span", { class: "row-icon accent" }, icon("book")),
+              h(
+                "span",
+                { style: "min-width:0" },
+                h("div", { class: "row-title" }, book.title),
+                h(
+                  "div",
+                  { class: "row-sub" },
+                  [book.author, book.publisher, book.year, book.edition, book.place]
+                    .filter(Boolean)
+                    .join(" · "),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (detail.reference) books.push(courseCopy("參考資料", detail.reference));
+    if (!books.length) {
+      books.push(emptyBlock("未指定教科書", "AIS 沒有列出這門課的用書。", "book"));
+    }
+
+    const assessment = [];
+    if (detail.assessment?.items?.length) {
+      assessment.push(
+        h(
+          "div",
+          { class: "assessment-list" },
+          detail.assessment.items.map((item) => {
+            const percent = Math.max(
+              0,
+              Math.min(
+                100,
+                Number(String(item.weight).replace(/[^\d.]/g, "")) || 0,
+              ),
+            );
+            return h(
+              "div",
+              { class: "assessment-row" },
+              h(
+                "div",
+                { class: "assessment-head" },
+                h("span", null, item.label),
+                h("b", { class: "num" }, item.weight || "—"),
+              ),
+              h(
+                "div",
+                { class: "assessment-bar", "aria-hidden": "true" },
+                h("i", { style: `width:${percent}%` }),
+              ),
+            );
+          }),
+        ),
+      );
+    }
+    if (detail.assessment?.midtermWarning) {
+      assessment.push(
+        h(
+          "div",
+          { class: "leave-chips" },
+          chip(`期中預警 ${detail.assessment.midtermWarning}`, "soon"),
+        ),
+      );
+    }
+    if (!assessment.length) {
+      assessment.push(emptyBlock("尚未公布評分方式", "", "chart"));
+    }
+
+    const weeks = detail.weeks?.length
+      ? h(
+          "div",
+          { class: "week-list" },
+          detail.weeks.map((week) =>
+            h(
+              "div",
+              { class: "week-item" },
+              h("span", { class: "week-no num" }, week.week || "—"),
+              h(
+                "div",
+                { class: "week-body" },
+                h("div", { class: "week-topic" }, week.topic || "—"),
+                week.note ? h("div", { class: "week-note" }, week.note) : null,
+              ),
+            ),
+          ),
+        )
+      : emptyBlock("尚未公布授課進度", "", "calendar");
+
+    return [
+      back,
+      pageHead(
+        courseName,
+        [detail.englishName, detail.className || info?.className, data.termLabel],
+        h(
+          "a",
+          {
+            class: "btn ghost",
+            href: "/go/ais",
+            target: "ais-page",
+            onclick: (event) => openAisPage(event, detailPath),
+          },
+          icon("external"),
+          "在 AIS 開啟",
+        ),
+      ),
+      h(
+        "dl",
+        { class: "profile-facts course-facts" },
+        facts.map(([label, value]) =>
+          h(
+            "div",
+            { class: "profile-fact" },
+            h("dt", null, label),
+            h("dd", null, value || "—"),
+          ),
+        ),
+      ),
+      section("課程簡介", h("div", { class: "course-copy-stack" }, intro)),
+      section("用書資訊", h("div", { class: "course-copy-stack" }, books)),
+      section("評分方式", h("div", { class: "course-copy-stack" }, assessment)),
+      section("授課進度", weeks, { count: detail.weeks?.length || null }),
+    ];
+  }
+
   function openCourseDialog(course, data) {
     const info =
       (data.schedule?.courses || []).find(
@@ -1022,6 +1274,8 @@
       info?.ccid && termCode
         ? `/student/courses/course_details.aspx?sem=${termCode}&ccid=${info.ccid}`
         : null;
+    const detailHref =
+      info?.ccid && termCode ? courseHref(info.ccid, termCode) : null;
 
     const facts = [
       ["教師", course.teacher || info?.teacher || "—"],
@@ -1046,17 +1300,25 @@
         h(
           "div",
           { class: "actions" },
+          detailHref
+            ? h(
+                "a",
+                { class: "btn", href: detailHref },
+                icon("book"),
+                "課程詳情",
+              )
+            : null,
           detailPath
             ? h(
                 "a",
                 {
-                  class: "btn",
+                  class: "btn ghost",
                   href: "/go/ais",
                   target: "ais-page",
                   onclick: (event) => openAisPage(event, detailPath),
                 },
                 icon("external"),
-                "在 AIS 查看課程",
+                "在 AIS 開啟",
               )
             : null,
           h("button", { class: "btn ghost", type: "button", onclick: () => closeDialog() }, "關閉"),
@@ -1794,6 +2056,7 @@
     announcements: viewAnnouncements,
     profile: viewProfile,
     services: viewServices,
+    course: viewCourse,
   };
 
   function setTitle(...parts) {
@@ -1808,11 +2071,12 @@
 
     const route = matchRoute(location) || { name: "home" };
     if (location.pathname === `${BASE}/`) history.replaceState(null, "", BASE);
+    const navName = route.name === "course" ? "schedule" : route.name;
     for (const [name, link] of navLinks) {
-      if (route.name === name) link.setAttribute("aria-current", "page");
+      if (navName === name) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     }
-    const currentLink = navLinks.get(route.name);
+    const currentLink = navLinks.get(navName);
     if (currentLink) {
       const left = currentLink.offsetLeft;
       if (left < nav.scrollLeft || left + currentLink.offsetWidth > nav.scrollLeft + nav.clientWidth) {

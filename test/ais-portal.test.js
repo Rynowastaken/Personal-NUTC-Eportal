@@ -30,7 +30,7 @@ test("one AIS session feeds the overview and the schedule/absence readers are re
   assert.match(portal, /import \{ AIS_ABSENCE_URL, readAbsences \} from "\.\/absence-list\.js"/);
   // The overview navigates every page inside a single acquisition of the
   // serialized server profile.
-  assert.equal((portal.match(/openAisWithServerSession\(/g) || []).length, 3);
+  assert.equal((portal.match(/openAisWithServerSession\(/g) || []).length, 4);
   assert.match(portal, /readSchedule\(page\)/);
   assert.match(portal, /readAbsences\(page\)/);
 });
@@ -83,6 +83,23 @@ test("the AIS identity is hidden until the student chooses to show it", async ()
   assert.match(page, /個人資料已隱藏/);
 });
 
+test("course details are rebuilt from the AIS course page", async () => {
+  const server = await read("../server.js");
+  const portal = await read("../src/ais-portal.js");
+  const page = await read("../public/ais.js");
+  assert.match(server, /\/api\\\/ais\\\/course\\\/\(\\d\+\)/);
+  assert.match(server, /getAisCourseDetail/);
+  assert.match(portal, /readAisCourseDetail/);
+  assert.match(portal, /course_details\.aspx/);
+  assert.match(portal, /textarea\[name='outline'\]/);
+  assert.match(portal, /評分項目/);
+  assert.match(portal, /主題內容/);
+  assert.match(page, /course: viewCourse/);
+  assert.match(page, /courseHref\(/);
+  assert.match(page, /課程詳情/);
+  assert.match(page, /授課進度/);
+});
+
 test("the rebuilt AIS pages cover the student tasks the old system scattered", async () => {
   const page = await read("../public/ais.js");
   for (const route of ["schedule", "grades", "absences", "announcements", "profile", "services"]) {
@@ -105,7 +122,7 @@ test("the rebuilt AIS pages cover the student tasks the old system scattered", a
   assert.match(page, /window\.open\("", "ais-page"\)/);
   assert.match(page, /openAisPage\(event, detailPath\)/);
   assert.match(page, /course_details\.aspx\?sem=/);
-  assert.doesNotMatch(page, /href: detailHref/);
+  assert.match(page, /const detailHref =\s*info\?\.ccid && termCode \? courseHref\(info\.ccid, termCode\) : null;/);
   assert.match(page, /popup\.location\.replace\(target\)/);
   assert.match(page, /首次開啟會先完成 ePortal 登入/);
 });
