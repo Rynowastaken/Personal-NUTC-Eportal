@@ -1018,9 +1018,9 @@
       ) || null;
     const termMatch = String(data.termLabel || "").match(/(\d{2,3})年\(([上下])\)/);
     const termCode = termMatch ? `${termMatch[1]}${termMatch[2] === "上" ? 1 : 2}` : "";
-    const detailHref =
+    const detailPath =
       info?.ccid && termCode
-        ? `${AIS}/student/courses/course_details.aspx?sem=${termCode}&ccid=${info.ccid}`
+        ? `/student/courses/course_details.aspx?sem=${termCode}&ccid=${info.ccid}`
         : null;
 
     const facts = [
@@ -1046,8 +1046,18 @@
         h(
           "div",
           { class: "actions" },
-          detailHref
-            ? h("a", { class: "btn", href: detailHref, target: "_blank", rel: "noopener" }, icon("external"), "在 AIS 查看課程")
+          detailPath
+            ? h(
+                "a",
+                {
+                  class: "btn",
+                  href: "/go/ais",
+                  target: "ais-page",
+                  onclick: (event) => openAisPage(event, detailPath),
+                },
+                icon("external"),
+                "在 AIS 查看課程",
+              )
             : null,
           h("button", { class: "btn ghost", type: "button", onclick: () => closeDialog() }, "關閉"),
         ),
@@ -1575,14 +1585,14 @@
     ["外部連結", "WebMail、教學資源與其他服務", "/student/apps/ex_services.aspx", "external"],
   ];
 
-  function openAisService(event, path) {
+  function openAisPage(event, path) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
     // The anchor itself opens the named AIS tab, so the browser's own
     // navigation is never treated as a blocked popup. Keep that tab's handle,
-    // wait for the SSO handoff, then send it to the chosen service page.
+    // wait for the SSO handoff, then send it to the requested AIS page.
     setTimeout(() => {
-      const popup = window.open("", "ais-service");
+      const popup = window.open("", "ais-page");
       if (!popup) return;
 
       try {
@@ -1641,8 +1651,8 @@
               {
                 class: "service",
                 href: "/go/ais",
-                target: "ais-service",
-                onclick: (event) => openAisService(event, path),
+                target: "ais-page",
+                onclick: (event) => openAisPage(event, path),
               },
               h("span", { class: "service-icon" }, icon(iconName)),
               h("span", { class: "service-title" }, title),
