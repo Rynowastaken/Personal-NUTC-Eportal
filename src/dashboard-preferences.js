@@ -210,6 +210,59 @@ function cleanUsername(value) {
 
 const MAX_CUSTOM_LINKS = 30;
 const CUSTOM_LINK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PINNED_MODULES = 32;
+const MODULE_ID_PATTERN = /^[a-z0-9-]+$/;
+
+export function validatePinnedModules(input, allowedIds = null) {
+  if (input === null) return null;
+  if (!Array.isArray(input)) {
+    throw linkError("Pinned systems must be an array or null.");
+  }
+
+  const allowed = allowedIds ? new Set(allowedIds) : null;
+  const seen = new Set();
+  const validated = [];
+
+  for (const rawId of input) {
+    if (typeof rawId !== "string") {
+      throw linkError("Each pinned system ID must be a string.");
+    }
+    const id = rawId.trim();
+    if (!MODULE_ID_PATTERN.test(id)) {
+      throw linkError("Invalid system ID in pinned systems.");
+    }
+    if (allowed && !allowed.has(id)) {
+      throw linkError(`Unknown system ID: ${id}`);
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    validated.push(id);
+  }
+
+  if (validated.length < 1) {
+    throw linkError("Select at least one system to pin.");
+  }
+  if (validated.length > MAX_PINNED_MODULES) {
+    throw linkError(`You can pin up to ${MAX_PINNED_MODULES} systems.`);
+  }
+
+  return validated;
+}
+
+function loadPinnedModules(raw) {
+  if (!Array.isArray(raw)) return null;
+  const seen = new Set();
+  const loaded = [];
+  for (const entry of raw) {
+    if (loaded.length >= MAX_PINNED_MODULES) break;
+    if (typeof entry !== "string") continue;
+    const id = entry.trim();
+    if (!MODULE_ID_PATTERN.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    loaded.push(id);
+  }
+  return loaded.length ? loaded : null;
+}
 
 function linkError(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode });
@@ -336,6 +389,7 @@ export class DashboardPreferenceStore {
         background: null,
       },
       customLinks: [],
+      pinnedModules: null,
       ai: defaultAiSettings(),
       updatedAt: null,
     };
@@ -393,6 +447,7 @@ export class DashboardPreferenceStore {
               : null,
         },
         customLinks: loadCustomLinks(parsed?.customLinks),
+        pinnedModules: loadPinnedModules(parsed?.pinnedModules),
         ai: loadAiSettings(parsed?.ai),
         updatedAt:
           typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null,
@@ -439,6 +494,9 @@ export class DashboardPreferenceStore {
           : "",
       },
       customLinks: this.value.customLinks.map((link) => ({ ...link })),
+      pinnedModules: Array.isArray(this.value.pinnedModules)
+        ? [...this.value.pinnedModules]
+        : null,
       ai: {
         enabled: this.value.ai.enabled,
         provider: this.value.ai.provider,
@@ -512,6 +570,16 @@ export class DashboardPreferenceStore {
     return this.enqueue(async () => {
       if (this.value.academicProgram === validated) return this.get();
       this.value.academicProgram = validated;
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return this.get();
+    });
+  }
+
+  async setPinnedModules(pinnedModules, allowedIds = null) {
+    const validated = validatePinnedModules(pinnedModules, allowedIds);
+    return this.enqueue(async () => {
+      this.value.pinnedModules = validated;
       this.value.updatedAt = new Date().toISOString();
       await this.persist();
       return this.get();

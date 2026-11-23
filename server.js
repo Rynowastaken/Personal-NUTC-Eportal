@@ -1165,6 +1165,29 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (
+      req.method === "PUT" &&
+      url.pathname === "/api/preferences/pinned-modules"
+    ) {
+      const body = await readJsonBody(req);
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
+        !Object.hasOwn(body, "pinnedModules")
+      ) {
+        sendError(res, 400, "pinnedModules is required.");
+        return;
+      }
+      const allowedIds = new Set(publicModules().map((module) => module.id));
+      const saved = await dashboardPreferenceStore.setPinnedModules(
+        body.pinnedModules,
+        allowedIds,
+      );
+      sendJson(res, 200, { ok: true, ...saved });
+      return;
+    }
+
+    if (
       req.method === "POST" &&
       url.pathname === "/api/preferences/account"
     ) {

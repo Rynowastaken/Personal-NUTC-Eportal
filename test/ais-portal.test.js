@@ -125,4 +125,10 @@ test("the rebuilt AIS pages cover the student tasks the old system scattered", a
   assert.match(page, /const detailHref =\s*info\?\.ccid && termCode \? courseHref\(info\.ccid, termCode\) : null;/);
   assert.match(page, /popup\.location\.replace\(target\)/);
   assert.match(page, /首次開啟會先完成 ePortal 登入/);
+  assert.match(page, /選課系統/);
+  assert.match(page, /\/student\/selection\/pre_selection\.aspx/);
+  assert.match(page, /通識與運動調查/);
+  assert.match(page, /\/student\/selection\/common_course\.aspx/);
+  assert.match(page, /班級資訊/);
+  assert.match(page, /\/student\/my_class\/schedule_class\.aspx/);
 });

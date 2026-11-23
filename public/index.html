@@ -240,9 +240,20 @@
         </div>
       </section>
 
-      <section class="mt-6">
-        <div class="mb-3 px-0.5">
+      <section id="moduleSection" class="mt-6">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3 px-0.5">
           <h2 class="wall-heading">校務系統</h2>
+          <button
+            id="toggleAllModules"
+            type="button"
+            class="dashboard-tinted-glass hidden min-h-[36px] items-center gap-1.5 rounded-[5px] px-3 text-xs font-semibold"
+            aria-expanded="false"
+            aria-controls="moreModuleGrid"
+            hidden
+          >
+            <span id="toggleAllModulesLabel">顯示全部</span>
+            <span id="toggleAllModulesIcon" class="inline-flex" aria-hidden="true"></span>
+          </button>
         </div>
 
         <section
@@ -307,6 +318,13 @@
             </div>
           </div>
         </section>
+
+        <section
+          id="moreModuleGrid"
+          class="tile-wall tile-wall--doors mt-3 hidden"
+          aria-label="其他校務系統"
+          hidden
+        ></section>
       </section>
 
       <section id="customLinksSection" class="mt-6">

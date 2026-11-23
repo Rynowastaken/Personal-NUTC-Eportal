@@ -33,6 +33,9 @@
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
   </svg>
 
   <div class="backdrop" id="backdrop" aria-hidden="true">
@@ -86,12 +89,15 @@
         </div>
       </section>
 
-      <section class="section" aria-labelledby="servicesHeading">
-        <div class="section-heading">
+      <section id="demoServicesSection" class="section" aria-labelledby="servicesHeading">
+        <div class="section-heading section-heading-actions">
           <div><h2 id="servicesHeading">校務系統</h2></div>
-          <span class="section-hint">常用系統 · Demo preview</span>
+          <button type="button" class="glass-button demo-modules-toggle" id="toggleDemoModules" aria-expanded="false" aria-controls="demoMoreModules">
+            <span id="toggleDemoModulesLabel">顯示全部 (16)</span>
+            <span id="toggleDemoModulesIcon" aria-hidden="true"><svg class="icon"><use href="#i-chevron-down"></use></svg></span>
+          </button>
         </div>
-        <div class="module-grid tile-wall tile-wall--doors tile-wall--fill">
+        <div id="demoPrimaryModules" class="module-grid tile-wall tile-wall--doors tile-wall--fill">
           <button class="module-card" type="button" data-service="student" style="--accent: 218 184 125">
             <span class="module-icon"><svg class="icon"><use href="#i-cap"></use></svg></span>
             <span class="module-copy"><strong>學生管理</strong><small>課表、學籍與學生資訊</small></span>
@@ -118,6 +124,7 @@
             <span class="module-arrow"><svg class="icon"><use href="#i-arrow"></use></svg></span>
           </button>
         </div>
+        <div id="demoMoreModules" class="module-grid tile-wall tile-wall--doors demo-more-modules" hidden></div>
       </section>
 
       <section class="section shortcuts-section" aria-labelledby="shortcutsHeading">

@@ -5,13 +5,30 @@
   // information. Only local browser settings/links can be persisted.
   const STORAGE = "nutc-portal-demo-v1";
   const DEFAULT_SHORTCUTS = [{ name: "示範捷徑", url: "https://example.com", pinned: true }];
-  const SERVICES = Object.freeze({
-    student: { name: "學生管理", description: "展示校園課表、學籍及個人資訊的入口設計。正式網站會連往學校服務；這裡只提供示範畫面。" },
-    mail: { name: "WebMail", description: "校務信箱通知入口的示範。公開 Demo 不會開啟或讀取真實信件。" },
-    events: { name: "活動報名", description: "校園活動與投票入口的示範。此處不會送出任何實際報名。" },
-    learning: { name: "學習歷程", description: "展示 EP 學習歷程與成果查詢的入口樣式。所有內容均為樣本。" },
-    tron: { name: "TronClass", description: "課程、教材、作業和測驗入口的示範，不會登入 TronClass。" },
-  });
+  const DEMO_SERVICE_LIST = Object.freeze([
+    { id: "student", name: "學生管理", subtitle: "課表、學籍與學生資訊", icon: "cap", accent: "218 184 125", defaultPinned: true, description: "展示校園課表、學籍及個人資訊的入口設計。正式網站會連往學校服務；這裡只提供示範畫面。" },
+    { id: "mail", name: "WebMail", subtitle: "校務信箱與通知", icon: "mail", accent: "108 196 199", defaultPinned: true, description: "校務信箱通知入口的示範。公開 Demo 不會開啟或讀取真實信件。" },
+    { id: "events", name: "活動報名", subtitle: "活動、報名與投票", icon: "check", accent: "114 173 111", defaultPinned: true, description: "校園活動與投票入口的示範。此處不會送出任何實際報名。" },
+    { id: "learning", name: "學習歷程", subtitle: "EP 學習歷程與成果", icon: "route", accent: "242 112 132", defaultPinned: true, description: "展示 EP 學習歷程與成果查詢的入口樣式。所有內容均為樣本。" },
+    { id: "tron", name: "TronClass", subtitle: "課程、教材、作業與測驗", icon: "book", accent: "117 189 178", defaultPinned: true, description: "課程、教材、作業和測驗入口的示範，不會登入 TronClass。" },
+    { id: "library", name: "圖書館系統", subtitle: "館藏查詢與電子期刊", icon: "book", accent: "218 184 125", defaultPinned: false, description: "圖書館館藏與電子期刊資料庫入口的示範預覽。" },
+    { id: "code-judger", name: "Code Judger", subtitle: "程式解題與線上評測", icon: "external", accent: "224 185 128", defaultPinned: false, description: "程式解題與作業評測平台入口的示範預覽。" },
+    { id: "learning-outcomes", name: "教學品保", subtitle: "教學評量與學習成效", icon: "check", accent: "114 173 111", defaultPinned: false, description: "教學評量與學習成效入口的示範預覽。" },
+    { id: "ucan", name: "UCAN 職能", subtitle: "職能診斷與職涯探索", icon: "route", accent: "108 196 199", defaultPinned: false, description: "職能診斷與職涯探索平台入口的示範預覽。" },
+    { id: "language-center", name: "外語自學", subtitle: "外語學習資源與軟體", icon: "external", accent: "160 191 120", defaultPinned: false, description: "語言中心外語自學軟體入口的示範預覽。" },
+    { id: "campus-card", name: "IC 卡掛失", subtitle: "學生證與 IC 卡掛失", icon: "shield", accent: "199 154 244", defaultPinned: false, description: "校園 IC 卡線上掛失服務入口的示範預覽。" },
+    { id: "general-affairs", name: "總務報修", subtitle: "校園設備與場地報修", icon: "settings", accent: "108 196 199", defaultPinned: false, description: "校園設備與場地報修系統入口的示範預覽。" },
+    { id: "counseling", name: "諮商系統", subtitle: "心理諮商預約與服務", icon: "info", accent: "242 146 120", defaultPinned: false, description: "諮商預約服務入口的示範預覽。" },
+    { id: "epidemic-report", name: "自主回報", subtitle: "健康與自主回報登記", icon: "shield", accent: "117 189 178", defaultPinned: false, description: "健康與自主回報系統入口的示範預覽。" },
+    { id: "rd-service", name: "研發整合", subtitle: "研發計畫與相關服務", icon: "route", accent: "199 154 244", defaultPinned: false, description: "研發整合服務系統入口的示範預覽。" },
+    { id: "tronclass-app", name: "TronClass APP", subtitle: "行動版教學平台應用", icon: "external", accent: "114 173 111", defaultPinned: false, description: "行動版教學平台應用入口的示範預覽。" },
+  ]);
+  const SERVICES = Object.freeze(
+    Object.fromEntries(DEMO_SERVICE_LIST.map((item) => [item.id, item])),
+  );
+  const DEFAULT_PINNED_SERVICES = DEMO_SERVICE_LIST
+    .filter((item) => item.defaultPinned)
+    .map((item) => item.id);
   let COURSES = Object.freeze({
     "0-3": ["學涯規劃", "7605 · 範例課程"],
     "0-5": ["民法", "3701 · 示範教師"],
@@ -49,6 +66,7 @@
     blur: 0,
     motion: true,
     shortcuts: DEFAULT_SHORTCUTS.map(item => ({ ...item })),
+    pinnedServices: [...DEFAULT_PINNED_SERVICES],
   });
 
   function validExternalUrl(value) {
@@ -70,6 +88,9 @@
             return url && name ? [{ name, url, pinned: entry.pinned !== false }] : [];
           })
         : fallback.shortcuts;
+      const pinnedServices = Array.isArray(stored.pinnedServices)
+        ? [...new Set(stored.pinnedServices.filter((id) => typeof id === "string" && SERVICES[id]))]
+        : fallback.pinnedServices;
       return {
         brightness: Number.isFinite(stored.brightness)
           ? Math.min(140, Math.max(20, stored.brightness))
@@ -79,6 +100,7 @@
           : fallback.blur,
         motion: typeof stored.motion === "boolean" ? stored.motion : fallback.motion,
         shortcuts,
+        pinnedServices: pinnedServices.length ? pinnedServices : fallback.pinnedServices,
       };
     } catch { return fallback; }
   }
@@ -443,6 +465,100 @@
     refreshSchedule: buildSchedule,
   };
 
+  let demoModulesExpanded = false;
+  function buildDemoServiceNode(item, { isPinned, canUnpin }) {
+    const card = document.createElement("button");
+    card.className = "module-card";
+    card.type = "button";
+    card.dataset.service = item.id;
+    card.style.setProperty("--accent", item.accent);
+
+    const icon = document.createElement("span");
+    icon.className = "module-icon";
+    icon.append(svg(item.icon));
+    const copy = document.createElement("span");
+    copy.className = "module-copy";
+    const title = document.createElement("strong");
+    title.textContent = item.name;
+    const sub = document.createElement("small");
+    sub.textContent = item.subtitle;
+    copy.append(title, sub);
+    const arrow = document.createElement("span");
+    arrow.className = "module-arrow";
+    arrow.append(svg("arrow"));
+    card.append(icon, copy, arrow);
+
+    if (!demoModulesExpanded) return card;
+
+    const slot = document.createElement("div");
+    slot.className = "demo-module-slot";
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.className = "demo-pin-btn";
+    pin.setAttribute("aria-pressed", String(isPinned));
+    pin.disabled = isPinned && !canUnpin;
+    const label = isPinned
+      ? (canUnpin ? "取消釘選 " + item.name : "至少需保留一個常用系統")
+      : "釘選 " + item.name + " 到常用系統";
+    pin.setAttribute("aria-label", label);
+    pin.title = label;
+    pin.append(svg("pin"));
+    pin.addEventListener("click", () => {
+      if (isPinned && state.pinnedServices.length <= 1) return;
+      state.pinnedServices = isPinned
+        ? state.pinnedServices.filter((id) => id !== item.id)
+        : [...state.pinnedServices, item.id];
+      persist();
+      renderDemoModules();
+    });
+    slot.append(card, pin);
+    return slot;
+  }
+
+  function renderDemoModules() {
+    const section = $("demoServicesSection");
+    const primary = $("demoPrimaryModules");
+    const more = $("demoMoreModules");
+    const toggle = $("toggleDemoModules");
+    const label = $("toggleDemoModulesLabel");
+    const icon = $("toggleDemoModulesIcon");
+    if (!primary || !more || !toggle) return;
+
+    const pinnedSet = new Set(state.pinnedServices);
+    const pinnedItems = state.pinnedServices.map((id) => SERVICES[id]).filter(Boolean);
+    const unpinnedItems = DEMO_SERVICE_LIST.filter((item) => !pinnedSet.has(item.id));
+    const canUnpin = pinnedItems.length > 1;
+
+    section?.classList.toggle("demo-modules-expanded", demoModulesExpanded);
+    toggle.setAttribute("aria-expanded", String(demoModulesExpanded));
+    if (label) {
+      label.textContent = demoModulesExpanded
+        ? (unpinnedItems.length ? "收合" : "完成")
+        : (unpinnedItems.length ? `顯示全部 (${DEMO_SERVICE_LIST.length})` : "編輯釘選");
+    }
+    if (icon) {
+      icon.replaceChildren(svg(demoModulesExpanded ? "chevron-up" : "chevron-down"));
+    }
+
+    primary.replaceChildren(
+      ...pinnedItems.map((item) => buildDemoServiceNode(item, { isPinned: true, canUnpin })),
+    );
+
+    const showMore = demoModulesExpanded && unpinnedItems.length > 0;
+    more.hidden = !showMore;
+    more.replaceChildren(
+      ...(showMore
+        ? unpinnedItems.map((item) => buildDemoServiceNode(item, { isPinned: false, canUnpin }))
+        : []),
+    );
+  }
+
+  $("toggleDemoModules")?.addEventListener("click", () => {
+    demoModulesExpanded = !demoModulesExpanded;
+    renderDemoModules();
+  });
+
+  renderDemoModules();
   renderShortcuts();
   buildSchedule();
   applyAppearance();

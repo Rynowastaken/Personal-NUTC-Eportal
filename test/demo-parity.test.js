@@ -21,7 +21,7 @@ test("public demo mirrors all non-authenticated dashboard feature sections", () 
     "demoHitokotoSource", "demoQuoteSpeaker", "demoQuoteSource", "demoQuoteRefresh",
     "demoAcademicProgram", "demoCalendarNote", "scheduleTable", "demoAbsenceEvents",
     "refreshSchedule", "refreshAbsence", "shortcutForm", "cancelShortcutEdit",
-    "shortcutGrid", "shortcutManagerList",
+    "shortcutGrid", "shortcutManagerList", "toggleDemoModules", "demoMoreModules",
   ]) assert.ok(html.includes('id="' + id + '"'), "Missing demo feature: " + id);
   for (const module of ["student","mail","events","learning","tron"]) {
     assert.match(html, new RegExp('data-service="' + module + '"'));

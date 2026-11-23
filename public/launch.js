@@ -14,6 +14,7 @@ const launchErrorRaw = document.querySelector("#launchErrorRaw");
 const launchErrorRawText = document.querySelector("#launchErrorRawText");
 const launchRetry = document.querySelector("#launchRetry");
 const launchLogin = document.querySelector("#launchLogin");
+const launchOfficialEportal = document.querySelector("#launchOfficialEportal");
 const launchBack = document.querySelector("#launchBack");
 
 const moduleId =
@@ -222,6 +223,10 @@ function showError(rawMessage, rawCode = "") {
     "hidden",
     code !== "EPORTAL_LOGIN_REQUIRED",
   );
+  launchOfficialEportal?.classList.toggle(
+    "hidden",
+    !["EPORTAL_HANDOFF_SESSION_BOUND", "EPORTAL_HANDOFF_UNAVAILABLE"].includes(code),
+  );
   void motion?.enter?.(launchError, {
     duration: 240,
     y: 8,
@@ -281,6 +286,7 @@ async function startLaunch() {
   launchError.classList.add("hidden");
   launchErrorRaw.classList.add("hidden");
   launchLogin.classList.add("hidden");
+  launchOfficialEportal?.classList.add("hidden");
   launchStage.classList.remove("text-[#f4a0a5]");
   launchStage.classList.add("text-[var(--accent)]");
   launchSpinner.querySelector(".launch-failed-icon")?.classList.add("hidden");

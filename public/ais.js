@@ -1836,6 +1836,9 @@
   // Services
 
   const SERVICES = [
+    ["選課系統", "課程預選、加退選與選課結果", "/student/selection/pre_selection.aspx", "list"],
+    ["通識與運動調查", "通識課程與運動項目意願調查", "/student/selection/common_course.aspx", "search"],
+    ["班級資訊", "班級課表與班級相關資訊", "/student/my_class/schedule_class.aspx", "users"],
     ["課程抵免", "抵免與免修申請紀錄", "/student/transfer/transfer_list.aspx", "book"],
     ["各項申請", "假單、失物協尋、兵役與申請進度", "/student/apps/online_application.aspx", "clipboard"],
     ["獎懲查詢", "獎懲紀錄與操行相關資訊", "/student/discipline/rp_list.aspx", "award"],

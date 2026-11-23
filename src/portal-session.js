@@ -9,6 +9,7 @@ import {
   EPORTAL_HOME,
   moduleById,
   moduleUrl,
+  syncDiscoveredModules,
 } from "./eportal.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -196,18 +197,58 @@ const LEGACY_HTTP_HANDOFF_HOSTS = Object.freeze({
   activity: ["163.17.131.167"],
 });
 
-function isTrustedLegacyHttpTarget(module, rawUrl) {
-  const target = rawUrl instanceof URL ? rawUrl : new URL(rawUrl);
-  const hosts = LEGACY_HTTP_HANDOFF_HOSTS[module.id] || [];
+function isNutcCampusHttpHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  if (host === "nutc.edu.tw" || host.endsWith(".nutc.edu.tw")) return true;
+  const match = host.match(/^163\.17\.(\d{1,3})\.(\d{1,3})$/);
+  if (!match) return false;
+  return Number(match[1]) <= 255 && Number(match[2]) <= 255;
+}
 
-  return target.protocol === "http:" && hosts.includes(target.hostname);
+export function isTrustedLegacyHttpTarget(module, rawUrl) {
+  let target;
+  try {
+    target = rawUrl instanceof URL ? rawUrl : new URL(String(rawUrl || ""));
+  } catch {
+    return false;
+  }
+  if (target.protocol !== "http:") return false;
+
+  const hosts = LEGACY_HTTP_HANDOFF_HOSTS[module?.id] || [];
+  if (hosts.includes(target.hostname)) return true;
+
+  return (
+    String(module?.path || "").startsWith("/ext_module/") &&
+    isNutcCampusHttpHost(target.hostname)
+  );
 }
 
 function shouldExecuteLegacyTargetInBrowser(module, rawUrl) {
+  const target = rawUrl instanceof URL ? rawUrl : new URL(rawUrl);
+  const hosts = LEGACY_HTTP_HANDOFF_HOSTS.activity || [];
   return (
-    module.id === "activity" &&
-    isTrustedLegacyHttpTarget(module, rawUrl)
+    module?.id === "activity" &&
+    target.protocol === "http:" &&
+    hosts.includes(target.hostname)
   );
+}
+
+export function isStatelessPublicHttpsLanding({
+  url,
+  status = 0,
+  targetCookiesAdded = true,
+  moduleId = "",
+}) {
+  const target = url instanceof URL ? url : new URL(String(url || ""));
+  if (target.protocol !== "https:") return false;
+  if (status < 200 || status >= 300) return false;
+  if (targetCookiesAdded) return false;
+  if (moduleId === "activity") return false;
+  if (isSsoLoginEndpoint(target)) return false;
+  if (/\/(?:login|signin|auth)(?:\.aspx|\.php|\/|$)/i.test(target.pathname)) {
+    return false;
+  }
+  return true;
 }
 
 function normalizeExternalHandoffUrl(url, eportalOrigin) {
@@ -448,6 +489,10 @@ async function discoverBareExternalGet(
   let method = "GET";
   let fields = [];
   const visited = new Set();
+  const cookieKey = (cookie) => `${cookie.domain}|${cookie.path}|${cookie.name}`;
+  const initialCookies = new Map(
+    (await context.cookies()).map((cookie) => [cookieKey(cookie), cookie.value]),
+  );
 
   const classifyTarget = (target) => {
     const external = normalizeExternalHandoffUrl(target, eportalOrigin);
@@ -727,9 +772,45 @@ async function discoverBareExternalGet(
       }
     }
 
+    const currentCookies = await context.cookies();
+    const hostMatchesCookieDomain = (hostname, domain) => {
+      const cleanDomain = String(domain || "").toLowerCase();
+      const cleanHost = String(hostname || "").toLowerCase();
+      if (!cleanDomain || !cleanHost) return false;
+      if (cleanDomain.startsWith(".")) {
+        return (
+          cleanHost === cleanDomain.slice(1) || cleanHost.endsWith(cleanDomain)
+        );
+      }
+      return cleanHost === cleanDomain;
+    };
+    const targetCookiesAdded = currentCookies.some(
+      (cookie) =>
+        hostMatchesCookieDomain(current.hostname, cookie.domain) &&
+        initialCookies.get(cookieKey(cookie)) !== cookie.value,
+    );
+
+    if (
+      current.origin !== eportalOrigin &&
+      isStatelessPublicHttpsLanding({
+        url: current,
+        status,
+        targetCookiesAdded,
+        moduleId: module.id,
+      })
+    ) {
+      console.log(
+        `[handoff] discovered stateless HTTPS destination for ${module.id}: GET ${safeUrlLabel(current)}`,
+      );
+      return {
+        type: "get",
+        url: current.toString(),
+      };
+    }
+
     const cookieScopes = [
       ...new Set(
-        (await context.cookies())
+        currentCookies
           .map((cookie) => cookie.domain)
           .filter(
             (domain) =>
@@ -929,6 +1010,31 @@ export async function gotoEportalWithRetry(
   return { response, status, failure };
 }
 
+async function syncModulesFromDashboardPage(page) {
+  try {
+    const entries = await page.evaluate(() =>
+      [
+        ...document.querySelectorAll(
+          'button[data-item-uuid][onclick*="gotoDashboardModule"]',
+        ),
+      ].map((button) => {
+        const onclick = button.getAttribute("onclick") || "";
+        const match = onclick.match(
+          /gotoDashboardModule\(\s*(['"])([^'"]+)\1/,
+        );
+        return {
+          uuid: button.getAttribute("data-item-uuid") || "",
+          name: String(button.textContent || "").replace(/\s+/g, " ").trim(),
+          path: match?.[2] || "",
+        };
+      }),
+    );
+    syncDiscoveredModules(entries);
+  } catch {
+    // Passive discovery must never break session inspection or launches.
+  }
+}
+
 async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
   if (!(await profileExists())) {
     return {
@@ -990,6 +1096,10 @@ async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
       current.hostname === "eportal.nutc.edu.tw" &&
       current.pathname.startsWith("/nutc_dashboard/") &&
       hasStudentButton;
+
+    if (valid) {
+      await syncModulesFromDashboardPage(page);
+    }
 
     if (!valid) {
       const postWaitFailure = await readEportalUpstreamFailure(page, status);
@@ -1173,6 +1283,10 @@ export function startPortalKeepalive({ intervalMinutes = 10 } = {}) {
 async function captureHttpRedirectHandoff(context, module, eportalOrigin) {
   let current = new URL(moduleUrl(module.id));
   const visited = new Set();
+  const cookieKey = (cookie) => `${cookie.domain}|${cookie.path}|${cookie.name}`;
+  const initialCookies = new Map(
+    (await context.cookies()).map((cookie) => [cookieKey(cookie), cookie.value]),
+  );
 
   for (let step = 0; step < 10; step += 1) {
     if (visited.has(current.toString())) return null;
@@ -1267,7 +1381,7 @@ export async function createModuleHandoff(
   moduleId,
   { timeout = 30_000, onProgress = null } = {},
 ) {
-  const module = moduleById(moduleId);
+  let module = moduleById(moduleId);
   const report = (stage, detail) => {
     try {
       onProgress?.({
@@ -1345,6 +1459,9 @@ export async function createModuleHandoff(
         error.code = "EPORTAL_LOGIN_REQUIRED";
         throw error;
       }
+
+      await syncModulesFromDashboardPage(dashboard);
+      module = moduleById(moduleId);
 
       report(
         "session-valid",
@@ -2541,6 +2658,8 @@ export async function openAisWithServerSession({
       error.code = "EPORTAL_LOGIN_REQUIRED";
       throw error;
     }
+
+    await syncModulesFromDashboardPage(page);
 
     let aisReady = false;
     for (

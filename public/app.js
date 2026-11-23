@@ -6,7 +6,12 @@ import { initTodayTiles } from "./today-tiles.js?v=3";
 
 initTodayTiles();
 
+const moduleSection = document.querySelector("#moduleSection");
 const moduleGrid = document.querySelector("#moduleGrid");
+const moreModuleGrid = document.querySelector("#moreModuleGrid");
+const toggleAllModules = document.querySelector("#toggleAllModules");
+const toggleAllModulesLabel = document.querySelector("#toggleAllModulesLabel");
+const toggleAllModulesIcon = document.querySelector("#toggleAllModulesIcon");
 const sessionWarning = document.querySelector("#sessionWarning");
 const customLinksGrid = document.querySelector("#customLinksGrid");
 const customLinksDialog = document.querySelector("#customLinksDialog");
@@ -127,6 +132,9 @@ const debugUpdateStatus = document.querySelector("#debugUpdateStatus");
 const debugUpdateIcon = document.querySelector("#debugUpdateIcon");
 
 let modulesCache = [];
+let pinnedModulesPref = null;
+let modulesExpanded = false;
+let savingPinnedModules = false;
 let customLinksCache = [];
 let editingCustomLinkId = null;
 let customLinkBusy = false;
@@ -291,6 +299,9 @@ async function loadServerAccountProfile() {
     customLinksCache = Array.isArray(preferences.customLinks)
       ? preferences.customLinks
       : [];
+    pinnedModulesPref = Array.isArray(preferences.pinnedModules)
+      ? preferences.pinnedModules
+      : null;
     let account = preferences.account || {
       initialized: false,
       username: "User",
@@ -1894,25 +1905,181 @@ function openModule(module) {
   window.location.assign(module.launchPath);
 }
 
+function resolvedPinnedIds(modules) {
+  const byId = new Map(modules.map((module) => [module.id, module]));
+  if (Array.isArray(pinnedModulesPref)) {
+    const valid = pinnedModulesPref.filter((id) => byId.has(id));
+    if (valid.length) return valid;
+  }
+  const defaults = modules
+    .filter((module) => module.defaultPinned)
+    .map((module) => module.id);
+  return defaults.length ? defaults : modules.slice(0, 5).map((module) => module.id);
+}
+
+async function savePinnedModules(nextIds) {
+  const response = await fetch("/api/preferences/pinned-modules", {
+    method: "PUT",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ pinnedModules: nextIds }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      data.error || `Unable to save pinned systems (${response.status}).`,
+    );
+  }
+  return Array.isArray(data.pinnedModules) ? data.pinnedModules : null;
+}
+
+async function toggleModulePin(moduleId) {
+  if (savingPinnedModules || !modulesCache.length) return;
+  const currentPinned = resolvedPinnedIds(modulesCache);
+  const isPinned = currentPinned.includes(moduleId);
+  if (isPinned && currentPinned.length <= 1) return;
+
+  const previousPref = Array.isArray(pinnedModulesPref)
+    ? [...pinnedModulesPref]
+    : null;
+  const nextPinned = isPinned
+    ? currentPinned.filter((id) => id !== moduleId)
+    : [...currentPinned, moduleId];
+
+  savingPinnedModules = true;
+  pinnedModulesPref = nextPinned;
+  renderModules(modulesCache, { animate: false });
+
+  try {
+    pinnedModulesPref = await savePinnedModules(nextPinned);
+  } catch (error) {
+    console.warn("Could not save pinned systems:", error?.message || error);
+    pinnedModulesPref = previousPref;
+  } finally {
+    savingPinnedModules = false;
+    renderModules(modulesCache, { animate: false });
+  }
+}
+
+function buildModuleNode(module, index, { isPinned, canUnpin }) {
+  const button = createDashboardModuleCard({
+    accent: moduleAccent(index),
+    iconName: module.icon || "route",
+    titleText: module.shortName,
+    descriptionText: module.description,
+  });
+  button.setAttribute("aria-label", "開啟 " + module.name);
+  button.addEventListener("click", () => openModule(module));
+
+  if (!modulesExpanded) return button;
+
+  const slot = document.createElement("div");
+  slot.className = "module-tile-slot";
+
+  const pinButton = document.createElement("button");
+  pinButton.type = "button";
+  pinButton.className = "module-pin-btn";
+  pinButton.setAttribute("aria-pressed", String(isPinned));
+  pinButton.disabled = savingPinnedModules || (isPinned && !canUnpin);
+  const pinLabel = isPinned
+    ? canUnpin
+      ? `取消釘選 ${module.shortName}`
+      : "至少需保留一個常用系統"
+    : `釘選 ${module.shortName} 到常用系統`;
+  pinButton.setAttribute("aria-label", pinLabel);
+  pinButton.title = pinLabel;
+
+  const pinIcon = document.createElement("i");
+  pinIcon.setAttribute("data-lucide", "pin");
+  pinIcon.className = "h-3.5 w-3.5";
+  pinIcon.setAttribute("aria-hidden", "true");
+  pinButton.append(pinIcon);
+  pinButton.addEventListener("click", () => {
+    void toggleModulePin(module.id);
+  });
+
+  slot.append(button, pinButton);
+  return slot;
+}
+
 function renderModules(modules, { animate = false } = {}) {
   modulesCache = modules;
+  moduleGrid.setAttribute("aria-busy", "false");
   moduleGrid.replaceChildren();
+  moreModuleGrid?.replaceChildren();
 
-  modules.forEach((module, index) => {
-    const button = createDashboardModuleCard({
-      accent: moduleAccent(index),
-      iconName: module.icon || "route",
-      titleText: module.shortName,
-      descriptionText: module.description,
-    });
-    button.setAttribute("aria-label", "開啟 " + module.name);
-    button.addEventListener("click", () => openModule(module));
-    moduleGrid.append(button);
+  const indexById = new Map(modules.map((module, index) => [module.id, index]));
+  const byId = new Map(modules.map((module) => [module.id, module]));
+  const pinnedIds = resolvedPinnedIds(modules);
+  const pinnedSet = new Set(pinnedIds);
+  const pinnedList = pinnedIds.map((id) => byId.get(id)).filter(Boolean);
+  const unpinnedList = modules.filter((module) => !pinnedSet.has(module.id));
+  const canUnpin = pinnedList.length > 1;
+
+  moduleSection?.classList.toggle("modules-expanded", modulesExpanded);
+
+  if (toggleAllModules) {
+    const hideToggle = modules.length <= 1;
+    toggleAllModules.hidden = hideToggle;
+    toggleAllModules.classList.toggle("hidden", hideToggle);
+    toggleAllModules.classList.toggle("inline-flex", !hideToggle);
+    toggleAllModules.setAttribute("aria-expanded", String(modulesExpanded));
+    if (toggleAllModulesLabel) {
+      toggleAllModulesLabel.textContent = modulesExpanded
+        ? unpinnedList.length
+          ? "收合"
+          : "完成"
+        : unpinnedList.length
+          ? `顯示全部 (${modules.length})`
+          : "編輯釘選";
+    }
+    if (toggleAllModulesIcon) {
+      const glyph = document.createElement("i");
+      glyph.setAttribute(
+        "data-lucide",
+        modulesExpanded ? "chevron-up" : "chevron-down",
+      );
+      glyph.className = "h-3.5 w-3.5";
+      glyph.setAttribute("aria-hidden", "true");
+      toggleAllModulesIcon.replaceChildren(glyph);
+    }
+  }
+
+  pinnedList.forEach((module, fallbackIndex) => {
+    const colorIndex = indexById.get(module.id) ?? fallbackIndex;
+    moduleGrid.append(
+      buildModuleNode(module, colorIndex, { isPinned: true, canUnpin }),
+    );
   });
+
+  const showMore = modulesExpanded && unpinnedList.length > 0;
+  if (moreModuleGrid) {
+    moreModuleGrid.hidden = !showMore;
+    moreModuleGrid.classList.toggle("hidden", !showMore);
+    if (showMore) {
+      unpinnedList.forEach((module, fallbackIndex) => {
+        const colorIndex = indexById.get(module.id) ?? fallbackIndex;
+        moreModuleGrid.append(
+          buildModuleNode(module, colorIndex, { isPinned: false, canUnpin }),
+        );
+      });
+    }
+  }
 
   // Doors appear at rest; tilt and flip are the wall's only motion.
   renderIcons();
 }
+
+toggleAllModules?.addEventListener("click", () => {
+  if (!modulesCache.length) return;
+  modulesExpanded = !modulesExpanded;
+  renderModules(modulesCache, { animate: false });
+});
 
 // Shortcuts only navigate in the user's own browser; the server never fetches them.
 function safeCustomLinkUrl(raw) {
