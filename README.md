@@ -3,7 +3,7 @@
 > [!WARNING]
 > **VIBE CODE REPO AHEAD!**
 > 
-> This project is entirely vibe coded with GPT-5.6 Sol, GPT-6, and Opus 5.5, thus support and bug fixes are not guaranteed. Use at your own risk.
+> This project is entirely vibe coded with GPT-5.6 Sol, GPT-6, Opus 5.5, Deepseek v4.1 Flash 1017, Gemini 4 Neon and Gemini 4 Hydrogen, thus support and bug fixes are not guaranteed. Use at your own risk.
 
 
 # NUTC Portal
@@ -17,7 +17,7 @@
 
 ## 畫面預覽
 
-以下截圖皆來自 [公開展示網站](https://rynowastaken.github.io/Personal-NUTC-Eportal/)，使用範例資料。
+以下截圖皆來自 [公開展示網站](https://rynowastaken.github.io/Personal-NUTC-Eportal/)，使用範例資料。d
 
 ![桌面版 Dashboard：歡迎標題、目前課程、缺曠與日期磚，以及校務系統入口](docs/screenshots/dashboard-desktop.webp)
 
