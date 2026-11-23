@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { classifyEportalLoginFailure } from "../src/eportal-login-page.js";
 
-test("ePortal licensing error is recognized even when HTML returns HTTP 200", () => {
+test("ePortal licensing error is recognized and marked retryable even when HTML returns HTTP 200", () => {
   const error = classifyEportalLoginFailure({
     status: 200,
     text: 'checkLicense("OAKlouds") is failed!',
   });
   assert.equal(error?.code, "EPORTAL_UPSTREAM_UNAVAILABLE");
+  assert.equal(error?.retryable, true);
   assert.match(error.message, /校方/);
   assert.match(error.message, /OAKlouds/);
 });
@@ -17,10 +18,12 @@ test("upstream gateway errors and maintenance are distinguished from bad credent
   for (const status of [500, 502, 503, 504, 521, 522, 523, 524]) {
     const value = classifyEportalLoginFailure({ status });
     assert.equal(value?.code, "EPORTAL_UPSTREAM_UNAVAILABLE");
+    assert.notEqual(value?.retryable, true);
     assert.match(value.message, new RegExp(String(status)));
   }
   const maintenance = classifyEportalLoginFailure({ text: "系統維護中，暫停服務。" });
   assert.equal(maintenance?.code, "EPORTAL_UPSTREAM_UNAVAILABLE");
+  assert.notEqual(maintenance?.retryable, true);
 });
 
 test("normal login and unknown changed form remain unclassified", () => {

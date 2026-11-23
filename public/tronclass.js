@@ -2568,7 +2568,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         "div",
         { class: "actions" },
         auth
-          ? h("a", { class: "btn primary", href: "/server-login/" }, "登入 Server ePortal")
+          ? h("a", { class: "btn primary", href: "/server-login/?force=1&next=%2Ftronclass" }, "登入 Server ePortal")
           : h("button", { class: "btn primary", type: "button", onclick: () => render() }, icon("refresh"), "重試"),
         h("a", { class: "btn ghost", href: classicHref(), "data-classic": "" }, "在 TronClass 開啟"),
       ),

@@ -10,13 +10,27 @@ test("the banner's Re-login ePortal action requests a fresh login form", async (
   assert.match(html, /href="\/server-login\/\?force=1"/);
 });
 
-test("Reconnect AIS requires fresh login then returns to AIS SSO", async () => {
+test("Reconnect AIS and rebuilt portal hubs require fresh login then return to origin", async () => {
   assert.deepEqual(loginRequestOptions("?force=1&next=%2Fgo%2Fais"), {
     force: true,
     next: "/go/ais",
   });
+  assert.deepEqual(loginRequestOptions("?force=1&next=%2Fais"), {
+    force: true,
+    next: "/ais",
+  });
+  assert.deepEqual(loginRequestOptions("?force=1&next=%2Ftronclass"), {
+    force: true,
+    next: "/tronclass",
+  });
   const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  const aisJs = await readFile(new URL("../public/ais.js", import.meta.url), "utf8");
+  const tronclassJs = await readFile(new URL("../public/tronclass.js", import.meta.url), "utf8");
+  const launchJs = await readFile(new URL("../public/launch.js", import.meta.url), "utf8");
   assert.match(html, /href="\/server-login\/\?force=1&amp;next=%2Fgo%2Fais"/);
+  assert.match(aisJs, /href: "\/server-login\/\?force=1&next=%2Fais"/);
+  assert.match(tronclassJs, /href: "\/server-login\/\?force=1&next=%2Ftronclass"/);
+  assert.match(launchJs, /\/server-login\/\?force=1/);
 });
 
 test("post-login return destination cannot redirect to arbitrary origins", () => {
@@ -32,11 +46,12 @@ test("post-login return destination cannot redirect to arbitrary origins", () =>
   }
 });
 
-test("forced login bypasses saved-session auto completion and clears only ePortal cookies", async () => {
+test("forced login bypasses saved-session auto completion and clears ePortal, AIS, and SSO cookies", async () => {
   const bridge = await readFile(new URL("../src/login-bridge.js", import.meta.url), "utf8");
   const server = await readFile(new URL("../server.js", import.meta.url), "utf8");
   const frontend = await readFile(new URL("../public/server-login.js", import.meta.url), "utf8");
   assert.match(bridge, /if \(session\.forceLogin\) \{[\s\S]*?clearCookies\([\s\S]*?eportal/);
+  assert.match(bridge, /if \(session\.forceLogin\) \{[\s\S]*?PUBLIC_APP_USER_SSO_TOKEN/);
   assert.match(bridge, /if \(!session\.forceLogin && await loginComplete\(page\)\)/);
   assert.match(bridge, /!force &&[\s\S]*?active &&[\s\S]*?!active\.complete/);
   assert.match(server, /force: body\.force === true/);

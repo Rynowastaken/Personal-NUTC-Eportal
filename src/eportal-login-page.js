@@ -9,6 +9,7 @@ export function classifyEportalLoginFailure({ status = 0, text = "" } = {}) {
     return {
       code: "EPORTAL_UPSTREAM_UNAVAILABLE",
       message: "校方 ePortal 目前回傳系統授權驗證失敗（OAKlouds），未提供正常登入表單。請待校方恢復服務後再試，無須變更帳號或密碼。",
+      retryable: true,
     };
   }
 

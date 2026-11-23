@@ -97,9 +97,16 @@ test("Profile queue has its own deadline, not only the file lock timeout", async
   assert.match(js, /const remaining = bounded \? timeoutMs - \(Date\.now\(\) - started\)/);
 });
 
-test("license error with HTTP 200 reports university outage, not missing inputs", async () => {
+async function flushBridge(check) {
+  for (let i = 0; i < 20; i += 1) {
+    if (await check()) return;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+test("license error with HTTP 200 retries and reports university outage when persistent", async () => {
   let navigationCount = 0;
-  let cleared = 0;
+  const clearFilters = [];
   let closed = 0;
   const page = {
     url: () => "https://eportal.nutc.edu.tw/login.php",
@@ -119,15 +126,18 @@ test("license error with HTTP 200 reports university outage, not missing inputs"
   };
   const browser = {
     page,
-    context: { clearCookies: async () => { cleared++; } },
+    context: {
+      clearCookies: async (filter) => {
+        clearFilters.push(filter);
+      },
+    },
     close: async () => { closed++; },
   };
   const bridge = makeLoginBridge(async () => browser);
   const started = await bridge.startLoginBridge({ force: true });
   const token = tokenFromLaunchPath(started.launchPath);
 
-  // Async initialization has a bounded number of microtasks in this mock.
-  for (let i = 0; i < 16; i++) await Promise.resolve();
+  await flushBridge(() => closed === 1);
   await assert.rejects(
     bridge.getLoginBridgeState(token),
     (error) => {
@@ -137,7 +147,57 @@ test("license error with HTTP 200 reports university outage, not missing inputs"
       return true;
     },
   );
-  assert.equal(navigationCount, 1, "known upstream errors should not trigger another login navigation");
-  assert.equal(cleared, 1, "forced login retains existing explicit-cookie handling");
+  assert.equal(navigationCount, 5, "transient OAKlouds responses should be retried up to the bounded attempt limit");
+  assert.equal(clearFilters.length, 2, "forced login clears both ePortal/AIS and SSO cookies");
+  assert.ok(clearFilters.some((f) => String(f?.domain || "").includes("eportal") && String(f?.domain || "").includes("ais")));
+  assert.ok(clearFilters.some((f) => f?.name === "PUBLIC_APP_USER_SSO_TOKEN"));
   assert.equal(closed, 1, "failed login browser should be closed");
+});
+
+test("transient OAKlouds license error recovers to ready when a retry returns the login form", async () => {
+  let navigationCount = 0;
+  let closed = 0;
+  const page = {
+    url: () => "https://eportal.nutc.edu.tw/login.php",
+    goto: async () => {
+      navigationCount++;
+      return { status: () => 200 };
+    },
+    waitForLoadState: async () => {},
+    waitForTimeout: async () => {},
+    locator: (selector = "") => ({
+      count: async () =>
+        navigationCount >= 3 && /password|密碼/i.test(selector) ? 1 : 0,
+      first: () => ({ waitFor: async () => {} }),
+    }),
+    evaluate: async () => {
+      if (navigationCount < 3) return 'checkLicense("OAKlouds") is failed!';
+      return {
+        title: "ePortal",
+        controls: [{ key: "control-0", tag: "input", type: "password", label: "密碼" }],
+        images: [],
+        messages: [],
+      };
+    },
+  };
+  const browser = {
+    page,
+    context: { clearCookies: async () => {} },
+    close: async () => { closed++; },
+  };
+  const bridge = makeLoginBridge(async () => browser);
+  const started = await bridge.startLoginBridge({ force: true });
+  const token = tokenFromLaunchPath(started.launchPath);
+
+  let state = null;
+  await flushBridge(async () => {
+    state = await bridge.getLoginBridgeState(token);
+    return state.phase === "ready";
+  });
+
+  assert.equal(navigationCount, 3);
+  assert.equal(state?.phase, "ready");
+  assert.equal(closed, 0);
+  await bridge.stopLoginBridge(token);
+  assert.equal(closed, 1);
 });

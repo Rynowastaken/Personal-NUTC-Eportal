@@ -2037,7 +2037,7 @@
         "div",
         { class: "actions" },
         auth
-          ? h("a", { class: "btn primary", href: "/server-login/" }, "登入 Server ePortal")
+          ? h("a", { class: "btn primary", href: "/server-login/?force=1&next=%2Fais" }, "登入 Server ePortal")
           : h("button", { class: "btn primary", type: "button", onclick: () => render() }, icon("refresh"), "重試"),
         h("a", { class: "btn ghost", href: "/go/ais", target: "_blank", rel: "noopener" }, "在 AIS 開啟"),
       ),

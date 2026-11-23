@@ -71,24 +71,47 @@ async function closeBrowser(browser) {
   }
 }
 
+const OAKLOUDS_MAX_ATTEMPTS = 5;
+
 async function navigateForBridge(page, url, label) {
-  bridgeLog(`${label}: request started`);
+  for (let attempt = 1; attempt <= OAKLOUDS_MAX_ATTEMPTS; attempt += 1) {
+    bridgeLog(`${label}: request started`);
 
-  const response = await page.goto(url, {
-    waitUntil: "commit",
-    timeout: 15_000,
-  });
-
-  bridgeLog(`${label}: response committed`, page);
-
-  await page
-    .waitForLoadState("domcontentloaded", { timeout: 8_000 })
-    .catch(() => {
-      bridgeLog(`${label}: DOMContentLoaded timed out; continuing with current DOM`, page);
+    const response = await page.goto(url, {
+      waitUntil: "commit",
+      timeout: 15_000,
     });
 
-  await page.waitForTimeout(250);
-  return response?.status?.() || 0;
+    bridgeLog(`${label}: response committed`, page);
+
+    await page
+      .waitForLoadState("domcontentloaded", { timeout: 8_000 })
+      .catch(() => {
+        bridgeLog(`${label}: DOMContentLoaded timed out; continuing with current DOM`, page);
+      });
+
+    await page.waitForTimeout(250);
+
+    const status = response?.status?.() || 0;
+    const text = await page
+      .evaluate(() =>
+        (document.body?.innerText || document.body?.textContent || "").slice(0, 2000),
+      )
+      .catch(() => "");
+    const failure = classifyEportalLoginFailure({ status, text });
+
+    if (failure?.retryable && attempt < OAKLOUDS_MAX_ATTEMPTS) {
+      bridgeLog(
+        `${label}: transient OAKlouds license error, retrying (${attempt}/${OAKLOUDS_MAX_ATTEMPTS})`,
+        page,
+      );
+      continue;
+    }
+
+    return status;
+  }
+
+  return 0;
 }
 
 async function closeActive() {
@@ -429,7 +452,11 @@ async function openCleanLoginPage(session, reason) {
   if (current.pathname === "/sess_exceed.php") {
     bridgeLog("clearing stale ePortal cookies after sess_exceed", page);
     await browser.context.clearCookies({
-      domain: /(^|\.)eportal\.nutc\.edu\.tw$/,
+      domain: /(^|\.)(?:eportal|ais)\.nutc\.edu\.tw$/,
+    });
+    await browser.context.clearCookies({
+      domain: /^\.?nutc\.edu\.tw$/,
+      name: "PUBLIC_APP_USER_SSO_TOKEN",
     });
   }
 
@@ -463,7 +490,11 @@ async function initializeLoginBridge(session) {
       // Explicit user action: invalidate only the saved ePortal cookies.
       // Never erase credentials simply because a background check failed.
       await session.browser.context.clearCookies({
-        domain: /(^|\.)eportal\.nutc\.edu\.tw$/,
+        domain: /(^|\.)(?:eportal|ais)\.nutc\.edu\.tw$/,
+      });
+      await session.browser.context.clearCookies({
+        domain: /^\.?nutc\.edu\.tw$/,
+        name: "PUBLIC_APP_USER_SSO_TOKEN",
       });
       await openCleanLoginPage(session, "user requested fresh login");
     } else {

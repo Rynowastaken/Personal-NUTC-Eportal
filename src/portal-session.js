@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { watchAisLoginExpiry } from "./ais-auth.js";
+import { classifyEportalLoginFailure } from "./eportal-login-page.js";
 import {
   EPORTAL_DASHBOARD,
   EPORTAL_HOME,
@@ -17,6 +18,7 @@ const ROOT = path.resolve(__dirname, "..");
 export const EPORTAL_PROFILE_DIR = path.join(ROOT, ".eportal-profile");
 export const EPORTAL_PROFILE_LOCK_FILE = path.join(ROOT, "data", "eportal-profile.lock");
 export const STUDENT_BUTTON_SELECTOR = 'button[onclick*="NUTC_6401"]';
+const EPORTAL_OAKLOUDS_MAX_ATTEMPTS = 5;
 
 let profileQueue = Promise.resolve();
 let keepaliveTimer = null;
@@ -842,6 +844,91 @@ export async function loginServerPortal({
   );
 }
 
+function createUpstreamUnavailableError(failure) {
+  const error = new Error(
+    failure?.message ||
+      "校方 ePortal 目前顯示服務異常或維護訊息，無法提供正常登入表單。請稍後重試。",
+  );
+  error.code = failure?.code || "EPORTAL_UPSTREAM_UNAVAILABLE";
+  error.statusCode = 503;
+  return error;
+}
+
+function isEportalLoginPath(rawUrl) {
+  try {
+    const target =
+      rawUrl instanceof URL ? rawUrl : new URL(String(rawUrl || ""));
+    return (
+      target.hostname === "eportal.nutc.edu.tw" &&
+      (target.pathname === "/login.php" ||
+        target.pathname === "/sess_exceed.php")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function readEportalUpstreamFailure(page, status = 0) {
+  let hostname = "";
+  try {
+    hostname = new URL(page.url()).hostname;
+  } catch {
+    hostname = "";
+  }
+
+  if (status < 500 && hostname !== "eportal.nutc.edu.tw") {
+    return null;
+  }
+
+  const text = await page
+    .evaluate(() =>
+      (document.body?.innerText || document.body?.textContent || "").slice(
+        0,
+        2000,
+      ),
+    )
+    .catch(() => "");
+
+  return classifyEportalLoginFailure({ status, text });
+}
+
+export async function gotoEportalWithRetry(
+  page,
+  url,
+  {
+    waitUntil = "domcontentloaded",
+    timeout = 30_000,
+    referer,
+    maxAttempts = EPORTAL_OAKLOUDS_MAX_ATTEMPTS,
+  } = {},
+) {
+  let response = null;
+  let status = 0;
+  let failure = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    response = await page.goto(url, {
+      waitUntil,
+      timeout,
+      ...(referer ? { referer } : {}),
+    });
+    status = response?.status?.() || 0;
+    failure = await readEportalUpstreamFailure(page, status);
+
+    if (failure?.retryable && attempt < maxAttempts) {
+      console.log(
+        `[portal-session] transient OAKlouds license error on ${safeUrlLabel(page.url() || url)}, retrying (${attempt}/${maxAttempts})`,
+      );
+      await page.waitForTimeout?.(250);
+      continue;
+    }
+
+    return { response, status, failure };
+  }
+
+  return { response, status, failure };
+}
+
 async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
   if (!(await profileExists())) {
     return {
@@ -859,10 +946,23 @@ async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
     context = await openServerPortalSession({ headless: true });
     const page = context.pages()[0] || (await context.newPage());
 
-    await page.goto(EPORTAL_DASHBOARD, {
-      waitUntil: "domcontentloaded",
-      timeout,
-    });
+    const { status, failure } = await gotoEportalWithRetry(
+      page,
+      EPORTAL_DASHBOARD,
+      { waitUntil: "domcontentloaded", timeout },
+    );
+
+    if (failure) {
+      return {
+        status: "error",
+        configured: true,
+        valid: false,
+        needsLogin: false,
+        checkedAt: new Date().toISOString(),
+        error: failure.message,
+        code: failure.code,
+      };
+    }
 
     // Return as soon as the authenticated marker appears or ePortal redirects
     // away from the dashboard. Keep the old 1.5 s window only as a fallback.
@@ -890,6 +990,21 @@ async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
       current.hostname === "eportal.nutc.edu.tw" &&
       current.pathname.startsWith("/nutc_dashboard/") &&
       hasStudentButton;
+
+    if (!valid) {
+      const postWaitFailure = await readEportalUpstreamFailure(page, status);
+      if (postWaitFailure) {
+        return {
+          status: "error",
+          configured: true,
+          valid: false,
+          needsLogin: false,
+          checkedAt: new Date().toISOString(),
+          error: postWaitFailure.message,
+          code: postWaitFailure.code,
+        };
+      }
+    }
 
     return {
       status: valid ? "valid" : "needs-login",
@@ -1207,15 +1322,23 @@ export async function createModuleHandoff(
         "Loading the ePortal dashboard and waiting for DOM readiness.",
       );
 
-      await dashboard.goto(EPORTAL_DASHBOARD, {
-        waitUntil: "domcontentloaded",
-        timeout,
-      });
+      const { status: dashStatus, failure: dashFailure } =
+        await gotoEportalWithRetry(dashboard, EPORTAL_DASHBOARD, {
+          waitUntil: "domcontentloaded",
+          timeout,
+        });
 
       const loggedIn =
+        !dashFailure &&
         (await dashboard.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
 
       if (!loggedIn) {
+        const upstream =
+          dashFailure ||
+          (await readEportalUpstreamFailure(dashboard, dashStatus));
+        if (upstream) {
+          throw createUpstreamUnavailableError(upstream);
+        }
         const error = new Error(
           "Server ePortal session expired. Use the Server ePortal login bridge.",
         );
@@ -2012,12 +2135,60 @@ export async function createModuleHandoff(
             if (settled) return;
 
             try {
-              const current = new URL(launcher.url());
-              const isEportal = current.origin === eportalOrigin;
+              let current = new URL(launcher.url());
+              let isEportal = current.origin === eportalOrigin;
               const isLegacyActivity =
                 shouldExecuteLegacyTargetInBrowser(module, current);
 
               if (!isEportal && !isLegacyActivity) return;
+
+              if (isEportal) {
+                let upstream = await readEportalUpstreamFailure(launcher);
+                if (upstream?.retryable) {
+                  for (
+                    let attempt = 1;
+                    attempt < EPORTAL_OAKLOUDS_MAX_ATTEMPTS && !settled;
+                    attempt += 1
+                  ) {
+                    console.log(
+                      `[handoff] transient OAKlouds license error for ${module.id}, retrying (${attempt}/${EPORTAL_OAKLOUDS_MAX_ATTEMPTS - 1})`,
+                    );
+                    await launcher
+                      .goto(moduleUrl(module.id), {
+                        waitUntil: "commit",
+                        timeout: 10_000,
+                        referer: EPORTAL_DASHBOARD,
+                      })
+                      .catch(() => {});
+
+                    for (let tick = 0; tick < 6 && !settled; tick += 1) {
+                      await launcher.waitForTimeout?.(250);
+                    }
+                    if (settled) return;
+
+                    current = new URL(launcher.url());
+                    isEportal = current.origin === eportalOrigin;
+                    if (!isEportal) return;
+
+                    upstream = await readEportalUpstreamFailure(launcher);
+                    if (!upstream) break;
+                  }
+                }
+
+                if (upstream) {
+                  finish(rejectHandoff, createUpstreamUnavailableError(upstream));
+                  return;
+                }
+
+                if (isEportalLoginPath(current.href)) {
+                  const loginError = new Error(
+                    "Server ePortal session expired. Use the Server ePortal login bridge.",
+                  );
+                  loginError.code = "EPORTAL_LOGIN_REQUIRED";
+                  finish(rejectHandoff, loginError);
+                  return;
+                }
+              }
 
               const summary = await launcher.evaluate(() => {
                 const targetInfo = (value) => {
@@ -2269,6 +2440,71 @@ export async function openLoginBridgeSession({ timeoutMs = 5_000 } = {}) {
   }
 }
 
+async function waitForAisNavigationOrEarlyExit(page, aisAuth) {
+  const urlPromise = page
+    .waitForURL(
+      (url) => url.protocol === "https:" && url.hostname === "ais.nutc.edu.tw",
+      { timeout: 20_000 },
+    )
+    .then(
+      () => ({ kind: "ais" }),
+      (error) => ({ kind: "timeout", error }),
+    );
+
+  let pollTimer = null;
+  let cancelPoll = null;
+  let stopped = false;
+
+  const pollPromise = (async () => {
+    while (!stopped) {
+      if (aisAuth.expired()) {
+        return { kind: "expired" };
+      }
+
+      const currentUrl = page.url();
+      try {
+        const parsed = new URL(currentUrl);
+        if (
+          parsed.protocol === "https:" &&
+          parsed.hostname === "ais.nutc.edu.tw"
+        ) {
+          return { kind: "ais" };
+        }
+      } catch {
+        // Ignore intermediate non-URL states.
+      }
+
+      if (isEportalLoginPath(currentUrl)) {
+        return { kind: "login" };
+      }
+
+      const failure = await readEportalUpstreamFailure(page);
+      if (failure) {
+        return { kind: "upstream", failure };
+      }
+
+      await new Promise((resolve) => {
+        cancelPoll = resolve;
+        pollTimer = setTimeout(resolve, 250);
+        pollTimer.unref?.();
+      });
+      cancelPoll = null;
+    }
+
+    return { kind: "stopped" };
+  })();
+
+  try {
+    return await Promise.race([urlPromise, pollPromise]);
+  } finally {
+    stopped = true;
+    if (pollTimer) clearTimeout(pollTimer);
+    if (cancelPoll) cancelPoll();
+    void urlPromise.catch(() => {});
+    void pollPromise.catch(() => {});
+  }
+}
+
 export async function openAisWithServerSession({
   headless = true,
   timeoutMs = 30_000,
@@ -2282,15 +2518,23 @@ export async function openAisWithServerSession({
     const page = context.pages()[0] || (await context.newPage());
     aisAuth = watchAisLoginExpiry(page);
 
-    await page.goto(EPORTAL_DASHBOARD, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+    const { status: dashStatus, failure: dashFailure } =
+      await gotoEportalWithRetry(page, EPORTAL_DASHBOARD, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
 
     const loggedIn =
+      !dashFailure &&
       (await page.locator(STUDENT_BUTTON_SELECTOR).count()) > 0;
 
     if (!loggedIn) {
+      const upstream =
+        dashFailure || (await readEportalUpstreamFailure(page, dashStatus));
+      if (upstream) {
+        throw createUpstreamUnavailableError(upstream);
+      }
+
       const error = new Error(
         "Server ePortal session expired. Run: npm run login",
       );
@@ -2298,15 +2542,91 @@ export async function openAisWithServerSession({
       throw error;
     }
 
-    await page.goto(moduleUrl("ais"), {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+    let aisReady = false;
+    for (
+      let attempt = 1;
+      attempt <= EPORTAL_OAKLOUDS_MAX_ATTEMPTS;
+      attempt += 1
+    ) {
+      const { status: modStatus, failure: modFailure } =
+        await gotoEportalWithRetry(page, moduleUrl("ais"), {
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
+        });
 
-    await page.waitForURL(
-      (url) => url.protocol === "https:" && url.hostname === "ais.nutc.edu.tw",
-      { timeout: 20_000 },
-    );
+      if (modFailure) {
+        throw createUpstreamUnavailableError(modFailure);
+      }
+
+      const waitOutcome = await waitForAisNavigationOrEarlyExit(page, aisAuth);
+
+      if (waitOutcome.kind === "ais") {
+        aisReady = true;
+        break;
+      }
+
+      if (waitOutcome.kind === "expired") {
+        aisAuth.assertValid();
+      }
+
+      if (waitOutcome.kind === "login") {
+        const error = new Error(
+          "Server ePortal session expired. Run: npm run login",
+        );
+        error.code = "EPORTAL_LOGIN_REQUIRED";
+        throw error;
+      }
+
+      if (waitOutcome.kind === "upstream") {
+        if (
+          waitOutcome.failure?.retryable &&
+          attempt < EPORTAL_OAKLOUDS_MAX_ATTEMPTS
+        ) {
+          console.log(
+            `[portal-session] transient OAKlouds error during AIS launch, retrying (${attempt}/${EPORTAL_OAKLOUDS_MAX_ATTEMPTS})`,
+          );
+          await page.waitForTimeout?.(250);
+          continue;
+        }
+        throw createUpstreamUnavailableError(waitOutcome.failure);
+      }
+
+      const postTimeoutFailure = await readEportalUpstreamFailure(
+        page,
+        modStatus,
+      );
+      if (postTimeoutFailure) {
+        if (
+          postTimeoutFailure.retryable &&
+          attempt < EPORTAL_OAKLOUDS_MAX_ATTEMPTS
+        ) {
+          await page.waitForTimeout?.(250);
+          continue;
+        }
+        throw createUpstreamUnavailableError(postTimeoutFailure);
+      }
+
+      if (isEportalLoginPath(page.url())) {
+        const error = new Error(
+          "Server ePortal session expired. Run: npm run login",
+        );
+        error.code = "EPORTAL_LOGIN_REQUIRED";
+        throw error;
+      }
+
+      throw (
+        waitOutcome.error ||
+        new Error("Timed out waiting for AIS redirect.")
+      );
+    }
+
+    if (!aisReady) {
+      throw createUpstreamUnavailableError({
+        code: "EPORTAL_UPSTREAM_UNAVAILABLE",
+        message:
+          "校方 ePortal 目前顯示服務異常或維護訊息，無法提供正常登入表單。請稍後重試。",
+      });
+    }
 
     aisAuth.assertValid();
     const managedContext = new Proxy(context, {

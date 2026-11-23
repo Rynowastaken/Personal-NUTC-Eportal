@@ -1,11 +1,14 @@
 // Standalone classic script: the login form must not depend on an ES-module
 // import being available, especially when the server is partially deployed.
 // Keep the return-path allowlist aligned with login-route.js.
+const ALLOWED_NEXT_PATHS = new Set(["/go/ais", "/ais", "/tronclass"]);
+
 function loginRequestOptions(search = "") {
   const params = new URLSearchParams(search);
+  const nextParam = params.get("next");
   return {
     force: params.get("force") === "1",
-    next: params.get("next") === "/go/ais" ? "/go/ais" : "/",
+    next: ALLOWED_NEXT_PATHS.has(nextParam) ? nextParam : "/",
   };
 }
 
@@ -349,10 +352,10 @@ function collectFields() {
 
 function leaveLoginPage() {
   setTimeout(() => {
-    // Only allow the known internal AIS launch path after fresh login.
+    // Only allow known internal portal return paths after fresh login.
     // Never use an arbitrary return URL from the query string.
     const next = loginRequestOptions(location.search).next;
-    if (next === "/go/ais") {
+    if (next !== "/") {
       location.replace(next);
       return;
     }

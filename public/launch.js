@@ -68,6 +68,9 @@ function describeLaunchError(message, code) {
   if (code === "EPORTAL_LOGIN_REQUIRED") {
     return { code, title: "需要登入 Server ePortal", message };
   }
+  if (code === "EPORTAL_UPSTREAM_UNAVAILABLE") {
+    return { code, title: "校方 ePortal 服務異常", message };
+  }
   return { code, title: "無法開啟", message };
 }
 
@@ -321,7 +324,8 @@ launchRetry.addEventListener("click", () => {
 });
 
 launchLogin.addEventListener("click", () => {
-  location.assign("/server-login/");
+  const next = moduleId === "ais" ? "&next=%2Fgo%2Fais" : "";
+  location.assign(`/server-login/?force=1${next}`);
 });
 
 launchBack.addEventListener("click", () => {
