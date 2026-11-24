@@ -1156,7 +1156,7 @@ export async function searchLibraryCatalog({
   const upperScope = String(scope || "ALL").trim().toUpperCase();
   const upperPreset = String(preset || "").trim().toUpperCase();
   const upperSort = String(sort || "RE").trim().toUpperCase() || "RE";
-  const pageNum = Math.max(1, Math.min(500, Number.parseInt(page, 10) || 1));
+  const pageNum = Math.max(1, Math.min(100_000, Number.parseInt(page, 10) || 1));
 
   if (!Object.hasOwn(FIELD_TO_RT, upperField)) {
     throw libraryError("Unsupported catalog search field.", "LIBRARY_INVALID_PARAM", 400);

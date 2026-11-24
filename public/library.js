@@ -42,6 +42,19 @@
     return Number.isFinite(n) ? n.toLocaleString("en-US") : String(val ?? "");
   }
 
+  function buildPageTokens(current, total) {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, idx) => idx + 1);
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, "…", total];
+    }
+    if (current >= total - 3) {
+      return [1, "…", total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, "…", current - 1, current, current + 1, "…", total];
+  }
+
   function tagLabelFromQf(qf) {
     const parts = String(qf || "").split("\t");
     return parts[3] || parts[2] || String(qf || "");
@@ -1786,6 +1799,34 @@
         state.catalogTags.length > 0 ||
         Boolean(data.preset);
 
+      const goToCatalogPage = (nextPage, nextPreset) => {
+        const maxPages = Math.max(1, Number(data?.totalPages) || 1);
+        const clamped = Math.max(
+          1,
+          Math.min(maxPages, Math.floor(Number(nextPage) || 1)),
+        );
+        if (clamped === data.page) return;
+        submitSearch(clamped, nextPreset);
+        const secEl = mainEl.querySelector(".section");
+        if (secEl && secEl.getBoundingClientRect().top < 64) {
+          secEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+
+      const pageTokens =
+        data.totalPages > 1 ? buildPageTokens(data.page, data.totalPages) : [];
+      const pageJumpInput = h("input", {
+        id: "catalogPageJump",
+        class: "input pager-input num",
+        type: "number",
+        inputmode: "numeric",
+        min: "1",
+        max: String(data.totalPages),
+        value: String(data.page),
+        disabled: state.catalogLoading,
+        "aria-label": "前往頁碼",
+      });
+
       resultsBody = h(
         "section",
         { class: "section" },
@@ -1849,34 +1890,76 @@
             ),
         data.totalPages > 1
           ? h(
-              "div",
-              { class: "pager" },
+              "nav",
+              { class: "pager", "aria-label": "頁碼導覽" },
               h(
-                "button",
-                {
-                  class: "btn small",
-                  type: "button",
-                  disabled: data.page <= 1 || state.catalogLoading,
-                  onclick: () => submitSearch(data.page - 1, data.preset),
-                },
-                icon("left"),
-                "上一頁",
+                "div",
+                { class: "pager-nav" },
+                h(
+                  "button",
+                  {
+                    class: "btn small",
+                    type: "button",
+                    disabled: data.page <= 1 || state.catalogLoading,
+                    onclick: () => goToCatalogPage(data.page - 1, data.preset),
+                  },
+                  icon("left"),
+                  "上一頁",
+                ),
+                h(
+                  "div",
+                  { class: "pager-pages" },
+                  pageTokens.map((token) =>
+                    token === "…"
+                      ? h("span", { class: "pager-ellipsis", "aria-hidden": "true" }, "…")
+                      : h(
+                          "button",
+                          {
+                            class: "btn small pager-num num",
+                            type: "button",
+                            "aria-current": token === data.page ? "page" : false,
+                            "aria-label": `第 ${formatNumber(token)} 頁`,
+                            disabled: state.catalogLoading || token === data.page,
+                            onclick: () => goToCatalogPage(token, data.preset),
+                          },
+                          formatNumber(token),
+                        ),
+                  ),
+                ),
+                h(
+                  "button",
+                  {
+                    class: "btn small",
+                    type: "button",
+                    disabled: data.page >= data.totalPages || state.catalogLoading,
+                    onclick: () => goToCatalogPage(data.page + 1, data.preset),
+                  },
+                  "下一頁",
+                  icon("right"),
+                ),
               ),
               h(
-                "span",
-                { class: "meta" },
-                `${formatNumber(data.page)} / ${formatNumber(data.totalPages)}`,
-              ),
-              h(
-                "button",
+                "form",
                 {
-                  class: "btn small",
-                  type: "button",
-                  disabled: data.page >= data.totalPages || state.catalogLoading,
-                  onclick: () => submitSearch(data.page + 1, data.preset),
+                  class: "pager-jump",
+                  onsubmit: (e) => {
+                    e.preventDefault();
+                    const target = Number.parseInt(pageJumpInput.value, 10);
+                    if (!Number.isFinite(target)) return;
+                    goToCatalogPage(target, data.preset);
+                  },
                 },
-                "下一頁",
-                icon("right"),
+                pageJumpInput,
+                h("span", { class: "meta num" }, `/ ${formatNumber(data.totalPages)}`),
+                h(
+                  "button",
+                  {
+                    class: "btn small",
+                    type: "submit",
+                    disabled: state.catalogLoading,
+                  },
+                  "前往",
+                ),
               ),
             )
           : null,

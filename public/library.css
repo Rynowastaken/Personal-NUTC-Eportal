@@ -96,7 +96,7 @@ h1 .claude-spark {
 }
 h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 h3 { margin: 0; font-size: 14px; font-weight: 600; }
-.section { margin-top: 36px; }
+.section { margin-top: 36px; scroll-margin-top: 72px; }
 .section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 12px; }
 .section-head h2 { margin: 0; }
 .section-controls { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
@@ -344,9 +344,33 @@ button.row:first-child { border-top: 0; }
 .seg::-webkit-scrollbar { display: none; }
 .seg button { height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--muted); font-weight: 500; cursor: pointer; white-space: nowrap; }
 .seg button[aria-pressed="true"] { background: var(--raised); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.3); }
-.pager { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; }
-.pager .btn { min-width: 36px; }
-.pager .meta { margin: 0 6px; font-variant-numeric: tabular-nums; }
+.pager {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 10px 14px; margin-top: 18px;
+}
+.pager-nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
+.pager-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; }
+.pager-num { min-width: 32px; padding: 0 9px; font-weight: 500; }
+.pager-num[aria-current="page"] {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--edge));
+  color: var(--primary);
+  font-weight: 600;
+  opacity: 1;
+}
+.pager-ellipsis { color: var(--faint); font-size: 13px; padding: 0 3px; user-select: none; }
+.pager-jump { display: inline-flex; align-items: center; gap: 6px; }
+.pager-input {
+  width: 72px; min-height: 32px; height: 32px; padding: 0 8px;
+  text-align: center; font-size: 13px; appearance: textfield;
+}
+.pager-input::-webkit-inner-spin-button,
+.pager-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pager .meta { margin: 0 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 600px) {
+  .pager { flex-direction: column; gap: 10px; }
+  .pager-pages { order: -1; flex: 1 0 100%; }
+}
 
 /* Rooms & Carrel Booking Workspace */
 .rooms-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 20px; align-items: start; margin-top: 20px; }
