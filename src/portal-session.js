@@ -1132,6 +1132,9 @@ async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
           code: postWaitFailure.code,
         };
       }
+      console.log(
+        `[portal-session] session check returned needs-login (${safeUrlLabel(current)})`,
+      );
     }
 
     return {
@@ -1296,6 +1299,7 @@ export function startPortalKeepalive({
     }
     keepaliveState.lastAttemptAt = new Date().toISOString();
 
+    const previousStatus = keepaliveState.lastStatus;
     let shouldRetry = false;
     try {
       const status = await checkStatus({ timeout: 30_000 });
@@ -1307,10 +1311,21 @@ export function startPortalKeepalive({
       } else if (status.status === "busy" || status.status === "error") {
         shouldRetry = true;
       }
+
+      if (keepaliveState.lastStatus !== previousStatus) {
+        console.log(
+          `[portal-session] keepalive status: ${previousStatus} -> ${keepaliveState.lastStatus}${status.code ? ` (${status.code})` : ""}`,
+        );
+      }
     } catch (error) {
       keepaliveState.lastStatus = "error";
       keepaliveState.lastError = error?.message || String(error);
       shouldRetry = true;
+      if (keepaliveState.lastStatus !== previousStatus) {
+        console.log(
+          `[portal-session] keepalive status: ${previousStatus} -> error (${error?.code || error?.name || "error"})`,
+        );
+      }
     }
 
     if (shouldRetry && keepaliveState.enabled && !keepaliveRetryTimer) {
