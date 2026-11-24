@@ -25,6 +25,7 @@ public/generated/
 .deploy/
 *.html
 !public/*.html
+!demo/*.html
 *.json.tmp
 
 # OS/editor
