@@ -6,12 +6,12 @@
   const STORAGE = "nutc-portal-demo-v1";
   const DEFAULT_SHORTCUTS = [{ name: "示範捷徑", url: "https://example.com", pinned: true }];
   const DEMO_SERVICE_LIST = Object.freeze([
-    { id: "student", name: "學生管理", subtitle: "課表、學籍與學生資訊", icon: "cap", accent: "218 184 125", defaultPinned: true, description: "展示校園課表、學籍及個人資訊的入口設計。正式網站會連往學校服務；這裡只提供示範畫面。" },
+    { id: "student", name: "學生管理", subtitle: "課表、學籍與學生資訊", icon: "cap", accent: "218 184 125", defaultPinned: true, demoHref: "./ais.html", description: "互動展示學生管理中心（/ais）：課表、缺曠、成績、修課進度、個人資料與校務公告。" },
     { id: "mail", name: "WebMail", subtitle: "校務信箱與通知", icon: "mail", accent: "108 196 199", defaultPinned: true, description: "校務信箱通知入口的示範。公開 Demo 不會開啟或讀取真實信件。" },
     { id: "events", name: "活動報名", subtitle: "活動、報名與投票", icon: "check", accent: "114 173 111", defaultPinned: true, description: "校園活動與投票入口的示範。此處不會送出任何實際報名。" },
     { id: "learning", name: "學習歷程", subtitle: "EP 學習歷程與成果", icon: "route", accent: "242 112 132", defaultPinned: true, description: "展示 EP 學習歷程與成果查詢的入口樣式。所有內容均為樣本。" },
-    { id: "tron", name: "TronClass", subtitle: "課程、教材、作業與測驗", icon: "book", accent: "117 189 178", defaultPinned: true, description: "課程、教材、作業和測驗入口的示範，不會登入 TronClass。" },
-    { id: "library", name: "圖書館系統", subtitle: "館藏查詢與電子期刊", icon: "book", accent: "218 184 125", defaultPinned: false, description: "圖書館館藏與電子期刊資料庫入口的示範預覽。" },
+    { id: "tron", name: "TronClass", subtitle: "課程、教材、作業與測驗", icon: "book", accent: "117 189 178", defaultPinned: true, demoHref: "./tronclass.html", description: "互動展示 TronClass 學習中心：待辦、課程章節、練習測驗作答與問 AI 解析。" },
+    { id: "library", name: "圖書館系統", subtitle: "館藏、借閱與研究小間", icon: "book", accent: "218 184 125", defaultPinned: true, demoHref: "./library.html", description: "互動展示圖書館中心：全館館藏、標籤篩選、書目詳情、續借、10F 研究小間月曆與電子資料庫。" },
     { id: "code-judger", name: "Code Judger", subtitle: "程式解題與線上評測", icon: "external", accent: "224 185 128", defaultPinned: false, description: "程式解題與作業評測平台入口的示範預覽。" },
     { id: "learning-outcomes", name: "教學品保", subtitle: "教學評量與學習成效", icon: "check", accent: "114 173 111", defaultPinned: false, description: "教學評量與學習成效入口的示範預覽。" },
     { id: "ucan", name: "UCAN 職能", subtitle: "職能診斷與職涯探索", icon: "route", accent: "108 196 199", defaultPinned: false, description: "職能診斷與職涯探索平台入口的示範預覽。" },
@@ -140,7 +140,7 @@
     const service = event.target.closest("[data-service]");
     if (service) {
       const item = SERVICES[service.dataset.service];
-      if (!item) return;
+      if (!item || item.demoHref) return;
       $("serviceDialogTitle").textContent = item.name;
       $("serviceDialogDescription").textContent = item.description;
       openDialog("serviceDialog");
@@ -467,9 +467,10 @@
 
   let demoModulesExpanded = false;
   function buildDemoServiceNode(item, { isPinned, canUnpin }) {
-    const card = document.createElement("button");
+    const card = document.createElement(item.demoHref ? "a" : "button");
     card.className = "module-card";
-    card.type = "button";
+    if (item.demoHref) card.href = item.demoHref;
+    else card.type = "button";
     card.dataset.service = item.id;
     card.style.setProperty("--accent", item.accent);
 

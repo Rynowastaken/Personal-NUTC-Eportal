@@ -91,3 +91,38 @@ test("Pages workflow deploys only public demo without publishing source or secre
   assert.doesNotMatch(workflow, /github\.event\.repository\.has_pages == true/);
   assert.doesNotMatch(workflow, /path: \.\/?$/m);
 });
+
+test("interactive AIS, TronClass, and Library demo hubs are wired with fake offline data", async () => {
+  const viteConfig = await read("demo/vite.config.js");
+  assert.match(viteConfig, /base:\s*"\.\/"/);
+  assert.match(viteConfig, /cssCodeSplit:\s*true/);
+  for (const entry of ["index", "ais", "tronclass", "library"]) {
+    assert.match(viteConfig, new RegExp(`${entry}:\\s*path\\.resolve`));
+  }
+
+  for (const [id, href] of [
+    ["student", "./ais.html"],
+    ["tron", "./tronclass.html"],
+    ["library", "./library.html"],
+  ]) {
+    assert.ok(html.includes(`data-service="${id}"`), `Missing service ${id}`);
+    assert.ok(html.includes(`href="${href}"`), `Missing demo hub link ${href}`);
+    assert.ok(script.includes(`demoHref: "${href}"`), `Missing demoHref ${href} in demo/app.js`);
+  }
+
+  for (const hub of ["ais", "tronclass", "library"]) {
+    const hubHtml = await read(`demo/${hub}.html`);
+    const entryJs = await read(`demo/${hub}-entry.js`);
+    const bootJs = await read(`demo/${hub}-boot.js`);
+    const dataJs = await read(`demo/demo-data-${hub}.js`);
+    assert.match(hubHtml, new RegExp(`<script type="module" src="\\./${hub}-entry\\.js"><\\/script>`));
+    assert.match(entryJs, new RegExp(`demo-hub-chrome\\.css`));
+    assert.match(entryJs, new RegExp(`\\./${hub}-boot\\.js`));
+    assert.match(entryJs, new RegExp(`\\.\\./public/${hub}\\.js`));
+    assert.match(bootJs, /initDemoHub\(/);
+    assert.doesNotMatch(
+      hubHtml + bootJs + dataJs,
+      /eportal\.nutc\.edu\.tw|ais\.nutc\.edu\.tw|type="password"|\/server-login/,
+    );
+  }
+});

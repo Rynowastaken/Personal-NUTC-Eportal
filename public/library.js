@@ -4,6 +4,7 @@
   "use strict";
 
   const BASE = "/library";
+  const DEMO = globalThis.__NUTC_DEMO__?.hub === "library" ? globalThis.__NUTC_DEMO__ : null;
   const ROUTES = {
     "": "home",
     catalog: "catalog",
@@ -87,15 +88,43 @@
   // ---------------------------------------------------------------------------
   // Routing
 
+  function routeUrl(subPath = "", search = "") {
+    const clean = String(subPath || "").replace(/^\/+|\/+$/g, "");
+    if (!DEMO) {
+      return `${clean ? `${BASE}/${clean}` : BASE}${search || ""}`;
+    }
+    const params = new URLSearchParams(search || "");
+    const next = new URLSearchParams();
+    if (clean) next.set("r", clean);
+    for (const [k, v] of params.entries()) {
+      if (k === "r") continue;
+      next.append(k, v);
+    }
+    const qs = next.toString();
+    return `${location.pathname}${qs ? `?${qs}` : ""}`;
+  }
+
   function matchRoute(url) {
-    if (url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) return null;
     if (url.pathname.startsWith(`${BASE}/open/`)) return null;
+    if (DEMO) {
+      let rest = "";
+      if (url.pathname === location.pathname) {
+        const params = url.searchParams || new URL(url.href).searchParams;
+        rest = (params.get("r") || "").replace(/^\/+|\/+$/g, "");
+      } else if (url.pathname === BASE || url.pathname.startsWith(`${BASE}/`)) {
+        rest = url.pathname.slice(BASE.length).replace(/^\/+|\/+$/g, "");
+      } else {
+        return null;
+      }
+      return { name: ROUTES[rest] || "home" };
+    }
+    if (url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) return null;
     const rest = url.pathname.slice(BASE.length).replace(/^\/+|\/+$/g, "");
     return { name: ROUTES[rest] || "home" };
   }
 
   function hrefFor(name) {
-    return name === "home" ? BASE : `${BASE}/${name}`;
+    return routeUrl(name === "home" ? "" : name);
   }
 
   function navigate(href, { replace = false } = {}) {
@@ -104,10 +133,15 @@
       location.assign(url.href);
       return;
     }
+    let nextPath = url.pathname + url.search;
+    if (DEMO && (url.pathname === BASE || url.pathname.startsWith(`${BASE}/`))) {
+      const rest = url.pathname.slice(BASE.length).replace(/^\/+|\/+$/g, "");
+      nextPath = routeUrl(rest, url.search);
+    }
     history[replace ? "replaceState" : "pushState"](
       null,
       "",
-      url.pathname + url.search,
+      nextPath,
     );
     render();
   }
@@ -1003,7 +1037,7 @@
       h("div", { class: "menu-sep" }),
       h(
         "a",
-        { href: "/", role: "menuitem" },
+        { href: DEMO ? DEMO.homeHref : "/", role: "menuitem" },
         icon("home"),
         "返回 Portal 首頁",
       ),
@@ -1020,7 +1054,7 @@
         { class: "bar-in" },
         h(
           "a",
-          { class: "brand", href: BASE },
+          { class: "brand", href: hrefFor("home") },
           h("span", { class: "brand-mark", "aria-hidden": "true" }, h("i"), h("i"), h("i"), h("i")),
           h("span", { class: "brand-text" }, "圖書館"),
         ),
@@ -1299,7 +1333,7 @@
       { class: "stat-grid" },
       h(
         "a",
-        { class: "stat", href: `${BASE}/loans?tab=checkouts` },
+        { class: "stat", href: routeUrl("loans", "?tab=checkouts") },
         h("div", { class: "stat-top" }, h("span", null, "借閱中"), icon("book")),
         h("div", { class: "stat-value" }, String(summary.checkoutsCount)),
         h(
@@ -1310,7 +1344,7 @@
       ),
       h(
         "a",
-        { class: "stat", href: `${BASE}/loans?tab=holds` },
+        { class: "stat", href: routeUrl("loans", "?tab=holds") },
         h("div", { class: "stat-top" }, h("span", null, "預約中"), icon("bookmark")),
         h("div", { class: "stat-value" }, String(summary.holdsCount)),
         h(
@@ -1321,14 +1355,14 @@
       ),
       h(
         "a",
-        { class: "stat", href: `${BASE}/loans?tab=fines` },
+        { class: "stat", href: routeUrl("loans", "?tab=fines") },
         h("div", { class: "stat-top" }, h("span", null, "應付罰款"), icon("credit")),
         h("div", { class: "stat-value" }, String(summary.finesTotal)),
         h("div", { class: "stat-sub" }, data?.status ? `帳戶狀態：${data.status}` : "館藏帳戶"),
       ),
       h(
         "a",
-        { class: "stat", href: `${BASE}/rooms` },
+        { class: "stat", href: routeUrl("rooms") },
         h("div", { class: "stat-top" }, h("span", null, "研究小間"), icon("door")),
         h("div", { class: "stat-value" }, String(summary.activeCarrelsCount)),
         h(
@@ -1346,7 +1380,7 @@
         "div",
         { class: "section-head" },
         h("h2", null, "目前借閱"),
-        h("a", { class: "meta", href: `${BASE}/loans` }, "查看全部"),
+        h("a", { class: "meta", href: routeUrl("loans") }, "查看全部"),
       ),
       data?.sectionErrors?.opac
         ? h(
@@ -1362,7 +1396,7 @@
               ? checkouts.slice(0, 4).map((loan) =>
                   h(
                     "a",
-                    { class: "row", href: `${BASE}/loans` },
+                    { class: "row", href: routeUrl("loans") },
                     h("div", { class: "row-icon accent" }, icon("book")),
                     h(
                       "div",
@@ -1393,7 +1427,7 @@
         "div",
         { class: "section-head" },
         h("h2", null, "研究小間預約"),
-        h("a", { class: "meta", href: `${BASE}/rooms` }, "預約或查詢"),
+        h("a", { class: "meta", href: routeUrl("rooms") }, "預約或查詢"),
       ),
       data?.sectionErrors?.carrels
         ? h(
@@ -1409,7 +1443,7 @@
               ? carrels.slice(0, 4).map((res) =>
                   h(
                     "a",
-                    { class: "row", href: `${BASE}/rooms` },
+                    { class: "row", href: routeUrl("rooms") },
                     h("div", { class: "row-icon done" }, icon("door")),
                     h(
                       "div",
@@ -1565,8 +1599,9 @@
         qs.append("tag", tag);
       }
       const nextSearch = `?${qs}`;
-      state.lastCatalogSearch = nextSearch;
-      history.replaceState(null, "", `${BASE}/catalog${nextSearch}`);
+      const targetUrl = routeUrl("catalog", nextSearch);
+      state.lastCatalogSearch = new URL(targetUrl, location.origin).search;
+      history.replaceState(null, "", targetUrl);
       void runCatalogSearch({
         q,
         field: fieldEl.value,
@@ -2039,6 +2074,9 @@
               "aria-pressed": String(state.loanTab === k),
               onclick: () => {
                 state.loanTab = k;
+                if (new URLSearchParams(location.search).has("tab")) {
+                  history.replaceState(null, "", routeUrl("loans", `?tab=${k}`));
+                }
                 render();
               },
             },
@@ -3036,7 +3074,7 @@
       h(
         "p",
         { class: "footer-link" },
-        h("a", { href: "/" }, "NUTC Portal"),
+        h("a", { href: DEMO ? DEMO.homeHref : "/" }, "NUTC Portal"),
         " · ",
         h(
           "a",

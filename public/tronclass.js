@@ -12,21 +12,35 @@
   "use strict";
 
   const BASE = "/tronclass";
+  const DEMO = globalThis.__NUTC_DEMO__?.hub === "tronclass" ? globalThis.__NUTC_DEMO__ : null;
   const TRONCLASS = "https://tc.nutc.edu.tw";
   const USER_KEY = "tcx-user";
   const STYLE_ID = "tcx-app-style";
-  const FONT_URL = "/fonts/albert-sans.woff2";
+  const FONT_URL = DEMO?.fontUrl || "/fonts/albert-sans.woff2";
 
   // ---------------------------------------------------------------------------
   // Routing
 
   // A TronClass path ("/course/1/content") as a page of this app.
-  const P = (path) => BASE + path;
+  const P = (path) => {
+    if (!DEMO) return BASE + path;
+    const [beforeHash, hash = ""] = String(path || "").split("#");
+    const [pathname, search = ""] = beforeHash.split("?");
+    const qs = new URLSearchParams(search);
+    if (pathname) qs.set("r", pathname);
+    const query = qs.toString();
+    return `${location.pathname}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
+  };
   // The same page on TronClass itself.
   const tcHref = (href) => {
     const url = new URL(href, location.origin);
-    const path = url.pathname.startsWith(BASE) ? url.pathname.slice(BASE.length) || "/user/index" : url.pathname;
-    return TRONCLASS + path + url.search + url.hash;
+    let path = url.pathname;
+    if (DEMO && url.pathname === location.pathname) {
+      path = url.searchParams.get("r") || "/user/index";
+    } else if (url.pathname.startsWith(BASE)) {
+      path = url.pathname.slice(BASE.length) || "/user/index";
+    }
+    return TRONCLASS + path + (DEMO ? "" : url.search) + url.hash;
   };
   const classicHref = () => {
     const route = matchRoute(location);
@@ -36,8 +50,15 @@
   };
 
   function matchRoute(url) {
-    if (url.pathname !== BASE && !url.pathname.startsWith(BASE + "/")) return null;
-    const path = url.pathname.slice(BASE.length).replace(/\/+$/, "") || "/user/index";
+    let path;
+    if (DEMO) {
+      if (url.pathname !== location.pathname) return null;
+      const params = url.searchParams || new URL(url.href).searchParams;
+      path = (params.get("r") || "/user/index").replace(/\/+$/, "") || "/user/index";
+    } else {
+      if (url.pathname !== BASE && !url.pathname.startsWith(BASE + "/")) return null;
+      path = url.pathname.slice(BASE.length).replace(/\/+$/, "") || "/user/index";
+    }
     const hash = url.hash;
     if (path === "/user/index") return { name: "home" };
     if (path === "/user/courses") return { name: "courses" };
@@ -904,6 +925,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     for (const key of [...cache.keys()]) {
       if (
         key === `/api/exams/${examId}` ||
+        key.startsWith(`/api/exams/${examId}/submissions`) ||
         key.startsWith(`/api/courses/${courseId}/exams`) ||
         key.startsWith(`/api/courses/${courseId}/submitted-exams`) ||
         key.startsWith(`/api/courses/${courseId}/exam-scores`) ||
@@ -1752,7 +1774,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       if (saved && saved.id) return (userPromise = Promise.resolve(saved));
     } catch {}
     userPromise = (async () => {
-      const res = await fetch(P("/me"), { credentials: "same-origin" });
+      const res = await fetch(BASE + "/me", { credentials: "same-origin" });
       if (!res.ok) throw await failure(res);
       const { user } = await res.json();
       if (!user || !user.id) throw new ApiError("讀不到 TronClass 帳號。", "http");
@@ -1859,13 +1881,13 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     };
   }
 
-  const examOverviewHref = (courseId, examId) => `${BASE}/course/${courseId}/learning-activity#/exam/${examId}`;
+  const examOverviewHref = (courseId, examId) => P(`/course/${courseId}/learning-activity#/exam/${examId}`);
   const examTakeHref = (courseId, examId) => `${examOverviewHref(courseId, examId)}/take`;
   const examResultHref = (courseId, examId, submissionId) => `${examOverviewHref(courseId, examId)}/result/${submissionId}`;
   const classicExamHref = (courseId, examId) => tcHref(examOverviewHref(courseId, examId));
 
   const itemHref = (courseId, item) =>
-    item.kind === "exam" ? examOverviewHref(courseId, item.id) : `${BASE}/course/${courseId}/learning-activity#/${item.id}`;
+    item.kind === "exam" ? examOverviewHref(courseId, item.id) : P(`/course/${courseId}/learning-activity#/${item.id}`);
 
   const KIND = {
     material: { label: "教材", icon: "file" },
@@ -1880,6 +1902,10 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 
   // Pages that are not rebuilt open on TronClass itself.
   function openClassic(href) {
+    if (DEMO) {
+      DEMO.onExternalLink?.("TronClass");
+      return;
+    }
     location.assign(tcHref(href));
   }
 
@@ -1917,6 +1943,10 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   // TronClass's home page. Must be called from a click handler so the tab is
   // not blocked.
   function openOnTronclass(url) {
+    if (DEMO) {
+      DEMO.onExternalLink?.("TronClass");
+      return;
+    }
     // A fresh tab per click: reusing a named tab would navigate an exam or
     // homework that is already open there away from what the student is doing.
     const launch = new URL(`/go/tronclass?to=${encodeURIComponent(url.href)}`, location.origin).href;
@@ -2016,7 +2046,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   function renderMenu() {
     menu.replaceChildren(
       h("div", { class: "menu-note" }, "這是 Portal 重新設計的 TronClass。"),
-      h("a", { href: "/", role: "menuitem" }, icon("home"), "回到 Portal"),
+      h("a", { href: DEMO ? DEMO.homeHref : "/", role: "menuitem" }, icon("home"), "回到 Portal"),
       h(
         "button",
         {
@@ -2532,7 +2562,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 
     const route = matchRoute(location);
     if (!route) return openClassic(location.href);
-    if (location.pathname === BASE || location.pathname === BASE + "/") history.replaceState(null, "", P("/user/index"));
+    if (!DEMO && (location.pathname === BASE || location.pathname === BASE + "/")) history.replaceState(null, "", P("/user/index"));
     for (const [link, name] of [[navHome, "home"], [navCourses, "courses"]]) {
       if (route.name === name) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
@@ -2598,7 +2628,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
           { class: "list" },
           due.map((t) => {
             const kind = kindOf(t.type);
-            const href = t.type === "exam" ? `${BASE}/course/${t.course_id}/learning-activity#/exam/${t.id}` : `${BASE}/course/${t.course_id}/learning-activity#/${t.id}`;
+            const href = t.type === "exam" ? examOverviewHref(t.course_id, t.id) : P(`/course/${t.course_id}/learning-activity#/${t.id}`);
             return h(
               "a",
               { class: "row", href },
@@ -2626,7 +2656,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   function courseTile(course) {
     return h(
       "a",
-      { class: "tile", href: `${BASE}/course/${course.id}/content` },
+      { class: "tile", href: P(`/course/${course.id}/content`) },
       h("span", { class: "tile-name" }, course.name),
       h("span", { class: "meta" }, [course.teachers, course.klass].filter(Boolean).join(" · ")),
       course.progress == null
@@ -2657,7 +2687,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
           ? shown.map((c) =>
               h(
                 "a",
-                { class: "row", href: `${BASE}/course/${c.id}/content` },
+                { class: "row", href: P(`/course/${c.id}/content`) },
                 h("span", { class: "row-icon" }, icon("book")),
                 h("span", { style: "min-width:0" }, h("div", { class: "row-title" }, c.name), h("div", { class: "row-sub" }, [c.teachers, c.klass, c.course_code].filter(Boolean).join(" · "))),
                 h(
@@ -2899,7 +2929,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
     const kind = kindOf(item.kind);
     setTitle(item.title, bundle.course.name);
     return [
-      h("a", { class: "back", href: `${BASE}/course/${courseId}/content` }, icon("left"), bundle.course.name),
+      h("a", { class: "back", href: P(`/course/${courseId}/content`) }, icon("left"), bundle.course.name),
       h("h1", null, item.title),
       h("div", { class: "meta-row" }, h("span", { class: `chip ${item.kind === "exam" ? "accent" : ""}` }, kind.label), extra),
     ];
@@ -2995,7 +3025,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       logRead(activity.id, { upload_id: upload.id });
       // The portal streams TronClass's converted PDF so the browser's own
       // viewer can show it.
-      const src = P(`/preview/${upload.reference_id}`);
+      const src = `${BASE}/preview/${upload.reference_id}`;
       try {
         const head = await fetch(src, { method: "HEAD" });
         if (!head.ok) throw new Error();

@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - "demo/**"
+      - "public/ais.js"
+      - "public/ais.css"
+      - "public/library.js"
+      - "public/library.css"
+      - "public/tronclass.js"
       - "test/demo-site.test.js"
       - "test/demo-parity.test.js"
       - "package.json"
@@ -12,6 +17,11 @@ on:
   pull_request:
     paths:
       - "demo/**"
+      - "public/ais.js"
+      - "public/ais.css"
+      - "public/library.js"
+      - "public/library.css"
+      - "public/tronclass.js"
       - "test/demo-site.test.js"
       - "test/demo-parity.test.js"
       - "package.json"
@@ -42,8 +52,15 @@ jobs:
         run: |
           node --check demo/app.js
           node --check demo/features.js
+          node --check demo/demo-hub-runtime.js
+          node --check demo/demo-data-ais.js
+          node --check demo/demo-data-tronclass.js
+          node --check demo/demo-data-library.js
           node --test test/demo-site.test.js test/demo-parity.test.js
           test -s demo-dist/index.html
+          test -s demo-dist/ais.html
+          test -s demo-dist/tronclass.html
+          test -s demo-dist/library.html
           test -d demo-dist/assets
 
   deploy:

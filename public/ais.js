@@ -6,6 +6,7 @@
   "use strict";
 
   const BASE = "/ais";
+  const DEMO = globalThis.__NUTC_DEMO__?.hub === "ais" ? globalThis.__NUTC_DEMO__ : null;
   const AIS = "https://ais.nutc.edu.tw";
   const TZ = "Asia/Taipei";
   const ROUTES = { "": "home", schedule: "schedule", grades: "grades", absences: "absences", announcements: "announcements", profile: "profile", services: "services" };
@@ -23,8 +24,15 @@
   // Routing
 
   function matchRoute(url) {
-    if (url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) return null;
-    const rest = url.pathname.slice(BASE.length).replace(/^\/+|\/+$/g, "");
+    let rest;
+    if (DEMO) {
+      if (url.pathname !== location.pathname) return null;
+      const params = url.searchParams || new URL(url.href).searchParams;
+      rest = (params.get("r") || "").replace(/^\/+|\/+$/g, "");
+    } else {
+      if (url.pathname !== BASE && !url.pathname.startsWith(`${BASE}/`)) return null;
+      rest = url.pathname.slice(BASE.length).replace(/^\/+|\/+$/g, "");
+    }
     const course = rest.match(/^course\/(\d+)$/);
     if (course) {
       const params = url.searchParams || new URL(url.href).searchParams;
@@ -38,10 +46,14 @@
   }
 
   function hrefFor(name) {
+    if (DEMO) return name === "home" ? location.pathname : `${location.pathname}?r=${name}`;
     return name === "home" ? BASE : `${BASE}/${name}`;
   }
 
   function courseHref(ccid, sem) {
+    if (DEMO) {
+      return `${location.pathname}?r=${encodeURIComponent(`course/${ccid}`)}&sem=${encodeURIComponent(sem || "")}`;
+    }
     return `${BASE}/course/${ccid}?sem=${encodeURIComponent(sem || "")}`;
   }
 
@@ -443,7 +455,7 @@
         { class: "bar-in" },
         h(
           "a",
-          { class: "brand", href: BASE, "aria-label": "學生管理首頁" },
+          { class: "brand", href: hrefFor("home"), "aria-label": "學生管理首頁" },
           h("span", { class: "brand-mark", "aria-hidden": "true" }, h("i"), h("i"), h("i"), h("i")),
           h("span", { class: "brand-text" }, "學生管理"),
         ),
@@ -469,7 +481,7 @@
               profile?.studentId || "資料由 AIS 提供",
             ],
       ),
-      h("a", { href: "/", role: "menuitem" }, icon("home"), "回到 Portal"),
+      h("a", { href: DEMO ? DEMO.homeHref : "/", role: "menuitem" }, icon("home"), "回到 Portal"),
       h(
         "button",
         {
@@ -586,7 +598,7 @@
     return h(
       "div",
       { class: "footer-link" },
-      h("a", { href: "/" }, "NUTC Portal"),
+      h("a", { href: DEMO ? DEMO.homeHref : "/" }, "NUTC Portal"),
       " · ",
       h("a", { href: "/go/ais", target: "_blank", rel: "noopener" }, "在 AIS 開啟"),
     );
@@ -1851,6 +1863,11 @@
   ];
 
   function openAisPage(event, path) {
+    if (DEMO) {
+      event.preventDefault();
+      DEMO.onExternalLink?.("AIS 學生管理系統");
+      return;
+    }
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
     // The anchor itself opens the named AIS tab, so the browser's own
@@ -2073,7 +2090,7 @@
     renderMenu();
 
     const route = matchRoute(location) || { name: "home" };
-    if (location.pathname === `${BASE}/`) history.replaceState(null, "", BASE);
+    if (!DEMO && location.pathname === `${BASE}/`) history.replaceState(null, "", BASE);
     const navName = route.name === "course" ? "schedule" : route.name;
     for (const [name, link] of navLinks) {
       if (navName === name) link.setAttribute("aria-current", "page");

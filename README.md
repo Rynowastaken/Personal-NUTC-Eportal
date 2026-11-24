@@ -32,7 +32,7 @@
 
 以下截圖皆來自 [**公開展示網站（GitHub Pages）**](https://rynowastaken.github.io/Personal-NUTC-Eportal/)，使用範例資料。
 
-![桌面版 Dashboard：歡迎標題、目前課程、缺曠與日期磚，以及校務系統入口](docs/screenshots/dashboard-desktop.webp)
+![桌面版 Dashboard：歡迎標題、即時課程與缺曠磚，以及六大常用系統入口](docs/screenshots/dashboard-desktop.webp)
 
 <table>
   <tr>
@@ -41,11 +41,38 @@
   </tr>
   <tr>
     <td align="center">本週課表與缺曠紀錄</td>
-    <td align="center">手機版 Dashboard</td>
+    <td align="center">手機版 Dashboard（RWD）</td>
   </tr>
 </table>
 
-[**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 提供與主站相同介面與外觀選項的互動預覽（課表學制、缺曠篩選、捷徑釘選／編輯、深淺色與背景亮度調整、可選 Hitokoto／OpenCC 語錄等設定皆存於本機瀏覽器），**不會登入校方系統或讀取個人 ePortal 資料**。
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/ais-hub.webp" alt="學生管理中心（AIS Hub）：今日課表、學分進度、成績與校務公告" /></td>
+    <td width="50%"><img src="docs/screenshots/tronclass-hub.webp" alt="TronClass 學習中心：待辦倒數與修課進度磚" /></td>
+  </tr>
+  <tr>
+    <td align="center">學生管理中心（<code>/ais</code>）總覽、課表與成績</td>
+    <td align="center">TronClass 學習中心（<code>/tronclass</code>）待辦與課程進度</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/tronclass-exam-ai.webp" alt="TronClass 練習測驗：即時作答與「問 AI 這題」結構化解析" /></td>
+    <td width="50%"><img src="docs/screenshots/library-catalog.webp" alt="圖書館中心：全館館藏瀏覽、標籤篩選、排序與複本狀態" /></td>
+  </tr>
+  <tr>
+    <td align="center">練習測驗內建「問 AI 這題」解說與表格整理</td>
+    <td align="center">圖書館全館館藏、標籤篩選與即時可借狀態</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/library-book-detail.webp" alt="圖書館書目詳情彈窗：封面、書目規格、點擊主題、內容簡介與館藏複本" /></td>
+    <td width="50%"><img src="docs/screenshots/library-rooms.webp" alt="圖書館 10F 研究小間月曆即時查詢與線上預約" /></td>
+  </tr>
+  <tr>
+    <td align="center">自動補齊內容／作者簡介與複本狀態之書目詳情</td>
+    <td align="center">10F 研究小間（10F-1–10F-7）月曆空位查詢與預約</td>
+  </tr>
+</table>
+
+[**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 以純靜態範例資料完整模擬整個平台操作體驗：除了首頁 Dashboard 與外觀設定外，還可直接點進 **學生管理（課表／成績／修課標準／公告）**、**TronClass（課程教材、練習測驗與模擬問 AI 助教）** 及 **圖書館（全館館藏、標籤篩選、書目詳情、續借、10F 研究小間月曆預約與資料庫搜尋）**，所有資料皆於瀏覽器本機模擬，**不會登入校方系統或讀取任何真實個人資料**。
 
 Demo 原始碼位於 [`demo/`](demo/)，自動部署流程設定在 [GitHub Actions](.github/workflows/demo-pages.yml)；若需要自行啟用，請參考 [GitHub Pages 啟用說明](docs/demo.md)。
 
