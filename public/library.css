@@ -228,8 +228,6 @@ button.row:first-child { border-top: 0; }
 .row-icon.accent { background: var(--primary-soft); color: var(--primary); }
 .row-icon.done { background: var(--success-soft); color: var(--success); }
 .row-icon.danger { background: var(--danger-soft); color: var(--danger); }
-.row-icon--muted { background: rgba(255,255,255,.04); color: var(--faint); }
-.row-icon--muted .i { width: 16px; height: 16px; }
 
 /* Selectable Loan Rows & Custom Checkboxes */
 .loan-row--selectable { cursor: pointer; user-select: none; transition: background .15s; }
@@ -240,12 +238,13 @@ button.row:first-child { border-top: 0; }
 
 .loan-check-slot {
   position: relative; display: grid; place-items: center;
-  width: 34px; height: 34px; flex: none;
+  width: 24px; height: 24px; flex: none;
 }
 .loan-check-input {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
   opacity: 0; cursor: pointer;
 }
+.loan-check-input:disabled { cursor: not-allowed; }
 .loan-check-box {
   display: grid; place-items: center; width: 20px; height: 20px;
   border-radius: 5px; border: 1.5px solid var(--edge-strong);
@@ -265,6 +264,7 @@ button.row:first-child { border-top: 0; }
 .loan-check-input:focus-visible + .loan-check-box { outline: 2px solid var(--primary); outline-offset: 2px; }
 .loan-check-input:checked + .loan-check-box { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .loan-check-input:checked + .loan-check-box .i { opacity: 1; transform: scale(1); }
+.loan-check-input:disabled + .loan-check-box { border-color: var(--edge); background: rgba(255,255,255,.02); opacity: .45; }
 @media (prefers-reduced-motion: reduce) {
   .loan-check-box, .loan-check-box .i { transition: none; transform: none; }
 }

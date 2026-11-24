@@ -2126,6 +2126,24 @@
             ? acct.checkouts.map((loan) => {
                 const selected = loan.renewable && state.selectedRenewIds.has(loan.id);
                 const subText = [loan.callNumber, loan.renewals].filter(Boolean).join(" · ");
+                if (!renewableAny) {
+                  return h(
+                    "div",
+                    { class: "row" },
+                    h("div", { class: "row-icon accent" }, icon("book")),
+                    h(
+                      "div",
+                      { style: "min-width:0" },
+                      h("div", { class: "row-title" }, loan.title),
+                      h("div", { class: "row-sub num" }, subText),
+                    ),
+                    h(
+                      "div",
+                      { class: "row-end" },
+                      h("span", { class: "chip num" }, loan.dueDate || "借閱中"),
+                    ),
+                  );
+                }
                 if (loan.renewable) {
                   return h(
                     "label",
@@ -2165,7 +2183,17 @@
                 return h(
                   "div",
                   { class: "row loan-row loan-row--locked" },
-                  h("div", { class: "row-icon row-icon--muted", "aria-hidden": "true" }, icon("lock")),
+                  h(
+                    "span",
+                    { class: "loan-check-slot" },
+                    h("input", {
+                      type: "checkbox",
+                      class: "loan-check-input",
+                      disabled: true,
+                      "aria-label": `${loan.title}（不可續借）`,
+                    }),
+                    h("span", { class: "loan-check-box", "aria-hidden": "true" }, icon("check")),
+                  ),
                   h(
                     "div",
                     { style: "min-width:0" },
