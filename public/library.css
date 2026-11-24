@@ -124,6 +124,7 @@ h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .btn.small { min-height: 32px; padding: 0 10px; font-size: 13px; }
 .btn.icon { width: 40px; padding: 0; }
 .btn[disabled] { opacity: .45; cursor: default; pointer-events: none; }
+.btn.primary[disabled] { background: rgba(255,255,255,.06); border-color: var(--edge); color: var(--faint); opacity: 1; }
 
 .input, .select {
   min-height: 42px; padding: 0 12px; border: 1px solid var(--edge); border-radius: var(--radius);
@@ -227,6 +228,46 @@ button.row:first-child { border-top: 0; }
 .row-icon.accent { background: var(--primary-soft); color: var(--primary); }
 .row-icon.done { background: var(--success-soft); color: var(--success); }
 .row-icon.danger { background: var(--danger-soft); color: var(--danger); }
+.row-icon--muted { background: rgba(255,255,255,.04); color: var(--faint); }
+.row-icon--muted .i { width: 16px; height: 16px; }
+
+/* Selectable Loan Rows & Custom Checkboxes */
+.loan-row--selectable { cursor: pointer; user-select: none; transition: background .15s; }
+.loan-row--selectable:hover { background: rgba(255,255,255,.035); }
+.loan-row--selectable[data-selected="true"] { background: color-mix(in srgb, var(--primary) 9%, transparent); }
+.loan-row--selectable[data-selected="true"]:hover { background: color-mix(in srgb, var(--primary) 13%, transparent); }
+.loan-row--locked .row-title { color: var(--soft); }
+
+.loan-check-slot {
+  position: relative; display: grid; place-items: center;
+  width: 34px; height: 34px; flex: none;
+}
+.loan-check-input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: pointer;
+}
+.loan-check-box {
+  display: grid; place-items: center; width: 20px; height: 20px;
+  border-radius: 5px; border: 1.5px solid var(--edge-strong);
+  background: var(--sunken); color: var(--on-primary);
+  transition: background .16s var(--ease), border-color .16s var(--ease), transform .14s var(--ease);
+}
+.loan-check-box .i {
+  width: 13px; height: 13px; stroke-width: 2.5;
+  opacity: 0; transform: scale(.65);
+  transition: opacity .14s var(--ease), transform .16s var(--ease);
+}
+.loan-row--selectable:hover .loan-check-box {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--edge-strong));
+  background: rgba(255,255,255,.05);
+}
+.loan-row--selectable:active .loan-check-box { transform: scale(.92); }
+.loan-check-input:focus-visible + .loan-check-box { outline: 2px solid var(--primary); outline-offset: 2px; }
+.loan-check-input:checked + .loan-check-box { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.loan-check-input:checked + .loan-check-box .i { opacity: 1; transform: scale(1); }
+@media (prefers-reduced-motion: reduce) {
+  .loan-check-box, .loan-check-box .i { transition: none; transform: none; }
+}
 .row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-sub { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-end { display: flex; align-items: center; gap: 10px; color: var(--faint); white-space: nowrap; flex-shrink: 0; }
@@ -450,7 +491,9 @@ button.row:first-child { border-top: 0; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
 .notice { display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1.5; }
 .notice .i { width: 16px; height: 16px; margin-top: 2px; color: var(--honey); flex: none; }
+.notice.danger { border-color: color-mix(in srgb, var(--danger) 36%, var(--edge)); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); color: var(--soft); }
 .notice.danger .i { color: var(--danger); }
+.notice.success { border-color: color-mix(in srgb, var(--success) 32%, var(--edge)); background: color-mix(in srgb, var(--success) 6%, var(--surface)); color: var(--soft); }
 .notice.success .i { color: var(--success); }
 .footer-link { margin-top: 56px; text-align: center; color: var(--faint); font-size: 12.5px; }
 .footer-link a:hover { color: var(--text); }

@@ -2111,7 +2111,11 @@
         h("span", null, data.sectionErrors.opac),
       );
     } else if (state.loanTab === "checkouts") {
-      const renewableAny = acct.checkouts.some((c) => c.renewable);
+      const renewableLoans = acct.checkouts.filter((c) => c.renewable);
+      const renewableAny = renewableLoans.length > 0;
+      const allSelected =
+        renewableAny &&
+        renewableLoans.every((c) => state.selectedRenewIds.has(c.id));
       panelContent = h(
         "section",
         { class: "section" },
@@ -2119,39 +2123,62 @@
           "div",
           { class: "list" },
           acct.checkouts.length
-            ? acct.checkouts.map((loan) =>
-                h(
-                  "div",
-                  { class: "row" },
-                  loan.renewable
-                    ? h("input", {
+            ? acct.checkouts.map((loan) => {
+                const selected = loan.renewable && state.selectedRenewIds.has(loan.id);
+                const subText = [loan.callNumber, loan.renewals].filter(Boolean).join(" · ");
+                if (loan.renewable) {
+                  return h(
+                    "label",
+                    {
+                      class: "row loan-row loan-row--selectable",
+                      "data-selected": selected ? "true" : "false",
+                    },
+                    h(
+                      "span",
+                      { class: "loan-check-slot" },
+                      h("input", {
                         type: "checkbox",
-                        checked: state.selectedRenewIds.has(loan.id),
+                        class: "loan-check-input",
+                        checked: selected,
                         "aria-label": `選擇續借 ${loan.title}`,
                         onchange: (e) => {
                           if (e.target.checked) state.selectedRenewIds.add(loan.id);
                           else state.selectedRenewIds.delete(loan.id);
                           render();
                         },
-                      })
-                    : h("div", { class: "row-icon accent" }, icon("book")),
+                      }),
+                      h("span", { class: "loan-check-box", "aria-hidden": "true" }, icon("check")),
+                    ),
+                    h(
+                      "div",
+                      { style: "min-width:0" },
+                      h("div", { class: "row-title" }, loan.title),
+                      h("div", { class: "row-sub num" }, subText),
+                    ),
+                    h(
+                      "div",
+                      { class: "row-end" },
+                      h("span", { class: "chip accent num" }, loan.dueDate || "借閱中"),
+                    ),
+                  );
+                }
+                return h(
+                  "div",
+                  { class: "row loan-row loan-row--locked" },
+                  h("div", { class: "row-icon row-icon--muted", "aria-hidden": "true" }, icon("lock")),
                   h(
                     "div",
                     { style: "min-width:0" },
                     h("div", { class: "row-title" }, loan.title),
-                    h(
-                      "div",
-                      { class: "row-sub num" },
-                      [loan.callNumber, loan.renewals].filter(Boolean).join(" · "),
-                    ),
+                    h("div", { class: "row-sub num" }, subText),
                   ),
                   h(
                     "div",
                     { class: "row-end" },
-                    h("span", { class: "chip accent num" }, loan.dueDate || "借閱中"),
+                    h("span", { class: "chip num" }, loan.dueDate || "借閱中"),
                   ),
-                ),
-              )
+                );
+              })
             : h("div", { class: "empty" }, icon("book"), h("strong", null, "目前無借閱中館藏")),
         ),
         renewableAny
@@ -2194,6 +2221,25 @@
                 },
                 state.renewBusy ? "續借中…" : `續借已選 (${state.selectedRenewIds.size})`,
               ),
+              renewableLoans.length > 1
+                ? h(
+                    "button",
+                    {
+                      class: "btn ghost",
+                      type: "button",
+                      disabled: state.renewBusy,
+                      onclick: () => {
+                        if (allSelected) {
+                          for (const c of renewableLoans) state.selectedRenewIds.delete(c.id);
+                        } else {
+                          for (const c of renewableLoans) state.selectedRenewIds.add(c.id);
+                        }
+                        render();
+                      },
+                    },
+                    allSelected ? "取消全選" : "全選可續借",
+                  )
+                : null,
             )
           : null,
         state.renewFeedback
