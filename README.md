@@ -6,14 +6,18 @@
 > This project is entirely vibe coded with GPT-5.6 Sol, GPT-6, Opus 5.5, Deepseek v4.1 Flash 1017, Gemini 4 Neon and Gemini 4 Hydrogen, thus support and bug fixes are not guaranteed. Use at your own risk.
 
 
-# NUTC Portal
+# 中科大學生用自架Eportal
+
+首先，為什麼要做？
+
+**因為中科大的eportal系統真的太過時太難用了**，以至於我迫不得已的得使用最新最潮的LLM科技來去爬蟲eportal套一個好看的前端來用
+
+> [!NOTE]
+> 本專案為非官方個人專案，與國立臺中科技大學官方無關。
 
 給國立臺中科技大學學生用的自架 Dashboard。把課表、缺曠紀錄、ePortal 常用系統全部放在同一頁，不用每次重登。
 
 跟其他類似工具最大的差別是：它在 server 上跑一個 headless Chromium 幫你維持 ePortal 登入狀態，但真正存取各子系統的是**你自己的瀏覽器**。server 只負責過橋——從 ePortal 拿到 SSO token 後轉交給你，你的瀏覽器再去目標系統完成登入。這樣 server 不會碰到你的 session 內容，也沒有中間人問題。
-
-> [!NOTE]
-> 本專案為非官方個人專案，與國立臺中科技大學官方無關。
 
 ## 畫面預覽
 
