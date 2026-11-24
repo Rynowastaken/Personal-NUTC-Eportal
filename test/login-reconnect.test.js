@@ -23,14 +23,20 @@ test("Reconnect AIS and rebuilt portal hubs require fresh login then return to o
     force: true,
     next: "/tronclass",
   });
+  assert.deepEqual(loginRequestOptions("?force=1&next=%2Flibrary"), {
+    force: true,
+    next: "/library",
+  });
   const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
   const aisJs = await readFile(new URL("../public/ais.js", import.meta.url), "utf8");
   const tronclassJs = await readFile(new URL("../public/tronclass.js", import.meta.url), "utf8");
+  const libraryJs = await readFile(new URL("../public/library.js", import.meta.url), "utf8");
   const launchJs = await readFile(new URL("../public/launch.js", import.meta.url), "utf8");
   assert.match(html, /href="\/server-login\/\?force=1&amp;next=%2Fais"/);
   assert.doesNotMatch(html, /next=%2Fgo%2Fais/);
   assert.match(aisJs, /href: "\/server-login\/\?force=1&next=%2Fais"/);
   assert.match(tronclassJs, /href: "\/server-login\/\?force=1&next=%2Ftronclass"/);
+  assert.match(libraryJs, /href: "\/server-login\/\?force=1&next=%2Flibrary"/);
   assert.match(launchJs, /\/server-login\/\?force=1/);
 });
 

@@ -46,6 +46,7 @@ test("curated ePortal catalog exposes all 16 official subsystems safely with val
     assert.ok(
       item.launchPath === "/ais" ||
         item.launchPath === "/tronclass" ||
+        item.launchPath === "/library" ||
         item.launchPath === `/go/${item.id}`,
     );
     assert.ok(

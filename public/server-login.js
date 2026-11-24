@@ -1,7 +1,7 @@
 // Standalone classic script: the login form must not depend on an ES-module
 // import being available, especially when the server is partially deployed.
 // Keep the return-path allowlist aligned with login-route.js.
-const ALLOWED_NEXT_PATHS = new Set(["/go/ais", "/ais", "/tronclass"]);
+const ALLOWED_NEXT_PATHS = new Set(["/go/ais", "/ais", "/tronclass", "/library"]);
 
 function loginRequestOptions(search = "") {
   const params = new URLSearchParams(search);

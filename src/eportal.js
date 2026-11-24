@@ -86,6 +86,8 @@ export const MODULES = Object.freeze([
     icon: "library",
     serverHandoff: true,
     defaultPinned: false,
+    // The portal's own rebuilt library hub; /go/library still opens library SSO.
+    appPath: "/library",
   },
   {
     id: "code-judger",

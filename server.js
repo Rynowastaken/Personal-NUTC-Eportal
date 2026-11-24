@@ -51,6 +51,10 @@ import {
   fetchTronclassJson,
   handleTronclassRequest,
 } from "./src/tronclass.js";
+import {
+  clearLibrarySession,
+  handleLibraryRequest,
+} from "./src/library-portal.js";
 import { stampHtmlAssetRevision, staticCacheControl } from "./src/static-assets.js";
 import {
   checkServerPortalStatus,
@@ -978,6 +982,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (await handleLibraryRequest(req, res, url, { sendJson, sendError, readJsonBody })) {
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/portal-logout") {
       try {
         const result = await logoutServerPortalSession();
@@ -986,6 +994,7 @@ const server = http.createServer(async (req, res) => {
         clearAbsenceListCache();
         clearAisPortalCache();
         await clearTronclassSession();
+        await clearLibrarySession();
         sendJson(res, 200, result);
       } catch (error) {
         if (error?.code === "EPORTAL_PROFILE_BUSY") {
@@ -1461,6 +1470,15 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/ais" || url.pathname.startsWith("/ais/")) {
       if (req.method === "GET" || req.method === "HEAD") {
         await serveStatic(req, res, "/ais.html");
+        return;
+      }
+      sendError(res, 404, "Not found.");
+      return;
+    }
+
+    if (url.pathname === "/library" || url.pathname.startsWith("/library/")) {
+      if (req.method === "GET" || req.method === "HEAD") {
+        await serveStatic(req, res, "/library.html");
         return;
       }
       sendError(res, 404, "Not found.");
