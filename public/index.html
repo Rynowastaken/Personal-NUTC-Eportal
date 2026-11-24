@@ -195,14 +195,14 @@
         <div class="flex min-w-0 items-start gap-2.5">
           <i data-lucide="shield-alert" class="mt-0.5 h-5 w-5 shrink-0 text-[#f2c58f]" aria-hidden="true"></i>
           <div>
-            <p class="text-sm font-semibold">AIS 登入可能已過期</p>
+            <p class="text-sm font-semibold">AIS 連線已過期</p>
             <p class="mt-1 text-xs font-medium leading-5 text-[var(--muted)]">
-              AIS 的瀏覽器登入可能已逾期。重新連接會要求重新登入 ePortal，完成後再發起 AIS SSO。若仍失敗，請清除瀏覽器中 ais.nutc.edu.tw 的網站資料後重試。
+              請重新登入 Server ePortal，完成後可返回首頁或前往學生管理。
             </p>
           </div>
         </div>
         <div class="flex shrink-0 flex-wrap gap-2">
-          <a href="/server-login/?force=1&amp;next=%2Fgo%2Fais"
+          <a href="/server-login/?force=1&amp;next=%2Fais"
             class="inline-flex min-h-10 items-center rounded-[5px] border border-white/[.18] bg-white/[.10] px-3 text-xs font-semibold hover:bg-white/[.16] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]">
             重新連接 AIS
           </a>
