@@ -54,6 +54,83 @@ export function stripHtml(raw = "") {
 }
 
 /**
+ * Convert HTML markup into clean multi-paragraph plain text while preserving readable breaks.
+ */
+export function htmlToCleanParagraphs(rawHtml = "", { maxLength = 2200 } = {}) {
+  const normalizedTags = String(rawHtml || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li|h[1-6]|tr|blockquote)>/gi, "\n\n")
+    .replace(/<(?:p|li|blockquote)\b[^>]*>/gi, "\n\n")
+    .replace(/<[^>]+>/g, " ");
+  const decoded = decodeHtmlEntities(normalizedTags);
+  const lines = decoded
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[ \t]+/g, " ").trim());
+  const outLines = [];
+  let blankRun = 0;
+  for (const line of lines) {
+    if (!line) {
+      if (outLines.length > 0 && blankRun === 0) outLines.push("");
+      blankRun += 1;
+    } else {
+      outLines.push(line);
+      blankRun = 0;
+    }
+  }
+  while (outLines.length && !outLines[outLines.length - 1]) outLines.pop();
+  let result = outLines.join("\n").trim();
+  if (maxLength > 0 && result.length > maxLength) {
+    let cut = result.slice(0, maxLength);
+    const stopIdx = Math.max(
+      cut.lastIndexOf("\n"),
+      cut.lastIndexOf("。"),
+      cut.lastIndexOf("."),
+      cut.lastIndexOf(" "),
+    );
+    if (stopIdx > maxLength * 0.6) {
+      const keepDelim = cut[stopIdx] === "。" || cut[stopIdx] === "." ? 1 : 0;
+      cut = cut.slice(0, stopIdx + keepDelim);
+    }
+    result = `${cut.trim()}…`;
+  }
+  return result;
+}
+
+/**
+ * Strip leading online-bookstore promo banners (e.g. member-points notices) without losing book content.
+ */
+export function stripBookstorePromo(raw = "") {
+  const original = String(raw || "").trim();
+  if (!original) return "";
+  const paragraphs = original.split(/\n{2,}/);
+  if (paragraphs.length < 2) return original;
+
+  let idx = 0;
+  let droppedPromo = false;
+  while (idx < paragraphs.length - 1) {
+    const p = paragraphs[idx].trim();
+    const isPromoHead =
+      /^【[^】]*(?:誠品|會員|獨家|優惠|活動|贈點|滿額|預購|限量)[^】]*】/.test(p) ||
+      /^(?:誠品|博客來|三民).{0,24}(?:活動|會員|贈點|折扣|獨家)/.test(p);
+    const isPromoContinuation =
+      droppedPromo &&
+      (/^(?:注意事項|活動期間|活動辦法)/.test(p) ||
+        /^(?:\d+\.|[•●])\s*(?:活動期間|黑卡|金卡|白卡|會員)/.test(p));
+    if (isPromoHead || isPromoContinuation) {
+      droppedPromo = true;
+      idx += 1;
+    } else {
+      break;
+    }
+  }
+
+  const remaining = paragraphs.slice(idx).join("\n\n").trim();
+  return remaining || original;
+}
+
+/**
  * Mask student/card identifiers so raw personal numbers are never shown by default.
  */
 export function maskLibraryIdentifier(value = "") {
@@ -566,6 +643,77 @@ export function mergeOpacAvailability(items = [], availabilityList = []) {
   });
 }
 
+function extractSanminSection(decodedHtml, sectionId) {
+  const idMatch = decodedHtml.match(new RegExp(`id=["']${sectionId}["']`, "i"));
+  if (!idMatch) return "";
+  const start = idMatch.index;
+  const nextHeaderOffset = decodedHtml
+    .slice(start + 10)
+    .search(/class="[^"]*IntroSection[^"]*"|id="Intro\d+"/i);
+  const end =
+    nextHeaderOffset >= 0 ? start + 10 + nextHeaderOffset : start + 30000;
+  const slice = decodedHtml.slice(start, end);
+  const blocks = extractBalancedTagBlocks(
+    slice,
+    `<div\\b[^>]*class="[^"]*SectionBody[^"]*"[^>]*>`,
+  );
+  return blocks[0] || "";
+}
+
+/**
+ * Parse Sanmin product detail HTML (`product/index/...`) into book description, author bio, and metadata.
+ */
+export function parseSanminProductDetail(html = "", expectedIsbn = "") {
+  const decoded = decodeHtmlEntities(String(html || ""));
+  if (!decoded.trim()) return null;
+
+  if (expectedIsbn) {
+    const cleanExpected = String(expectedIsbn)
+      .replace(/[^0-9Xx]/gi, "")
+      .toUpperCase();
+    const compact = decoded.replace(/[- ]+/g, "").toUpperCase();
+    if (!cleanExpected || !compact.includes(cleanExpected)) return null;
+  }
+
+  const rawIntro1 = extractSanminSection(decoded, "Intro1");
+  const rawIntro2 = extractSanminSection(decoded, "Intro2");
+
+  const description = rawIntro1
+    ? stripBookstorePromo(
+        htmlToCleanParagraphs(rawIntro1).replace(/^商品簡介\s*/, ""),
+      )
+    : "";
+  const authorBio = rawIntro2
+    ? htmlToCleanParagraphs(rawIntro2, { maxLength: 1400 }).replace(
+        /^作者簡介\s*/,
+        "",
+      )
+    : "";
+
+  const metaDesc =
+    firstMatch(
+      decoded,
+      /<meta\b[^>]*name=["']description["'][^>]*content=(["'])([\s\S]*?)\1/i,
+      2,
+    ) ||
+    firstMatch(
+      decoded,
+      /<meta\b[^>]*content=(["'])([\s\S]*?)\1[^>]*name=["']description["']/i,
+      2,
+    );
+  const pages = firstMatch(metaDesc, /頁數[:：]\s*(\d+)/);
+  const category = firstMatch(metaDesc, /類別[:：]\s*([^，,<\n]+)/).trim();
+
+  if (!description && !authorBio) return null;
+  return {
+    description,
+    authorBio,
+    pages,
+    category,
+    source: "三民書局",
+  };
+}
+
 /**
  * Parse SirsiDynix Enterprise OPAC item detail page (`detailnonmodal/.../one`).
  */
@@ -583,6 +731,23 @@ export function parseOpacItemDetail(html = "", detailPath = "") {
       ),
     );
 
+  const extractAllBiblio = (cls) => {
+    const out = [];
+    const seen = new Set();
+    const re = new RegExp(
+      `<div\\s+class="displayElementText[^"]*\\b${cls}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/div>`,
+      "gi",
+    );
+    for (const [, inner] of source.matchAll(re)) {
+      const text = stripHtml(inner);
+      if (text && !seen.has(text)) {
+        seen.add(text);
+        out.push(text);
+      }
+    }
+    return out;
+  };
+
   const title =
     extractBiblio("INITIAL_TITLE_SRCH") ||
     stripHtml(firstMatch(source, /<title>([\s\S]*?)<\/title>/i));
@@ -592,7 +757,44 @@ export function parseOpacItemDetail(html = "", detailPath = "") {
     extractBiblio("PUBLICATION_INFO") || extractBiblio("PUBYEAR");
   const isbn = extractBiblio("ISBN");
   const summary =
-    extractBiblio("SUMMARY") || extractBiblio("DESCRIPTION") || extractBiblio("NOTE");
+    extractBiblio("SUMMARY") ||
+    extractBiblio("DESCRIPTION") ||
+    extractBiblio("BOOKSUMMARY") ||
+    extractBiblio("NOTE");
+  const edition = extractBiblio("EDITION");
+  const physicalDesc = extractBiblio("PHYSICAL_DESC");
+  const series = extractBiblio("SERIES");
+  const language = extractBiblio("LANGUAGE");
+  const subjects = [
+    ...new Set([
+      ...extractAllBiblio("SUBJECT_TERM"),
+      ...extractAllBiblio("SUBJECT"),
+    ]),
+  ].slice(0, 8);
+  const notes = extractAllBiblio("GENERAL_NOTE").slice(0, 4);
+
+  const elecChunk =
+    firstMatch(
+      source,
+      /<div\s+class="displayElementText[^"]*\b(?:ELECTRONIC_ACCESS|ELECTRONIC_LOCATION)\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+    ) || "";
+  const rawElecHref = firstMatch(
+    elecChunk,
+    /<a\b[^>]*href=(["'])([^"']*)\1/i,
+    2,
+  );
+  let electronicUrl = "";
+  if (rawElecHref) {
+    const resolvedElec = resolveLibraryHref(rawElecHref, OPAC_ORIGIN);
+    try {
+      const parsedElec = new URL(resolvedElec);
+      if (parsedElec.protocol === "https:" || parsedElec.protocol === "http:") {
+        electronicUrl = parsedElec.toString();
+      }
+    } catch {
+      electronicUrl = "";
+    }
+  }
 
   const coverCandidate = stripHtml(
     firstMatch(source, /class="BOOKCOVER_value"[^>]*>([\s\S]*?)<\/div>/i),
@@ -642,6 +844,13 @@ export function parseOpacItemDetail(html = "", detailPath = "") {
     publisherYear,
     isbn,
     summary,
+    edition,
+    physicalDesc,
+    series,
+    language,
+    subjects,
+    notes,
+    electronicUrl,
     rawCoverUrl,
     detailPath,
     officialUrl: detailPath ? `${OPAC_ORIGIN}${detailPath}` : `${OPAC_BASE}/`,

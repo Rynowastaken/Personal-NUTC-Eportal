@@ -7,6 +7,7 @@ import { createModuleHandoff } from "./portal-session.js";
 import {
   buildOpacAvailabilityUrl,
   decodeHtmlEntities,
+  htmlToCleanParagraphs,
   normalizeIsbn,
   parseCarrelCalendar,
   parseCarrelForm,
@@ -17,7 +18,9 @@ import {
   parseOpacAccount,
   parseOpacItemDetail,
   parseOpacSearchResults,
+  parseSanminProductDetail,
   sanminCoverUrlFromIsbn,
+  stripBookstorePromo,
   stripHtml,
 } from "./library-parsers.js";
 
@@ -193,6 +196,8 @@ const googleCoverInFlight = new Map();
 const coverImageCache = new Map();
 let coverImageCacheBytes = 0;
 const coverInFlight = new Map();
+const bookEnrichmentCache = new Map();
+const bookEnrichmentInFlight = new Map();
 let catalogDiskLoaded = false;
 let catalogDiskLoadPromise = null;
 let catalogPersistTimer = null;
@@ -444,6 +449,7 @@ export async function clearLibrarySession() {
   googleCoverUrlCache.clear();
   coverImageCache.clear();
   coverImageCacheBytes = 0;
+  bookEnrichmentCache.clear();
   itemDetailCache.clear();
   databasesCache.clear();
   calendarCache.clear();
@@ -1274,8 +1280,347 @@ export async function warmLibraryCatalog() {
   }
 }
 
+async function fetchSanminEnrichment(isbn) {
+  try {
+    const searchRes = await fetch(
+      `https://www.sanmin.com.tw/search/index/?ct=ISBN&qu=${encodeURIComponent(isbn)}`,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml" },
+        signal: AbortSignal.timeout(4_500),
+      },
+    );
+    if (!searchRes.ok) return null;
+    const searchHtml = decodeHtmlEntities(await searchRes.text());
+    const linkMatch = searchHtml.match(
+      /<div\s+class="Title[^"]*"[^>]*>\s*<a\s+href="(\/product\/index\/\d{6,12})"/i,
+    );
+    if (!linkMatch) return null;
+
+    const prodRes = await fetch(`https://www.sanmin.com.tw${linkMatch[1]}`, {
+      headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml" },
+      signal: AbortSignal.timeout(4_500),
+    });
+    if (!prodRes.ok) return null;
+    return parseSanminProductDetail(await prodRes.text(), isbn);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchEsliteEnrichment(isbn) {
+  try {
+    const searchRes = await fetch(
+      `https://athena.eslite.com/api/v2/search?q=${encodeURIComponent(isbn)}&size=3`,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(4_000),
+      },
+    );
+    if (!searchRes.ok) return null;
+    const text = await searchRes.text();
+    if (!text.startsWith("{")) return null;
+    const json = JSON.parse(text);
+    const candidates = [
+      ...(Array.isArray(json?.hits?.hit) ? json.hits.hit.map((h) => h?.fields) : []),
+      ...(Array.isArray(json?.products) ? json.products : []),
+    ].filter(Boolean);
+
+    const matched = candidates.find(
+      (c) =>
+        normalizeIsbn(c.isbn13 || c.isbn || c.ean || c.isbn10 || "") === isbn,
+    );
+    const esliteSn = String(matched?.eslite_sn || "").trim();
+    if (!/^\d{6,20}$/.test(esliteSn)) return null;
+
+    const detailRes = await fetch(
+      `https://athena.eslite.com/api/v1/products/${esliteSn}`,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(4_000),
+      },
+    );
+    if (!detailRes.ok) return null;
+    const detailText = await detailRes.text();
+    if (!detailText.startsWith("{")) return null;
+    const prod = JSON.parse(detailText);
+
+    const verifiedIsbn = normalizeIsbn(
+      prod?.isbn13 || prod?.ean || prod?.isbn || prod?.isbn10 || "",
+    );
+    if (verifiedIsbn && verifiedIsbn !== isbn) return null;
+
+    const list = Array.isArray(prod?.descriptions) ? prod.descriptions : [];
+    const descEntry = list.find(
+      (d) =>
+        d?.product_description_type_id === 2 ||
+        d?.type === 2 ||
+        d?.name === "內容簡介",
+    );
+    const bioEntry = list.find(
+      (d) =>
+        d?.product_description_type_id === 6 ||
+        d?.type === 6 ||
+        d?.name === "作者介紹",
+    );
+
+    const rawDesc =
+      descEntry?.description || prod?.short_description || matched?.description || "";
+    const description = rawDesc
+      ? stripBookstorePromo(htmlToCleanParagraphs(rawDesc))
+      : "";
+    const authorBio = bioEntry?.description
+      ? htmlToCleanParagraphs(bioEntry.description, { maxLength: 1400 })
+      : "";
+
+    if (!description && !authorBio) return null;
+    return { description, authorBio, pages: "", source: "誠品線上" };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchOpenBdEnrichment(isbn) {
+  if (!isbn.startsWith("9784")) return null;
+  try {
+    const res = await fetch(
+      `https://api.openbd.jp/v1/get?isbn=${encodeURIComponent(isbn)}`,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(3_500),
+      },
+    );
+    if (!res.ok) return null;
+    const arr = await res.json();
+    const record = Array.isArray(arr) ? arr[0] : null;
+    if (!record) return null;
+
+    const textContents = Array.isArray(record?.onix?.CollateralDetail?.TextContent)
+      ? record.onix.CollateralDetail.TextContent
+      : [];
+    const type03 = textContents.find((t) => String(t?.TextType) === "03" && t?.Text);
+    const type02 = textContents.find((t) => String(t?.TextType) === "02" && t?.Text);
+    const longest = textContents
+      .filter((t) => t?.Text)
+      .sort((a, b) => String(b.Text).length - String(a.Text).length)[0];
+    const picked = type03?.Text || type02?.Text || longest?.Text || "";
+    const description = picked ? htmlToCleanParagraphs(picked) : "";
+
+    const contributors = Array.isArray(
+      record?.onix?.DescriptiveDetail?.Contributor,
+    )
+      ? record.onix.DescriptiveDetail.Contributor
+      : [];
+    const bioRaw = contributors
+      .map((c) => c?.BiographicalNote)
+      .filter(Boolean)
+      .join("\n\n");
+    const authorBio = bioRaw
+      ? htmlToCleanParagraphs(bioRaw, { maxLength: 1400 })
+      : "";
+
+    if (!description && !authorBio) return null;
+    return { description, authorBio, pages: "", source: "OpenBD" };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchGoogleBooksEnrichment(isbn) {
+  try {
+    const viewRes = await fetch(
+      `https://books.google.com/books?bibkeys=ISBN:${encodeURIComponent(isbn)}&jscmd=viewapi`,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: "*/*" },
+        signal: AbortSignal.timeout(4_000),
+      },
+    );
+    if (!viewRes.ok) return null;
+    const viewText = await viewRes.text();
+    const jsonMatch = viewText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const viewJson = JSON.parse(jsonMatch[0]);
+    const entry = viewJson?.[`ISBN:${isbn}`];
+    const infoUrl = entry?.info_url || entry?.preview_url || "";
+    const idMatch = infoUrl.match(/[?&]id=([A-Za-z0-9_-]{4,32})/);
+    if (!idMatch) return null;
+
+    const bookId = idMatch[1];
+    const pageRes = await fetch(
+      `https://books.google.com/books?id=${encodeURIComponent(bookId)}&hl=zh-TW`,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml" },
+        signal: AbortSignal.timeout(4_500),
+      },
+    );
+    if (!pageRes.ok) return null;
+    const pageHtml = await pageRes.text();
+
+    let rawSyn = "";
+    const synMatch = pageHtml.match(/<div\b[^>]*id=["']synopsistext["'][^>]*>/i);
+    if (synMatch) {
+      const start = synMatch.index;
+      let cursor = start;
+      let depth = 0;
+      const tagRegex = /<\/?div\b[^>]*>/gi;
+      tagRegex.lastIndex = start;
+      let tagMatch;
+      while ((tagMatch = tagRegex.exec(pageHtml)) !== null) {
+        if (tagMatch[0].startsWith("</")) {
+          depth -= 1;
+          if (depth === 0) {
+            cursor = tagRegex.lastIndex;
+            break;
+          }
+        } else {
+          depth += 1;
+        }
+      }
+      if (cursor > start) rawSyn = pageHtml.slice(start, cursor);
+    }
+
+    if (!rawSyn) {
+      rawSyn =
+        pageHtml.match(
+          /<meta\b[^>]*name=["']description["'][^>]*content=(["'])([\s\S]*?)\1/i,
+        )?.[2] ||
+        pageHtml.match(
+          /<meta\b[^>]*content=(["'])([\s\S]*?)\1[^>]*name=["']description["']/i,
+        )?.[2] ||
+        "";
+    }
+
+    const description = rawSyn ? htmlToCleanParagraphs(rawSyn) : "";
+    if (!description || /^Preview this book/i.test(description)) return null;
+    return { description, authorBio: "", pages: "", source: "Google Books" };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchOpenLibraryEnrichment(isbn) {
+  try {
+    const editionRes = await fetch(
+      `https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(4_000),
+      },
+    );
+    if (!editionRes.ok) return null;
+    const edition = await editionRes.json();
+    let rawDesc =
+      typeof edition?.description === "string"
+        ? edition.description
+        : edition?.description?.value || "";
+
+    if (!rawDesc) {
+      const workKey = String(edition?.works?.[0]?.key || "").trim();
+      if (/^\/works\/OL\d+W$/i.test(workKey)) {
+        const workRes = await fetch(`https://openlibrary.org${workKey}.json`, {
+          headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+          signal: AbortSignal.timeout(3_500),
+        });
+        if (workRes.ok) {
+          const work = await workRes.json();
+          rawDesc =
+            typeof work?.description === "string"
+              ? work.description
+              : work?.description?.value || "";
+        }
+      }
+    }
+
+    const description = rawDesc ? htmlToCleanParagraphs(rawDesc) : "";
+    if (!description) return null;
+    return { description, authorBio: "", pages: "", source: "Open Library" };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Fetch detailed bibliographic info and per-copy holdings for one OPAC record.
+ * Resolve book descriptions and author bios from vetted public book sources by ISBN.
+ */
+export async function fetchBookEnrichment(rawIsbn = "") {
+  const isbn = normalizeIsbn(rawIsbn);
+  if (!isbn) return null;
+
+  const cached = getCachedMap(bookEnrichmentCache, isbn);
+  if (cached) return cached.hit ? cached.data : null;
+
+  const existing = bookEnrichmentInFlight.get(isbn);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    let order;
+    if (/^978(957|986|626|7)/.test(isbn)) {
+      order = ["sanmin", "eslite", "gbooks", "openlibrary"];
+    } else if (/^9784/.test(isbn)) {
+      order = ["openbd", "eslite", "gbooks", "sanmin"];
+    } else {
+      order = ["gbooks", "openlibrary", "eslite", "sanmin"];
+    }
+
+    const runners = {
+      sanmin: fetchSanminEnrichment,
+      eslite: fetchEsliteEnrichment,
+      openbd: fetchOpenBdEnrichment,
+      gbooks: fetchGoogleBooksEnrichment,
+      openlibrary: fetchOpenLibraryEnrichment,
+    };
+
+    let bestBio = null;
+    for (const provider of order) {
+      const hit = await runners[provider](isbn);
+      if (!hit) continue;
+      if (hit.description) {
+        const merged = {
+          description: hit.description,
+          authorBio: hit.authorBio || bestBio?.authorBio || "",
+          pages: hit.pages || bestBio?.pages || "",
+          source: hit.source,
+        };
+        setCachedMap(
+          bookEnrichmentCache,
+          isbn,
+          { hit: true, data: merged },
+          COVER_HIT_TTL_MS,
+          200,
+        );
+        return merged;
+      }
+      if (hit.authorBio && !bestBio) bestBio = hit;
+    }
+
+    if (bestBio) {
+      setCachedMap(
+        bookEnrichmentCache,
+        isbn,
+        { hit: true, data: bestBio },
+        COVER_HIT_TTL_MS,
+        200,
+      );
+      return bestBio;
+    }
+
+    setCachedMap(
+      bookEnrichmentCache,
+      isbn,
+      { hit: false, data: null },
+      COVER_MISS_TTL_MS,
+      200,
+    );
+    return null;
+  })().finally(() => {
+    bookEnrichmentInFlight.delete(isbn);
+  });
+
+  bookEnrichmentInFlight.set(isbn, promise);
+  return promise;
+}
+
+/**
+ * Fetch detailed bibliographic info, live availability, ISBN enrichment, and holdings for one OPAC record.
  */
 export async function getLibraryCatalogItem(detailPath) {
   const cleanPath = String(detailPath || "").trim();
@@ -1286,6 +1631,7 @@ export async function getLibraryCatalogItem(detailPath) {
   const cached = getCachedMap(itemDetailCache, cleanPath);
   if (cached) return cached;
 
+  const titleId = cleanPath.match(/SD_ILS:(\d+)\/one$/i)?.[1] || "";
   const targetUrl = `${OPAC_ORIGIN}${cleanPath}`;
   const { response } = await httpRequestWithCookies(targetUrl, {
     useCookies: false,
@@ -1301,8 +1647,45 @@ export async function getLibraryCatalogItem(detailPath) {
 
   const html = await response.text();
   const detail = parseOpacItemDetail(html, cleanPath);
+
+  const [availMap, enrichment] = await Promise.all([
+    titleId ? fetchAvailabilityMap([titleId]).catch(() => ({})) : Promise.resolve({}),
+    detail.isbn ? fetchBookEnrichment(detail.isbn).catch(() => null) : Promise.resolve(null),
+  ]);
+
+  const availability = (titleId && availMap[titleId]) || null;
+  const holdings = (detail.holdings || []).map((copy) => {
+    const rawStatus = String(copy.status || "").trim();
+    if (rawStatus && rawStatus !== "未知") return copy;
+    let resolvedStatus = "";
+    if (availability && availability.totalCount > 0) {
+      if (availability.availableCount >= availability.totalCount) {
+        resolvedStatus = "在架上";
+      } else if (availability.availableCount === 0) {
+        resolvedStatus = "已借出";
+      }
+    }
+    return { ...copy, status: resolvedStatus };
+  });
+
+  const summary = detail.summary || enrichment?.description || "";
+  const summarySource = detail.summary
+    ? "館藏目錄"
+    : enrichment?.description
+      ? enrichment.source
+      : "";
+  const authorBio = enrichment?.authorBio || "";
+  const physicalDesc =
+    detail.physicalDesc || (enrichment?.pages ? `${enrichment.pages} 頁` : "");
+
   const publicDetail = {
     ...detail,
+    summary,
+    summarySource,
+    authorBio,
+    physicalDesc,
+    availability,
+    holdings,
     coverProxyUrl: toCoverProxyUrl(detail.rawCoverUrl, detail.isbn),
   };
   delete publicDetail.rawCoverUrl;

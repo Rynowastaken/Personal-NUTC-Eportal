@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  fetchBookEnrichment,
   fetchLibraryCover,
   getLibraryCatalogAvailability,
   handleLibraryRequest,
@@ -441,6 +442,152 @@ test("fetchLibraryCover resolves missing covers by ISBN fallback, follows safe r
       () => fetchLibraryCover({ url: "", isbn: "9784846021177" }),
       (err) => err?.code === "LIBRARY_COVER_NOT_FOUND" && err?.statusCode === 404,
     );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("fetchBookEnrichment resolves descriptions and author bios across Sanmin, Eslite, OpenBD, Google Books, and Open Library", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    assert.equal(await fetchBookEnrichment("not-an-isbn"), null);
+
+    // 1. TW ISBN hits Sanmin Intro1 & Intro2
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.startsWith("https://www.sanmin.com.tw/search/index/")) {
+        return new Response(
+          '<div class="Title"><a href="/product/index/014043898">安那其的黑色流星</a></div>',
+          { status: 200, headers: { "content-type": "text/html" } },
+        );
+      }
+      if (u === "https://www.sanmin.com.tw/product/index/014043898") {
+        return new Response(
+          `<meta name="description" content="ISBN：9786263841703，頁數：320">
+           <h2 id="Intro1">商品簡介</h2><div class="SectionBody">台灣青年歷史小說。</div>
+           <h2 id="Intro2">作者簡介</h2><div class="SectionBody">童育園，政大台文所畢。</div>`,
+          { status: 200, headers: { "content-type": "text/html" } },
+        );
+      }
+      return new Response("miss", { status: 404 });
+    };
+    const twHit = await fetchBookEnrichment("978-626-384-170-3");
+    assert.equal(twHit?.source, "三民書局");
+    assert.equal(twHit?.description, "台灣青年歷史小說。");
+    assert.equal(twHit?.authorBio, "童育園，政大台文所畢。");
+    assert.equal(twHit?.pages, "320");
+
+    // 2. TW ISBN falls back to Eslite Athena API and strips promo notice
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.startsWith("https://www.sanmin.com.tw/")) {
+        return new Response("<html>no match</html>", { status: 200 });
+      }
+      if (u.startsWith("https://athena.eslite.com/api/v2/search")) {
+        return new Response(
+          JSON.stringify({
+            hits: { hit: [{ fields: { eslite_sn: "2683130603006", isbn: "9789570879988" } }] },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (u === "https://athena.eslite.com/api/v1/products/2683130603006") {
+        return new Response(
+          JSON.stringify({
+            isbn13: 9789570879988,
+            descriptions: [
+              {
+                product_description_type_id: 2,
+                name: "內容簡介",
+                description:
+                  "<p>【誠品會員獨家贈點】<br>贈送700點</p><p>注意事項如下：<br>1. 活動期間...</p><p>一位終身銀行員的央行二十年紀實。</p>",
+              },
+              {
+                product_description_type_id: 6,
+                name: "作者介紹",
+                description: "<p>口述／彭淮南</p>",
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("miss", { status: 404 });
+    };
+    const esliteHit = await fetchBookEnrichment("9789570879988");
+    assert.equal(esliteHit?.source, "誠品線上");
+    assert.equal(esliteHit?.description, "一位終身銀行員的央行二十年紀實。");
+    assert.equal(esliteHit?.authorBio, "口述／彭淮南");
+
+    // 3. JP ISBN uses OpenBD CollateralDetail TextType 03 + Contributor bio
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.startsWith("https://api.openbd.jp/v1/get")) {
+        return new Response(
+          JSON.stringify([
+            {
+              onix: {
+                CollateralDetail: {
+                  TextContent: [
+                    { TextType: "02", Text: "短い要約" },
+                    { TextType: "03", Text: "詳細な内容紹介テキストです。" },
+                  ],
+                },
+                DescriptiveDetail: {
+                  Contributor: [{ BiographicalNote: "東京都在住の作家。" }],
+                },
+              },
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("miss", { status: 404 });
+    };
+    const jpHit = await fetchBookEnrichment("9784846021177");
+    assert.equal(jpHit?.source, "OpenBD");
+    assert.equal(jpHit?.description, "詳細な内容紹介テキストです。");
+    assert.equal(jpHit?.authorBio, "東京都在住の作家。");
+
+    // 4. EN ISBN uses Google Books viewapi -> #synopsistext, and another EN ISBN falls back to Open Library works
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.includes("9780596158101") && u.includes("viewapi")) {
+        return new Response(
+          'var _GBSBookInfo = {"ISBN:9780596158101":{"info_url":"https://books.google.com/books?id=etibAgAAQBAJ&source=gbs_ViewAPI"}};',
+          { status: 200 },
+        );
+      }
+      if (u.startsWith("https://books.google.com/books?id=etibAgAAQBAJ")) {
+        return new Response(
+          '<div id="synopsistext"><p>Master Python for real applications.</p><p>Includes web and GUI tutorials.</p></div>',
+          { status: 200 },
+        );
+      }
+      if (u.includes("9780134685991") && u.includes("viewapi")) {
+        return new Response("var _GBSBookInfo = {};", { status: 200 });
+      }
+      if (u === "https://openlibrary.org/isbn/9780134685991.json") {
+        return new Response(
+          JSON.stringify({ works: [{ key: "/works/OL18125943W" }] }),
+          { status: 200 },
+        );
+      }
+      if (u === "https://openlibrary.org/works/OL18125943W.json") {
+        return new Response(
+          JSON.stringify({ description: { value: "Comprehensive guide to Java best practices." } }),
+          { status: 200 },
+        );
+      }
+      return new Response("miss", { status: 404 });
+    };
+    const gbHit = await fetchBookEnrichment("9780596158101");
+    assert.equal(gbHit?.source, "Google Books");
+    assert.equal(gbHit?.description, "Master Python for real applications.\n\nIncludes web and GUI tutorials.");
+
+    const olHit = await fetchBookEnrichment("9780134685991");
+    assert.equal(olHit?.source, "Open Library");
+    assert.equal(olHit?.description, "Comprehensive guide to Java best practices.");
   } finally {
     globalThis.fetch = realFetch;
   }

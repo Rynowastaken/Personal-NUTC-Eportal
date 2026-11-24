@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import {
   decodeHtmlEntities,
   stripHtml,
+  htmlToCleanParagraphs,
+  stripBookstorePromo,
   maskLibraryIdentifier,
   normalizeIsbn,
   sanminCoverUrlFromIsbn,
   buildOpacAvailabilityUrl,
+  parseSanminProductDetail,
   parseLibraryPortalLinks,
   parseEndnoteDownloads,
   parseDatabasesList,
@@ -211,6 +214,14 @@ test("parseOpacItemDetail parses bibliographic metadata and holdings table rows"
     <div class="displayElementText PERSONAL_AUTHOR">Aditya Bhargava</div>
     <div class="displayElementText PUBLICATION_INFO">台北 : 碁峰, 2022</div>
     <div class="displayElementText ISBN">9789865029999</div>
+    <div class="displayElementText EDITION">初版</div>
+    <div class="displayElementText PHYSICAL_DESC">256 頁 : 圖 ; 23 公分</div>
+    <div class="displayElementText SERIES">圖解系列</div>
+    <div class="displayElementText LANGUAGE">中文</div>
+    <div class="displayElementText SUBJECT_TERM">演算法</div>
+    <div class="displayElementText SUBJECT_TERM">資料結構</div>
+    <div class="displayElementText GENERAL_NOTE">附索引</div>
+    <div class="displayElementText ELECTRONIC_ACCESS"><a href="https://ebooks.example.edu.tw/view/123">線上全文</a></div>
     <div class="displayElementText SUMMARY">圖解演算法入門。</div>
     <div class="BOOKCOVER_value">https://cdnec.sanmin.com.tw/999.jpg</div>
     <table>
@@ -228,6 +239,13 @@ test("parseOpacItemDetail parses bibliographic metadata and holdings table rows"
   assert.equal(detail.author, "Aditya Bhargava");
   assert.equal(detail.publisherYear, "台北 : 碁峰, 2022");
   assert.equal(detail.isbn, "9789865029999");
+  assert.equal(detail.edition, "初版");
+  assert.equal(detail.physicalDesc, "256 頁 : 圖 ; 23 公分");
+  assert.equal(detail.series, "圖解系列");
+  assert.equal(detail.language, "中文");
+  assert.deepEqual(detail.subjects, ["演算法", "資料結構"]);
+  assert.deepEqual(detail.notes, ["附索引"]);
+  assert.equal(detail.electronicUrl, "https://ebooks.example.edu.tw/view/123");
   assert.equal(detail.summary, "圖解演算法入門。");
   assert.equal(detail.rawCoverUrl, "https://cdnec.sanmin.com.tw/999.jpg");
   assert.equal(detail.holdings.length, 1);
@@ -406,4 +424,34 @@ test("parseOpacSearchResults does not bleed adjacent hitlist BOOKCOVER values in
     parsed.items[1].rawCoverUrl,
     "https://cdnec.sanmin.com.tw/product_images/986/986451448.jpg",
   );
+});
+
+test("htmlToCleanParagraphs, stripBookstorePromo, and parseSanminProductDetail format clean descriptions", () => {
+  assert.equal(
+    htmlToCleanParagraphs("<P>第一段&amp;細節。<BR>第二行。</P><P>第二段。</P><script>evil()</script>"),
+    "第一段&細節。\n第二行。\n\n第二段。",
+  );
+  assert.equal(htmlToCleanParagraphs("甲乙丙丁戊己庚辛", { maxLength: 5 }), "甲乙丙丁戊…");
+
+  const withPromo =
+    "【誠品會員獨家贈點】\n凡購買新書即贈 700 點。\n\n注意事項如下：\n1. 活動期間 2026 年。\n\n真正的第一段書籍簡介。\n\n真正的第二段簡介。";
+  assert.equal(stripBookstorePromo(withPromo), "真正的第一段書籍簡介。\n\n真正的第二段簡介。");
+  assert.equal(stripBookstorePromo("一般書籍簡介。"), "一般書籍簡介。");
+
+  const sanminHtml = `
+    <meta name="description" content="&#26360;&#21517;&#65306;&#23433;&#37027;&#20854;&#65292;ISBN&#65306;978-626-384-170-3&#65292;頁數：320，類別：台灣文學">
+    <h2 id="Intro1">商品簡介</h2>
+    <div class="SectionBody"><P>&#31532;&#19968;&#27573;&#31777;&#20171;&#12290;</P><P>第二段介紹。<BR>換行繼續。</P></div>
+    <h2 id="Intro2">作者簡介</h2>
+    <div class="SectionBody">童育園<BR>台灣小說創作者。</div>
+  `;
+  assert.equal(parseSanminProductDetail(sanminHtml, "9780000000002"), null);
+  const parsed = parseSanminProductDetail(sanminHtml, "9786263841703");
+  assert.deepEqual(parsed, {
+    description: "第一段簡介。\n\n第二段介紹。\n換行繼續。",
+    authorBio: "童育園\n台灣小說創作者。",
+    pages: "320",
+    category: "台灣文學",
+    source: "三民書局",
+  });
 });

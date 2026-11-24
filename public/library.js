@@ -142,6 +142,12 @@
     return el;
   }
 
+  function replaceNodes(parent, ...children) {
+    parent.replaceChildren(
+      ...children.flat(Infinity).filter((c) => c != null && c !== false),
+    );
+  }
+
   const ICONS = {
     book: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -564,133 +570,327 @@
         if (e.target === modalEl) closeModal();
       },
     },
-    h("div", { class: "dialog wide", id: "libDialog" }),
+    h("div", { class: "dialog wide", id: "libDialog", tabindex: "-1" }),
   );
+
+  function renderBookModalHero(book, fallbackCoverUrl, onPickSubject) {
+    const coverUrl = book.coverProxyUrl || fallbackCoverUrl || "";
+    const coverBox = h(
+      "div",
+      { class: `book-modal-cover${coverUrl ? "" : " is-empty"}` },
+      coverUrl
+        ? h("img", {
+            src: coverUrl,
+            alt: "",
+            onerror: (e) => {
+              const box = e.currentTarget.parentElement;
+              e.currentTarget.remove();
+              if (box) {
+                box.classList.add("is-empty");
+                box.append(icon("book"));
+              }
+            },
+          })
+        : icon("book"),
+    );
+
+    const specPairs = [
+      ["出版", book.publisherYear, false],
+      ["版本", book.edition, false],
+      ["規格", book.physicalDesc, false],
+      ["叢書", book.series, false],
+      ["語言", book.language, false],
+      ["ISBN", book.isbn, true],
+    ].filter(([, val]) => Boolean(val));
+
+    const subjects = Array.isArray(book.subjects) ? book.subjects.filter(Boolean) : [];
+
+    return h(
+      "div",
+      { class: "book-modal-hero" },
+      coverBox,
+      h(
+        "div",
+        { class: "book-modal-info" },
+        h(
+          "div",
+          { class: "book-modal-title-row" },
+          h("h2", { class: "dialog-title" }, book.title),
+          h(
+            "button",
+            {
+              class: "dialog-close",
+              type: "button",
+              "aria-label": "關閉",
+              onclick: closeModal,
+            },
+            icon("x"),
+          ),
+        ),
+        book.author ? h("div", { class: "book-modal-author" }, book.author) : null,
+        specPairs.length
+          ? h(
+              "dl",
+              { class: "book-modal-specs" },
+              specPairs.flatMap(([label, val, isNum]) => [
+                h("dt", null, label),
+                h("dd", isNum ? { class: "num" } : null, val),
+              ]),
+            )
+          : null,
+        subjects.length
+          ? h(
+              "div",
+              { class: "book-modal-subjects" },
+              subjects.slice(0, 6).map((subj) =>
+                h(
+                  "button",
+                  {
+                    class: "chip-btn chip-btn--tag",
+                    type: "button",
+                    onclick: () => onPickSubject(subj),
+                  },
+                  subj,
+                ),
+              ),
+            )
+          : null,
+      ),
+    );
+  }
+
+  function buildBookSynopsisSection(summary, summarySource) {
+    if (!summary) return null;
+    const paragraphs = String(summary)
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (!paragraphs.length) return null;
+
+    const isLong = summary.length > 320 || paragraphs.length > 3;
+    const box = h(
+      "div",
+      { class: `book-modal-synopsis${isLong ? " is-clamped" : ""}` },
+      paragraphs.map((p) => h("p", null, p)),
+    );
+    const toggleBtn = isLong
+      ? h(
+          "button",
+          {
+            class: "btn ghost small book-modal-more",
+            type: "button",
+            onclick: () => {
+              const clamped = box.classList.toggle("is-clamped");
+              toggleBtn.textContent = clamped ? "展開完整簡介" : "收合";
+            },
+          },
+          "展開完整簡介",
+        )
+      : null;
+
+    return h(
+      "section",
+      { class: "book-modal-section" },
+      h(
+        "div",
+        { class: "book-modal-section-head" },
+        h("h3", null, "內容簡介"),
+        summarySource
+          ? h("span", { class: "book-modal-source" }, summarySource)
+          : null,
+      ),
+      box,
+      toggleBtn,
+    );
+  }
+
+  function buildBookHoldingsSection(holdings, availability) {
+    const hasAvail = availability && availability.totalCount != null;
+    const availPill = hasAvail
+      ? h(
+          "span",
+          {
+            class: `chip num ${availability.availableCount > 0 ? "done" : "urgent"}`,
+          },
+          availability.availableCount > 0
+            ? `可借 ${availability.availableCount} / ${availability.totalCount}`
+            : `已全數借出 (0 / ${availability.totalCount})`,
+        )
+      : null;
+    const holdsPill =
+      availability && availability.holdsCount > 0
+        ? h("span", { class: "meta num" }, `預約 ${availability.holdsCount}`)
+        : null;
+
+    return h(
+      "section",
+      { class: "book-modal-section" },
+      h(
+        "div",
+        { class: "book-modal-section-head" },
+        h("h3", null, `館藏複本 (${holdings.length})`),
+        availPill || holdsPill
+          ? h("div", { class: "book-modal-section-meta" }, availPill, holdsPill)
+          : null,
+      ),
+      holdings.length
+        ? h(
+            "div",
+            { class: "holdings-list" },
+            holdings.map((copy) => {
+              const cleanStatus =
+                copy.status && copy.status !== "未知" ? copy.status : "";
+              const metaNodes = [];
+              if (copy.callNumber) {
+                metaNodes.push(h("span", { class: "book-call" }, copy.callNumber));
+              }
+              const tailText = [
+                copy.itemType || "",
+                copy.barcode ? `條碼 ${copy.barcode}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              if (tailText) {
+                metaNodes.push(h("span", { class: "num" }, tailText));
+              }
+
+              return h(
+                "div",
+                { class: "holding-row" },
+                h(
+                  "div",
+                  null,
+                  h("div", { class: "holding-loc" }, copy.branch || "館內"),
+                  metaNodes.length
+                    ? h("div", { class: "holding-sub" }, metaNodes)
+                    : null,
+                ),
+                cleanStatus
+                  ? h(
+                      "span",
+                      {
+                        class: `chip ${
+                          /在架|可借|在館/.test(cleanStatus)
+                            ? "done"
+                            : /借出|預約/.test(cleanStatus)
+                              ? "urgent"
+                              : "muted"
+                        }`,
+                      },
+                      cleanStatus,
+                    )
+                  : null,
+              );
+            }),
+          )
+        : h("div", { class: "empty" }, "目前無可顯示的館藏複本明細。"),
+    );
+  }
 
   function openBookModal(item) {
     lastFocused = document.activeElement;
     const dialog = modalEl.querySelector("#libDialog");
-    dialog.replaceChildren(
-      h(
-        "div",
-        { class: "dialog-head" },
-        h("h2", { class: "dialog-title" }, item.title),
-        h(
-          "button",
-          {
-            class: "dialog-close",
-            type: "button",
-            "aria-label": "關閉",
-            onclick: closeModal,
-          },
-          icon("x"),
-        ),
-      ),
+
+    const onPickSubject = (subject) => {
+      closeModal();
+      state.catalogTags = [];
+      state.catalogSort = "RE";
+      state.catalogPreset = "";
+      state.catalogScope = "ALL";
+      state.lastCatalogSearch = null;
+      const qs = new URLSearchParams({
+        q: subject,
+        field: "SUBJECT",
+        scope: "ALL",
+        page: "1",
+      });
+      navigate(`${BASE}/catalog?${qs}`);
+    };
+
+    replaceNodes(
+      dialog,
+      renderBookModalHero(item, item.coverProxyUrl, onPickSubject),
       h(
         "div",
         { class: "dialog-body" },
-        h("div", { class: "loading", style: "margin:0 0 14px" }),
-        h("p", { class: "meta" }, "正在載入館藏複本與借閱狀態…"),
+        h("div", { class: "loading", style: "margin:4px 0 14px" }),
+        h("div", { class: "skel" }),
+        h("div", { class: "skel short" }),
       ),
     );
     modalEl.hidden = false;
     document.documentElement.classList.add("modal-open");
     activeModal = modalEl;
-    dialog.querySelector(".dialog-close")?.focus();
+    dialog.focus({ preventScroll: true });
 
     apiJson(
       `/api/library/catalog/item?path=${encodeURIComponent(item.detailPath)}`,
     )
       .then((detail) => {
         if (modalEl.hidden) return;
+        const heroEl = dialog.querySelector(".book-modal-hero");
+        if (heroEl) {
+          heroEl.replaceWith(
+            renderBookModalHero(detail, item.coverProxyUrl, onPickSubject),
+          );
+        }
         const body = dialog.querySelector(".dialog-body");
         if (!body) return;
         const holdings = Array.isArray(detail.holdings) ? detail.holdings : [];
-        const coverUrl = detail.coverProxyUrl || item.coverProxyUrl || "";
-        const modalCover = coverUrl
-          ? h(
-              "div",
-              { class: "book-modal-cover" },
-              h("img", {
-                src: coverUrl,
-                alt: "",
-                onerror: (e) => {
-                  e.currentTarget.closest(".book-modal-cover")?.remove();
-                },
-              }),
-            )
-          : null;
-        const biblioMeta = h(
-          "div",
-          { class: "book-modal-meta" },
-          h(
-            "div",
-            { class: "meta-row", style: "margin-top:0;margin-bottom:14px" },
-            detail.author ? h("span", null, detail.author) : null,
-            detail.publisherYear ? h("span", null, detail.publisherYear) : null,
-            detail.isbn ? h("span", { class: "num" }, `ISBN ${detail.isbn}`) : null,
-          ),
-          detail.summary
+        const notes = Array.isArray(detail.notes) ? detail.notes.filter(Boolean) : [];
+        const bioParagraphs = String(detail.authorBio || "")
+          .split(/\n{2,}/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+
+        replaceNodes(
+          body,
+          buildBookSynopsisSection(detail.summary, detail.summarySource),
+          bioParagraphs.length
             ? h(
-                "p",
-                { class: "meta", style: "color:var(--soft);margin-bottom:0" },
-                detail.summary,
-              )
-            : null,
-        );
-        body.replaceChildren(
-          modalCover
-            ? h("div", { class: "book-modal-head" }, modalCover, biblioMeta)
-            : biblioMeta,
-          h("h3", null, `館藏複本 (${holdings.length})`),
-          holdings.length
-            ? h(
-                "div",
-                { class: "holdings-list" },
-                holdings.map((copy) =>
-                  h(
-                    "div",
-                    { class: "holding-row" },
-                    h(
-                      "div",
-                      null,
-                      h("div", { class: "holding-loc" }, copy.branch || "館內"),
-                      h(
-                        "div",
-                        { class: "holding-sub" },
-                        [
-                          copy.callNumber ? `索書號 ${copy.callNumber}` : "",
-                          copy.itemType || "",
-                          copy.barcode ? `條碼 ${copy.barcode}` : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" · "),
-                      ),
-                    ),
-                    h(
-                      "span",
-                      {
-                        class: `chip ${
-                          /在架|可借|在館/.test(copy.status)
-                            ? "done"
-                            : /借出|預約/.test(copy.status)
-                              ? "urgent"
-                              : "muted"
-                        }`,
-                      },
-                      copy.status || "查詢官方頁面",
-                    ),
-                  ),
+                "details",
+                { class: "rules-box book-modal-bio" },
+                h("summary", null, "作者簡介"),
+                h(
+                  "div",
+                  { class: "rules-body" },
+                  bioParagraphs.map((p) => h("p", null, p)),
                 ),
               )
-            : h("div", { class: "empty" }, "目前無可顯示的館藏複本明細。"),
+            : null,
+          notes.length
+            ? h(
+                "section",
+                { class: "book-modal-section" },
+                h("div", { class: "book-modal-section-head" }, h("h3", null, "書目附註")),
+                h(
+                  "ul",
+                  { class: "book-modal-notes" },
+                  notes.map((n) => h("li", null, n)),
+                ),
+              )
+            : null,
+          buildBookHoldingsSection(holdings, detail.availability),
           h(
             "div",
             { class: "actions" },
+            detail.electronicUrl
+              ? h(
+                  "a",
+                  {
+                    class: "btn primary",
+                    href: detail.electronicUrl,
+                    target: "_blank",
+                    rel: "noopener",
+                  },
+                  icon("external"),
+                  "開啟電子資源",
+                )
+              : null,
             h(
               "a",
               {
-                class: "btn primary",
+                class: `btn${detail.electronicUrl ? "" : " primary"}`,
                 href: detail.officialUrl || item.officialUrl,
                 target: "_blank",
                 rel: "noopener",
