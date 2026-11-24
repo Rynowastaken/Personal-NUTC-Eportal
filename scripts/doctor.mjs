@@ -62,7 +62,7 @@ console.log(
   `  login bridge ttl minutes: ${process.env.EPORTAL_LOGIN_BRIDGE_TTL_MINUTES || "15 (default)"}`,
 );
 console.log(
-  `  keepalive minutes: ${process.env.EPORTAL_KEEPALIVE_MINUTES || "10 (default)"}`,
+  `  keepalive minutes: ${process.env.EPORTAL_KEEPALIVE_MINUTES || "5 (default)"}`,
 );
 console.log("  client convenience detection: userscript bridge");
 

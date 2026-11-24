@@ -81,7 +81,7 @@ const launchJobs = new Map();
 let aiAskInFlight = false;
 const staticAssetCache = new Map();
 const launchJobTtlMs = 2 * 60_000;
-const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 10);
+const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 5);
 const loginBridgeTtlMinutes = Number(
   process.env.EPORTAL_LOGIN_BRIDGE_TTL_MINUTES ?? 15,
 );

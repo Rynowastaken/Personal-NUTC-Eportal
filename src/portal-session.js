@@ -11,6 +11,13 @@ import {
   moduleUrl,
   syncDiscoveredModules,
 } from "./eportal.js";
+import {
+  clearSavedPortalSessionCookies,
+  restorePortalSessionCookies,
+  savePortalSessionCookies,
+} from "./portal-session-cookies.js";
+
+export { clearSavedPortalSessionCookies, savePortalSessionCookies };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +30,8 @@ const EPORTAL_OAKLOUDS_MAX_ATTEMPTS = 5;
 
 let profileQueue = Promise.resolve();
 let keepaliveTimer = null;
+let keepaliveInitialTimer = null;
+let keepaliveRetryTimer = null;
 
 function isProcessAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -878,14 +887,21 @@ export async function openServerPortalSession({
   headless = true,
   viewport = headless ? { width: 1280, height: 900 } : null,
   launchTimeout = 30_000,
+  restoreSessionCookies = true,
 } = {}) {
   await fs.mkdir(EPORTAL_PROFILE_DIR, { recursive: true, mode: 0o700 });
 
-  return chromium.launchPersistentContext(EPORTAL_PROFILE_DIR, {
+  const context = await chromium.launchPersistentContext(EPORTAL_PROFILE_DIR, {
     headless,
     viewport,
     timeout: launchTimeout,
   });
+
+  if (restoreSessionCookies) {
+    await restorePortalSessionCookies(context).catch(() => {});
+  }
+
+  return context;
 }
 
 export async function loginServerPortal({
@@ -915,6 +931,7 @@ export async function loginServerPortal({
           timeout: loginTimeout,
         });
 
+        await savePortalSessionCookies(context).catch(() => {});
         console.log("[+] ePortal login confirmed.");
         console.log("[+] Persistent profile saved automatically in .eportal-profile/");
       } finally {
@@ -1099,6 +1116,7 @@ async function inspectServerPortalSession({ timeout = 30_000 } = {}) {
 
     if (valid) {
       await syncModulesFromDashboardPage(page);
+      await savePortalSessionCookies(context).catch(() => {});
     }
 
     if (!valid) {
@@ -1158,6 +1176,8 @@ export async function checkServerPortalStatus(options = {}) {
 }
 
 export async function logoutServerPortalSession() {
+  await clearSavedPortalSessionCookies().catch(() => {});
+
   if (!(await profileExists())) {
     return {
       ok: true,
@@ -1173,9 +1193,11 @@ export async function logoutServerPortalSession() {
         context = await openServerPortalSession({
           headless: true,
           launchTimeout: 15_000,
+          restoreSessionCookies: false,
         });
 
         await context.clearCookies();
+        await clearSavedPortalSessionCookies().catch(() => {});
 
         const page = context.pages()[0] || (await context.newPage());
 
@@ -1227,14 +1249,32 @@ export function getPortalKeepaliveState() {
   return structuredClone(keepaliveState);
 }
 
-export function startPortalKeepalive({ intervalMinutes = 10 } = {}) {
-  const parsed = Number(intervalMinutes);
-  const minutes = Number.isFinite(parsed) ? Math.max(0, parsed) : 10;
-
+export function stopPortalKeepalive() {
+  if (keepaliveInitialTimer) {
+    clearTimeout(keepaliveInitialTimer);
+    keepaliveInitialTimer = null;
+  }
+  if (keepaliveRetryTimer) {
+    clearTimeout(keepaliveRetryTimer);
+    keepaliveRetryTimer = null;
+  }
   if (keepaliveTimer) {
     clearInterval(keepaliveTimer);
     keepaliveTimer = null;
   }
+  keepaliveState.enabled = false;
+}
+
+export function startPortalKeepalive({
+  intervalMinutes = 5,
+  retryDelayMs = 60_000,
+  initialDelayMs = 15_000,
+  checkStatus = checkServerPortalStatus,
+} = {}) {
+  const parsed = Number(intervalMinutes);
+  const minutes = Number.isFinite(parsed) ? Math.max(0, parsed) : 5;
+
+  stopPortalKeepalive();
 
   keepaliveState = {
     enabled: minutes > 0,
@@ -1250,27 +1290,61 @@ export function startPortalKeepalive({ intervalMinutes = 10 } = {}) {
   }
 
   const run = async () => {
+    if (keepaliveRetryTimer) {
+      clearTimeout(keepaliveRetryTimer);
+      keepaliveRetryTimer = null;
+    }
     keepaliveState.lastAttemptAt = new Date().toISOString();
 
+    let shouldRetry = false;
     try {
-      const status = await checkServerPortalStatus({ timeout: 30_000 });
+      const status = await checkStatus({ timeout: 30_000 });
       keepaliveState.lastStatus = status.status;
       keepaliveState.lastError = status.error || null;
 
       if (status.valid) {
         keepaliveState.lastSuccessAt = status.checkedAt;
+      } else if (status.status === "busy" || status.status === "error") {
+        shouldRetry = true;
       }
     } catch (error) {
       keepaliveState.lastStatus = "error";
       keepaliveState.lastError = error?.message || String(error);
+      shouldRetry = true;
+    }
+
+    if (shouldRetry && keepaliveState.enabled && !keepaliveRetryTimer) {
+      const intervalMs = minutes * 60_000;
+      const parsedRetry = Number(retryDelayMs);
+      const rawDelay =
+        Number.isFinite(parsedRetry) && parsedRetry > 0 ? parsedRetry : 60_000;
+      const boundedDelay =
+        rawDelay < intervalMs
+          ? rawDelay
+          : Math.max(100, Math.floor(intervalMs / 2));
+
+      if (boundedDelay > 0 && boundedDelay < intervalMs) {
+        keepaliveRetryTimer = setTimeout(() => {
+          keepaliveRetryTimer = null;
+          void run();
+        }, boundedDelay);
+        keepaliveRetryTimer.unref?.();
+      }
     }
   };
 
   // Refresh shortly after startup, then on the configured cadence.
-  const initialTimer = setTimeout(() => {
+  const parsedInitial = Number(initialDelayMs);
+  const startDelay =
+    Number.isFinite(parsedInitial) && parsedInitial >= 0
+      ? parsedInitial
+      : 15_000;
+
+  keepaliveInitialTimer = setTimeout(() => {
+    keepaliveInitialTimer = null;
     void run();
-  }, 15_000);
-  initialTimer.unref?.();
+  }, startDelay);
+  keepaliveInitialTimer.unref?.();
 
   keepaliveTimer = setInterval(() => {
     void run();
@@ -1461,6 +1535,7 @@ export async function createModuleHandoff(
       }
 
       await syncModulesFromDashboardPage(dashboard);
+      await savePortalSessionCookies(context).catch(() => {});
       module = moduleById(moduleId);
 
       report(
@@ -2660,6 +2735,7 @@ export async function openAisWithServerSession({
     }
 
     await syncModulesFromDashboardPage(page);
+    await savePortalSessionCookies(context).catch(() => {});
 
     let aisReady = false;
     for (
@@ -2753,6 +2829,9 @@ export async function openAisWithServerSession({
         if (property === "close") {
           return async (...args) => {
             try {
+              if (!aisAuth?.expired()) {
+                await savePortalSessionCookies(target).catch(() => {});
+              }
               return await target.close(...args);
             } finally {
               await release();

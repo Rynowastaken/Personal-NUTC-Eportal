@@ -3,7 +3,9 @@ import { EPORTAL_DASHBOARD, EPORTAL_HOME, EPORTAL_LOGIN } from "./eportal.js";
 import { classifyEportalLoginFailure } from "./eportal-login-page.js";
 import {
   STUDENT_BUTTON_SELECTOR,
+  clearSavedPortalSessionCookies,
   openLoginBridgeSession,
+  savePortalSessionCookies,
 } from "./portal-session.js";
 
 let active = null;
@@ -384,6 +386,7 @@ async function buildState() {
     active.complete = true;
     active.phase = "complete";
     active.launchToken = null;
+    await savePortalSessionCookies(active.browser.context).catch(() => {});
     await closeBrowser(active.browser);
     active.browser = null;
     bridgeLog("login completed; persistent profile saved");
@@ -458,6 +461,7 @@ async function openCleanLoginPage(session, reason) {
       domain: /^\.?nutc\.edu\.tw$/,
       name: "PUBLIC_APP_USER_SSO_TOKEN",
     });
+    await clearSavedPortalSessionCookies().catch(() => {});
   }
 
   const responseStatus = await navigateForBridge(page, EPORTAL_LOGIN, "opening ePortal login");
@@ -496,6 +500,7 @@ async function initializeLoginBridge(session) {
         domain: /^\.?nutc\.edu\.tw$/,
         name: "PUBLIC_APP_USER_SSO_TOKEN",
       });
+      await clearSavedPortalSessionCookies().catch(() => {});
       await openCleanLoginPage(session, "user requested fresh login");
     } else {
       session.phase = "checking-session";
@@ -509,6 +514,7 @@ async function initializeLoginBridge(session) {
     if (!session.forceLogin && await loginComplete(page)) {
       session.complete = true;
       session.phase = "complete";
+      await savePortalSessionCookies(session.browser.context).catch(() => {});
       await closeBrowser(session.browser);
       session.browser = null;
       bridgeLog("saved ePortal session is already valid", page);

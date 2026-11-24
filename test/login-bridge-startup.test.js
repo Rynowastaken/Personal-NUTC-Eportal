@@ -9,7 +9,13 @@ const bridgeSource = await readFile(
   "utf8",
 );
 
-function makeLoginBridge(openLoginBridgeSession) {
+function makeLoginBridge(
+  openLoginBridgeSession,
+  {
+    savePortalSessionCookies = async () => 0,
+    clearSavedPortalSessionCookies = async () => {},
+  } = {},
+) {
   // Exercise the real bridge state machine with a mocked browser instead of
   // hitting the university's production login service during a unit test.
   const source = bridgeSource
@@ -19,6 +25,7 @@ function makeLoginBridge(openLoginBridgeSession) {
     "crypto", "openLoginBridgeSession", "EPORTAL_DASHBOARD",
     "EPORTAL_HOME", "EPORTAL_LOGIN", "STUDENT_BUTTON_SELECTOR",
     "classifyEportalLoginFailure",
+    "savePortalSessionCookies", "clearSavedPortalSessionCookies",
     source + "return { startLoginBridge, getLoginBridgeState, stopLoginBridge };",
   )(
     crypto, openLoginBridgeSession,
@@ -27,6 +34,7 @@ function makeLoginBridge(openLoginBridgeSession) {
     "https://eportal.nutc.edu.tw/login.php",
     'button[onclick*="NUTC_6401"]',
     classifyEportalLoginFailure,
+    savePortalSessionCookies, clearSavedPortalSessionCookies,
   );
 }
 
