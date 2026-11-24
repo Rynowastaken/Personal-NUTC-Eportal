@@ -6,22 +6,31 @@
 > This project is entirely vibe coded with GPT-5.6 Sol, GPT-6, Opus 5.5, Deepseek v4.1 Flash 1017, Gemini 4 Neon and Gemini 4 Hydrogen, thus support and bug fixes are not guaranteed. Use at your own risk.
 
 
-# 中科大學生用自架Eportal
+# 中科大學生用自架 ePortal（NUTC Portal）
 
-首先，為什麼要做？
+> **為什麼要做這個？**  
+> **因為中科大的 ePortal 系統真的太過時太難用了**，只好動用最新最潮的 LLM 技術去接學校系統、套一個現代好用的深色介面來讓自己每天用得順手一點。
 
-**因為中科大的eportal系統真的太過時太難用了**，以至於我迫不得已的得使用最新最潮的LLM科技來去爬蟲eportal套一個好看的前端來用
+把國立臺中科技大學學生的**課表、缺曠紀錄、成績與修課進度、TronClass 課程測驗、圖書館館藏與空間預約**全部整合在同一個深色現代介面——登入一次就能長期維持連線，不用每次開學校網頁都重打帳密跟驗證碼。
 
 > [!NOTE]
-> 本專案為非官方個人專案，與國立臺中科技大學官方無關。
+> 本專案為非官方個人專案，與國立臺中科技大學官方無關。  
+> 想先看實際畫面與操作手感，可以直接點開 [**線上互動展示（Demo）**](https://rynowastaken.github.io/Personal-NUTC-Eportal/)（使用範例資料，不會連線校方系統）。
 
-給國立臺中科技大學學生用的自架 Dashboard。把課表、缺曠紀錄、ePortal 常用系統全部放在同一頁，不用每次重登。
+---
 
-跟其他類似工具最大的差別是：它在 server 上跑一個 headless Chromium 幫你維持 ePortal 登入狀態，但真正存取各子系統的是**你自己的瀏覽器**。server 只負責過橋——從 ePortal 拿到 SSO token 後轉交給你，你的瀏覽器再去目標系統完成登入。這樣 server 不會碰到你的 session 內容，也沒有中間人問題。
+## 一眼看懂它特別在哪
 
-## 畫面預覽
+一般爬蟲或第三方工具常會把你的帳號流量全都代理經過 server；這套系統只在你自己的主機上用 headless Chromium 幫你**維持 ePortal 登入狀態**，真正操作各子系統時由**你自己的瀏覽器直接連線**：
 
-以下截圖皆來自 [公開展示網站](https://rynowastaken.github.io/Personal-NUTC-Eportal/)，使用範例資料。d
+- Server 只負責在背景接好 ePortal SSO 認證（SSO token / form）後交接給你的瀏覽器。
+- 瀏覽器直接向目標系統建立獨立連線，server 不會留存你在子系統上的操作內容，也沒有密碼落盤的問題。
+
+---
+
+## 畫面預覽與線上展示
+
+以下截圖皆來自 [**公開展示網站（GitHub Pages）**](https://rynowastaken.github.io/Personal-NUTC-Eportal/)，使用範例資料。
 
 ![桌面版 Dashboard：歡迎標題、目前課程、缺曠與日期磚，以及校務系統入口](docs/screenshots/dashboard-desktop.webp)
 
@@ -32,40 +41,55 @@
   </tr>
   <tr>
     <td align="center">本週課表與缺曠紀錄</td>
-    <td align="center">手機版</td>
+    <td align="center">手機版 Dashboard</td>
   </tr>
 </table>
 
-## 公開互動展示（GitHub Pages）
+[**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 提供與主站相同介面與外觀選項的互動預覽（課表學制、缺曠篩選、捷徑釘選／編輯、深淺色與背景亮度調整、可選 Hitokoto／OpenCC 語錄等設定皆存於本機瀏覽器），**不會登入校方系統或讀取個人 ePortal 資料**。
 
-[**NUTC Portal Demo**](https://rynowastaken.github.io/Personal-NUTC-Eportal/) 是使用範例資料的完整互動預覽。除了真正的 ePortal 登入、SSO、學生資料和伺服器操作外，提供與主站相應的帳戶頭像、課表學制、缺曠篩選、捷徑釘選／編輯、完整外觀與背景控制，以及可選的 Hitokoto／OpenCC 語錄（其餘設定儲存在目前瀏覽器）。**不會登入校方系統或使用私人的 ePortal 資料**。
+Demo 原始碼位於 [`demo/`](demo/)，自動部署流程設定在 [GitHub Actions](.github/workflows/demo-pages.yml)；若需要自行啟用，請參考 [GitHub Pages 啟用說明](docs/demo.md)。
 
-部署檔案在 [`demo/`](demo/)，自動部署設定在 [GitHub Actions](.github/workflows/demo-pages.yml)。若網站尚未開放，請先依照 [GitHub Pages 啟用說明](docs/demo.md) 在 Repository Settings → Pages 將 Source 設為 GitHub Actions，然後執行部署工作流程。
+---
 
-## 功能
+## 核心功能
 
-- 顯示 AIS 每週課表（server 定時爬取，快取 5 分鐘）
-- 顯示 AIS 缺曠紀錄（含各類別統計）
-- 一鍵開啟五大 ePortal 子系統：學生管理、WebMail、活動報名、EP 學習歷程、TronClass
-- TronClass 直接在 Portal 裡（`/tronclass`）：待辦、課程、章節內容與完成狀態、成績、教材預覽、影片、作業與測驗資訊，測驗也能在 Portal 內作答（題目、倒數計時、自動儲存、交卷），並保留測驗本身的防作弊設定（全螢幕、離開視窗警告、停用複製與右鍵）；需要監考的測驗會留在原站。練習測驗另提供「問 AI 這題」解說與追問，AI provider 與金鑰在 TronClass 頁面右上角選單的「AI 助手設定」設定，金鑰只存在 Server。伺服器用 ePortal 取得的 TronClass 登入代為讀取 API，登入資料存在 `data/tronclass-session.json`。繳交作業與其他未重做的頁面在 TronClass 原站開啟，會先讓這個瀏覽器走一次 ePortal 的 SSO handoff；每個測驗頁面也都有「在 TronClass 開啟」備援
-- Server 端持久保存 ePortal 登入狀態，重開機不用重登
-- 登入流程透過網頁表單完成，密碼不落盤
-- 自動 keepalive，定時檢查並延續 ePortal session
-- 自訂頭像、顯示名稱、背景圖片
-- 自訂主題配色（深淺色、色彩飽和度、亮度）及獨立的背景圖片亮度（0–200%，即時預覽）
-- 背景會隨網頁捲動柔和移動（視差效果），並尊重系統的「減少動態效果」偏好
-- 自訂常用網頁捷徑：新增、編輯、釘選／取消釘選、刪除（支援 HTTP(S) 網頁）
-- 桌面與手機 RWD
-- 可選擇用 Cloudflare Access 保護公開部署
+### 1. 首頁 Dashboard（`/`）
+- **本週課表與缺曠統計**：Server 定時讀取 AIS 課表與各類別缺曠統計並快取 5 分鐘，支援假日／停課標示。
+- **五大常用系統快速啟動**：學生管理系統、WebMail、活動報名、EP 學習歷程、TronClass，以及一鍵前往校內系統中心。
+- **自訂常用網站捷徑**：支援新增、編輯、釘選至首頁與刪除 HTTP(S) 捷徑（最多 30 個，存於伺服器讓各裝置共用）。
+- **個人化外觀**：自訂顯示名稱、頭像、主題色彩／明暗／飽和度，以及自訂背景圖片、0–200% 獨立背景亮度與捲動視差效果（支援系統「減少動態效果」）。
 
-> **注意**：AIS 網站本身的登入 Cookie 存在使用者瀏覽器，Dashboard 因跨網域安全限制無法直接讀取 `ais.nutc.edu.tw` 的 Cookie 或攔截其原生彈出視窗。因此這個檢查是針對 **Server ePortal / Server AIS** 的登入狀態；如果只在個人瀏覽器的 AIS 頁面看到逾期訊息，回到 Dashboard 點 **學生管理**（或「重新連接 AIS」）走一次新的 SSO。\n\n## 快速開始
+### 2. 學生管理中心（`/ais`）
+- 將原本散落在舊系統頁面的**本週課表、缺曠紀錄、成績、修課進度、個人資料與校務公告**集中在單一乾淨工作區，個人識別資訊預設遮蔽，需要時再手動切換顯示。
 
-### 你需要
+### 3. TronClass 學習中心（`/tronclass`）
+- 直接在 Portal 內瀏覽**待辦事項、課程列表、章節教材、影片、成績與作業／測驗資訊**。
+- 支援在 Portal 內作答線上測驗（倒數計時、自動儲存、送出交卷），並完整保留原測驗的防作弊機制（全螢幕、切換視窗警告、停用複製與右鍵）；需要監考的測驗與繳交作業會自動保留在原站進行。
+- 練習測驗內建「**問 AI 這題**」解說與追問（可於 TronClass 頁面右上角選單的「AI 助手設定」設定 Provider 與 API Key，金鑰僅保存在 Server）。
+- 伺服器透過 ePortal 取得的 TronClass 登入資訊代為讀取資料（存放於 `data/tronclass-session.json`），所有頁面均提供「在 TronClass 開啟」原站 SSO 備援。
 
-- Node.js 18 以上
-- npm
-- NUTC ePortal 帳號
-- 一台能上網的電腦（本機或 server 都行）
+### 4. 圖書館中心（`/library`）
+- **現代化館藏查詢**：預設即可瀏覽全館館藏（支援關鍵字、欄位、館別／類型／語言／出版年／主題／SDGs 標籤篩選與排序），串流加速載入、自動依 ISBN 從網路補齊缺漏書籍封面與內容／作者簡介，並即時顯示可借複本狀態與頁碼跳轉。
+- **借閱帳戶與線上續借**：集中查看借閱中館藏、預約狀態、罰款與借閱歷史，並可勾選可續借館藏一鍵送出續借請求。
+- **空間預約**：視覺化瀏覽 10F 研究小間（`10F-1`–`10F-7`）月曆空位、點選日期直接帶入表單送出預約或線上取消，以及快速連結團體討論室／放映室預約。
+- **電子資源與工具**：即時搜尋校內電子資料庫（支援學院、語系快速篩選）與一鍵下載 EndNote 安裝檔。
+
+### 5. 一次登入、長效維持與跨裝置支援
+- **不需重打密碼的持久連線**：`.eportal-profile/` 保存登入後的 Chromium 狀態，重開 server 不用重登；預設每 **5 分鐘** 自動執行 keepalive 檢查並延續 session。
+- **網頁表單安全登入**：透過內建 Login Bridge 完成帳密與圖形驗證碼／MFA 登入，帳密僅存在執行期間記憶體，不寫入硬碟與 log。
+- **桌面與手機 RWD ＋ Cloudflare Access**：手機與電腦皆有最佳化版面，對外架設可搭配 Cloudflare Access 保護。
+
+> [!TIP]
+> AIS 網站本身的 Cookie 存在使用者個人瀏覽器中，因跨網域安全限制，Dashboard 無法直接讀取或清除 `ais.nutc.edu.tw` 的 Cookie。若只在個人瀏覽器的 AIS 頁面看到逾期提示，回 Dashboard 點 **學生管理** 或 **重新連接 AIS** 即可重新完成 SSO。
+
+---
+
+## 快速開始
+
+### 環境需求
+- **Node.js 18 以上** 與 **npm**
+- **NUTC ePortal 帳號**
+- 一台可連網的電腦（個人筆電、家用主機、Raspberry Pi 或 VPS 皆可）
 
 ```bash
 git clone https://github.com/Rynowastaken/Personal-NUTC-Eportal.git
@@ -74,125 +98,72 @@ cd Personal-NUTC-Eportal
 npm install
 npm run install-browser
 npm run doctor
-```
-
-啟動：
-
-```bash
 npm start
 ```
 
-瀏覽器開 `http://localhost:4174`。
+啟動後打開瀏覽器前往 `http://localhost:4174` 即可使用（本機使用不需設定 Cloudflare Access）。
 
-本機使用到這邊就完成了，不用管 Cloudflare Access。
+> `npm run install-browser` 會安裝 Playwright Chromium，並在多數 Linux 發行版上自動補齊系統相依套件。
 
-> `npm run install-browser` 會裝 Playwright Chromium，在大多數 Linux 發行版上也會順便裝需要的系統套件。
+### 第一次登入
 
-開發者可先閱讀 [程式架構與工作流程](docs/architecture.md)，並在提交前執行 `npm run verify`（建置 → 語法檢查 → 測試）。
-
-## Frontend UI（shadcn/ui 漸進遷移）
-
-本專案原本是使用 **Tailwind Play CDN + Vanilla JS** 的 Dashboard。shadcn/ui 其實是 **基於 React 和 Tailwind CSS** 的元件集合，不能直接以 shadcn 取代 Tailwind CSS。為避免一次改寫登入、SSO、背景設定和課表，先以漸進方式遷移：
-
-- 移除 `public/vendor/tailwindcss-3.4.17.js` 與瀏覽器端的 Tailwind 配置，改由 **Vite + Tailwind CSS** 在部署時產生 `public/generated/site.css`。正式環境不再執行 Tailwind CDN 編譯器。
-- 引入 **React + 自有原始碼的 shadcn-style Button**，先接管首頁「新增 / 管理捷徑」按鈕；原本的管理視窗和資料 API 保留。React 腳本未能載入時，靜態 HTML 按鈕仍然可用。
-- 其他頁面與表單目前仍使用既有 HTML/JS，後續可以逐一搬進 `frontend/src/components/`，不需要重寫 Node/Playwright 伺服器。
-
-`npm install` 將自動執行 `npm run build`。手動更新 / 本機開發：
-
-```bash
-npm install
-npm run build
-npm run check
-npm test
-npm start
-```
-
-**systemd 使用者：** 範例服務仍然以 `node server.js` 啟動，需先在 checkout 內執行 `npm install && npm run build`，才可 `sudo systemctl restart personal-nutc-eportal.service`；否則靜態 CSS 與 React bundle 不會存在。請保留 `public/generated/` 在伺服器上（由建置產生，不會提交 Git）。如果使用 `npm install --ignore-scripts`，需要再手動執行 `npm run build`。
-
-新增 shadcn 元件可編輯 `frontend/src/components/ui/` 的原始碼，也可以在依照 `components.json` 安裝 CLI 後執行 `npx shadcn@latest add <component>`，並視 Tailwind v3 相容性調整元件樣式。
-
-## 背景圖片亮度
-
-在右上角 **網站設定 → 背景圖片 → 背景亮度** 調整滑桿，可即時預覽自訂背景的明暗（0% 最暗、100% 為原本背景亮度、200% 最亮）。按 **Apply** 儲存，按 **Reset** 回復 100%，直接關閉設定則還原未儲存的調整。此設定與上方的主題配色 **Brightness** 各自獨立，不會改變卡片或文字的亮度。
-
-背景圖片檔案儲存於伺服器並在同一部署的裝置間共用；**背景亮度數值則與其他主題選項一樣儲存在目前瀏覽器**，不會同步到其他瀏覽器。
-
-## 自訂網頁捷徑
-
-Dashboard 的「自訂捷徑」區塊按 **新增 / 管理捷徑**，填寫網頁名稱及完整的 `https://` 或 `http://` URL，例如 `https://example.com/`。
-
-- 勾選「釘選到首頁」時，會在 Dashboard 顯示可點擊的捷徑卡片。外部網站會以新分頁開啟，不經過 ePortal SSO 代理。
-- 在管理視窗可編輯名稱／網址、釘選／取消釘選，或刪除捷徑。未釘選的網址仍會保留在管理清單。
-- 最多儲存 30 個。資料寫入本機 Server 的 `data/dashboard-preferences.json`，因此同一部署的所有裝置共用；這**不是依使用者分開儲存**的私有清單。
-- 網址僅允許 HTTP(S)，且不可內含帳密。請自行確認外部網站可信任，並避免儲存包含私人存取權杖的分享網址。
-
-## AIS 登入逾期時的處理
-
-如果 Dashboard 顯示 **AIS 登入可能已過期**：
-
-- **重新登入 ePortal**：明確要求重新登入，Login Bridge 只清除 server 端保留的 ePortal 驗證 Cookie，再開啟官方登入表單（可能需要圖形驗證碼），不會靜默沿用舊登入狀態。
-- **重新連接 AIS**：同樣先重新登入 ePortal；登入成功後自動啟動學生管理系統的 SSO 連接。請等候登入流程完成，不要直接打開 AIS 的舊書籤。
-- **仍顯示 AIS「驗證失敗／連線可能逾期」**：AIS 的登入 Cookie 存在你自己的瀏覽器（`ais.nutc.edu.tw`），server 無法跨網域清除。請在瀏覽器設定清除 **僅 ais.nutc.edu.tw 的網站資料/Cookie**，再回 Dashboard 點 **學生管理** 進行 SSO。這可能使 AIS 分頁登出，但不會刪除 Server ePortal 的資料。
-
-自動健康檢查只會在確認需要登入時開啟登入介面；**不會自動清除 Cookie 或儲存／重送密碼**。
-
-## 第一次登入
-
-打開 Dashboard，點 **登入 Server ePortal**。
-
-這時 server 會在背景開一個 Chromium 瀏覽器，並把 ePortal 登入頁面透過「Login Bridge」顯示給你看。你在網頁上輸入帳密，server 幫你打到真實的瀏覽器裡。登入完成後，整個瀏覽器狀態會存在：
+1. 開啟 Dashboard 後點擊 **登入 Server ePortal**。
+2. Server 會在背景啟動 Playwright Chromium，透過 **Login Bridge** 把 ePortal 官方登入表單（包含驗證碼與 MFA）顯示在網頁上。
+3. 直接用手機或電腦填寫送出即可（server 本身不需任何桌面 GUI 環境）。
+4. 登入成功後，瀏覽器狀態會自動保存於：
 
 ```text
 .eportal-profile/
 ```
 
-server 不需要圖形桌面環境，你可以用手機或另一台電腦完成登入。
-
 > [!IMPORTANT]
-> `.eportal-profile/` 就是你已登入的瀏覽器狀態，等同帳號憑證。不要 commit、不要公開上傳、不要複製到不信任的電腦。
+> `.eportal-profile/` 等同你已登入校務系統的帳號憑證，**請勿 commit、公開上傳或複製到不信任的機器**。
 
-## 它是怎麼運作的
+---
 
-1. **課表與缺曠** — server 用已登入的 Chromium 直接去 AIS 撈資料，快取 5 分鐘回傳 JSON 給前端渲染
-2. **子系統 SSO** — 點擊某個模組時，server 去 ePortal dashboard 點對應按鈕，攔截 SSO 轉導流程，抓出目標系統的 login URL（或 POST form），回傳給你自己的瀏覽器去執行。你的瀏覽器直接跟目標系統建立 session，server 不經手內容
-3. **活動報名系統** — 因為目標是舊架構 HTTP 系統，沒辦法乾淨轉交 SSO URL，所以 server 會跑一個暫存 30 分鐘的 reverse proxy，把頁面內容即時轉譯給你
-4. **Login Bridge** — 登入時的表單是即時從 ePortal 頁面擷取的（含驗證碼圖片），你在網頁上填什麼 server 就打什麼進 Chromium，密碼跟 MFA 只存在記憶體，不會寫入任何檔案或 log
-5. **Keepalive** — 預設每 10 分鐘檢查一次 ePortal session 是否還有效
-6. **進站登入檢查** — 每次開啟 Dashboard 都會重新檢查 Server ePortal 登入；確定過期時自動開啟 Login Bridge（防止重導迴圈，兩分鐘內不會重複自動跳轉）。登入表單仍須由使用者填寫，不保存密碼。回到已開啟的分頁時也會重新確認（最短間隔 1 分鐘）。
-7. **AIS 逾期偵測** — 每次進站會強制確認一次 AIS 課表登入狀態，辨識 AIS 的「驗證失敗、連線可能逾期」訊息。如果 Server ePortal 仍有效，Dashboard 提供「重新連接 AIS」讓瀏覽器重新走 SSO，及「重新登入 ePortal」的選項。
+## 它是怎麼運作的（白話版）
 
-## 從舊版遷移
+1. **資料擷取與整合** — 對於 AIS 課表缺曠、TronClass 與圖書館等系統，server 使用已建立的 session 讀取並適度快取資料，將雜亂的舊表單轉譯為統一的 JSON 與現代前端介面。
+2. **SSO 模組直連交接** — 點擊外部模組（如學生管理、WebMail）時，server 代為點擊 ePortal 入口取得一次性 SSO 轉導 URL 或 POST 表單交給你的瀏覽器完成登入，目標系統 session 只存在你自己的瀏覽器裡。
+3. **活動報名中繼 proxy** — 因舊系統使用純 HTTP 無法直接進行安全 SSO 交接，server 會為活動報名開啟有效 30 分鐘的本機 reverse proxy 即時轉譯頁面。
+4. **Login Bridge** — 所有帳密、圖形驗證碼與二次驗證直接從 ePortal 即時轉呈並輸入 Chromium，憑證只存在記憶體中，不寫檔、不記錄 log。
+5. **Keepalive 與自動健康檢查** — 預設每 **5 分鐘** 檢查一次 ePortal session；進站與切回分頁時也會安全檢查狀態，確認過期才會引導至登入頁（具備冷卻時間防止無限重導）。
 
-如果你已經從舊 repository 安裝過，請先閱讀 [遷移指南](docs/migration.md)。既有的 `.eportal-profile/` 和 `data/` 不應遺失，Linux systemd 服務名稱與設定檔位置也有調整。
+---
 
-## 部署到其他電腦
+## 日常使用與個人化設定
 
-放到家用 server、樹莓派、VPS 等長時間運作的機器上，步驟一樣：
+### 課表假日、補課與學制切換
+- **國定假日**：依年份讀取 [中華民國政府行政機關辦公日曆表](https://data.gov.tw/dataset/14718) 的 [TaiwanCalendar JSON](https://github.com/ruyut/TaiwanCalendar)（快取 24 小時；離線時使用舊快取並以校曆例外備援）。
+- **中科大校曆例外**：[`src/nutc-calendar-overrides.json`](src/nutc-calendar-overrides.json) 依 [中科大 115 學年度行事曆](https://aca.nutc.edu.tw/p/412-1015-4596.php) 維護；遇補班／調課或新學年行事曆公布時直接更新該檔即可。明確單日例外優先於國定假日，一般週六日不會自動視為停課日。
+- **學制選擇**：於網站右上角 **設定 → 課表設定** 切換「日間部（預設）」、「進修部夜間班」或「進修部假日班」，按 **Apply** 立即生效（存於 `data/dashboard-preferences.json`，**無需修改環境變數或重啟服務**）。
+- **資料格式參考**：`days` 支援 `{ "date": "2027-04-02", "label": "校慶補假", "noClass": true, "programs": ["day", "evening", "weekend"] }`；`ranges` 支援 `{ "start": "2027-01-11", "end": "2027-02-21", "label": "寒假", "noClass": true, "programs": ["day"] }`；照常上課覆寫國定假日可將 `noClass` 設為 `false`。
 
-```bash
-git clone https://github.com/Rynowastaken/Personal-NUTC-Eportal.git
-cd Personal-NUTC-Eportal
+### 背景圖片亮度與自訂捷徑
+- **背景圖片與亮度**：背景圖檔案存於 server 共用；右上角 **網站設定 → 背景圖片 → 背景亮度** 可於 0–200% 間即時預覽並套用（**Apply** 儲存、**Reset** 回復 100%），數值儲存在目前瀏覽器，不會影響卡片與文字對比。
+- **自訂網頁捷徑**：點選首頁「自訂捷徑 → 新增 / 管理捷徑」可設定名稱、HTTP(S) 網址（不允許內含帳密）及是否釘選至首頁，最多 30 組，存於 `data/dashboard-preferences.json` 全裝置共用。
 
-npm install
-npm run install-browser
-npm run doctor
-npm start
-```
+### AIS 登入逾期時怎麼辦
+- **重新連接 AIS**：在 Server ePortal 仍有效的情況下，為目前瀏覽器重新走一次 AIS SSO。
+- **重新登入 ePortal**：清除 server 保留的 ePortal 驗證 Cookie 並開啟官方登入表單，重新建立長期連線。
+- **仍顯示「驗證失敗／連線可能逾期」**：因 `ais.nutc.edu.tw` 的 Cookie 存在你的瀏覽器端，請清除瀏覽器中**僅 `ais.nutc.edu.tw` 的 Cookie／網站資料**後，再從 Dashboard 點擊 **學生管理** 完成 SSO。
 
-預設 port `4174`。要讓區網內其他裝置連線：
+---
+
+## 部署指南
+
+### 區網內使用（家用 Server / 樹莓派）
+預設監聽埠為 `4174`，若需同區網其他手機或平板存取：
 
 ```bash
 HOST=0.0.0.0 PORT=4174 npm start
 ```
 
-假設 server IP 是 `192.168.1.20`，其他裝置開 `http://192.168.1.20:4174` 即可。
+其他裝置開啟 `http://<Server-IP>:4174` 即可（請僅於受信任的區網環境使用，勿直接把未保護的 port 暴露至公網）。
 
-> 只在區網使用的話確保網路環境可信任，不要直接把 port 暴露到公網。
+### 公網部署（Cloudflare Access + Caddy）
 
-## 部署到公網
-
-架構：
+建議架構：
 
 ```text
 Internet
@@ -204,15 +175,13 @@ Caddy HTTPS Reverse Proxy
 NUTC Portal（127.0.0.1:4174）
 ```
 
-基本安裝完成後，在 Linux server 上跑：
+在 Linux server 上執行設定精靈產生 `.deploy/` 部署檔：
 
 ```bash
 npm run deploy:configure
 ```
 
-設定精靈會依序詢問 domain、Cloudflare Access 參數、service 使用者、TLS 憑證路徑等。完成後 `.deploy/` 會有部署設定檔。
-
-確認無誤：
+檢查設定無誤後安裝並啟用服務：
 
 ```bash
 sudo npm run deploy:configure -- --install
@@ -222,70 +191,74 @@ sudo systemctl enable --now personal-nutc-eportal
 sudo systemctl reload caddy
 ```
 
-Cloudflare 那邊的 DNS、Access Application、Origin CA 憑證還是要自己去 Cloudflare 後台設定。詳細步驟見 [Cloudflare Access 部署文件](docs/cloudflare-access.md)。
+Cloudflare 後台的 DNS、Access Application 與 Origin CA 憑證設定，請參考 [Cloudflare Access 部署文件](docs/cloudflare-access.md)。
+
+---
 
 ## 常用指令
 
 | 指令 | 用途 |
 | --- | --- |
-| `npm start` | 啟動 Dashboard |
-| `npm run doctor` | 檢查執行環境是否就緒 |
-| `npm run check` | 檢查所有 JS 語法 |
-| `npm test` | 檢查假日與校曆邏輯 |
-| `npm run install-browser` | 安裝 Playwright Chromium 及系統套件 |
-| `npm run portal:status` | 查看 ePortal 登入狀態 |
-| `npm run login` | 用有 GUI 的 Playwright 手動登入（備用方案） |
-| `npm run deploy:configure` | 產生部署設定 |
+| `npm start` | 建置前端資源並啟動 NUTC Portal |
+| `npm run verify` | 依序執行建置 (`build`)、語法檢查 (`check`) 與自動化測試 (`test`) |
+| `npm run doctor` | 檢查 Node、Playwright 與環境設定是否就緒 |
+| `npm run check` | 檢查專案內所有 JavaScript 語法 |
+| `npm test` | 執行所有自動化測試 |
+| `npm run install-browser` | 安裝 Playwright Chromium 及系統相依套件 |
+| `npm run portal:status` | 在終端機檢查目前 ePortal 登入狀態 |
+| `npm run login` | 使用有視窗畫面的 Playwright 手動登入（備援方案） |
+| `npm run deploy:configure` | 互動產生 systemd / Caddy 部署設定 |
 | `npm run deploy:check` | 檢查部署設定是否完整 |
 
 ## 環境變數
 
-本機使用通常不用改。
+本機使用通常維持預設值即可：
 
 | 變數 | 預設值 | 說明 |
 | --- | --- | --- |
-| `PORT` | `4174` | HTTP port |
+| `PORT` | `4174` | HTTP 監聽埠 |
 | `HOST` | `0.0.0.0` | 繫結 IP |
-| `EPORTAL_KEEPALIVE_MINUTES` | `5` | 自動檢查 session 的間隔（分鐘），設 0 關閉 |
-| `EPORTAL_LOGIN_BRIDGE_TTL_MINUTES` | `15` | Login Bridge 的有效時間 |
-| `EPORTAL_RESTART_MODE` | `self` | 用 systemd 管理時設 `exit`；重新啟動請求會以非零狀態退出，讓 `Restart=on-failure` 接手啟動新程序 |
-| `CLOUDFLARE_ACCESS_ENFORCE` | — | 設 `1` 啟用 origin JWT 驗證 |
-| `CLOUDFLARE_ACCESS_TEAM_DOMAIN` | — | Cloudflare Access team domain |
+| `EPORTAL_KEEPALIVE_MINUTES` | `5` | 自動檢查並延續 session 的間隔（分鐘）；設為 `0` 關閉 |
+| `EPORTAL_LOGIN_BRIDGE_TTL_MINUTES` | `15` | Login Bridge 登入視窗有效時間（分鐘） |
+| `EPORTAL_RESTART_MODE` | `self` | 由 systemd 管理時設 `exit`（觸發非零結束碼讓 `Restart=on-failure` 自動重啟） |
+| `CLOUDFLARE_ACCESS_ENFORCE` | — | 設為 `1` 強制於 origin 驗證 Cloudflare Access JWT |
+| `CLOUDFLARE_ACCESS_TEAM_DOMAIN` | — | Cloudflare Access Team Domain |
 | `CLOUDFLARE_ACCESS_AUD` | — | Cloudflare Access Application AUD |
 
-## 課表假日與補課
+---
 
-課表維持原本的每週時間格視圖，並標示本週假日／停課日。一般課程資料仍來自 NUTC AIS。已確認停課日的課程會變淡，但保留原課表供參考；**不會自動新增調課後的課程**。
+## 前端開發與建置（Vite + React / shadcn/ui）
 
-- 國定假日：伺服器按年份讀取 [中華民國政府行政機關辦公日曆表](https://data.gov.tw/dataset/14718) 的 [TaiwanCalendar JSON](https://github.com/ruyut/TaiwanCalendar)，快取 24 小時；CDN 無法連線時改用舊快取，沒有快取則只套用校曆例外並顯示提示。
-- 校曆例外：`src/nutc-calendar-overrides.json` 依 [中科大 115 學年度行事曆](https://aca.nutc.edu.tw/p/412-1015-4596.php) 手動整理；請在學校公布新版行事曆或調課公告後更新此檔案。明確的單日例外優先於國定假日；一般週六日不會自動被視為停課日。
-- 學制：在網站右上角「設定」→「課表設定」選擇「日間部」（預設）、「進修部夜間班」或「進修部假日班」，按 **Apply** 儲存即可立即更新假日標示，**無須修改環境變數或重啟服務**。設定保存在伺服器 `data/dashboard-preferences.json`，所有裝置共用。
-- 校曆資料結構：`days` 可填 `{ "date": "2027-04-02", "label": "校慶補假", "noClass": true, "programs": ["day", "evening", "weekend"] }`，`ranges` 可填 `{ "start": "2027-01-11", "end": "2027-02-21", "label": "寒假", "noClass": true, "programs": ["day"] }`。需要覆寫國定假日的照常上課日，將 `noClass` 設為 `false` 即可。
+專案使用 **Vite + Tailwind CSS** 將前端樣式與漸進遷移的 React／shadcn-style UI 元件編譯至 `public/generated/`（不提交進 Git，`npm install` 會透過 `postinstall` 自動建置）；AIS、TronClass 與圖書館等子頁面目前採用對應原生的低依賴 ESM／CSS 模組。
 
-可執行 `npm test` 檢查假日來源優先序、時區與校曆例外。
+- **開發／驗證前請執行：** `npm run verify`
+- **systemd 注意事項：** 服務直接執行 `node server.js`，若使用 `npm install --ignore-scripts` 或拉取新碼後重啟服務前，請務必確認已執行 `npm run build`（或 `npm run verify`），以確保 `public/generated/` 存在最新靜態資源。
+- 更多模組分工與流程請見 [程式架構與工作流程](docs/architecture.md)；新增 shadcn/ui 元件可編輯 `frontend/src/components/ui/` 或依 `components.json` 執行 CLI 後微調 Tailwind 相容性。
+
+---
 
 ## 資料與隱私
 
-所有資料都在你機器的這兩個目錄：
+本機與個人設定主要保存於以下兩個目錄（均已加入 `.gitignore`）：
 
-- `.eportal-profile/` — 已登入的 Chromium 瀏覽器狀態（cookies、localStorage 等）
-- `data/` — 自訂的頭像、背景圖、顯示名稱等偏好設定
+- `.eportal-profile/` — 已登入的 Chromium 瀏覽器狀態（Cookies、localStorage 等）
+- `data/` — 個人偏好設定、TronClass／圖書館工作階段、快取資料與自訂捷徑／頭像／背景圖
 
-Login Bridge 處理的帳號密碼與 MFA 驗證碼只存在記憶體中，不會寫入任何檔案或 log。
+Login Bridge 處理的帳號密碼與 MFA 驗證碼僅存在於記憶體中，不會寫入磁碟或記錄於 log。
 
-**不要 commit 或分享：**
+**請永遠不要 commit 或分享：**
+- `.eportal-profile/` 與 `data/` 內的任何私人檔案
+- 匯出的 Cookie／瀏覽器 Session、JWT／SSO Token、Login Bridge Token
+- 含網域／帳號資訊的部署設定秘鑰
 
-- `.eportal-profile/`
-- `data/` 中的私人檔案
-- cookies 或匯出的瀏覽器 session
-- JWT / SSO Token
-- Login Bridge Token
-- 部署設定檔中的私密資訊
+---
 
 ## 進階文件
 
-- [Cloudflare Access 部署](docs/cloudflare-access.md)
+- [程式架構與工作流程（Architecture）](docs/architecture.md)
+- [Cloudflare Access 公網部署指南](docs/cloudflare-access.md)
 - [Userscript / Client Browser 整合](docs/userscript.md)
-- [舊版安裝遷移指南 / Migration guide](docs/migration.md)
+- [GitHub Pages Demo 建置與部署說明](docs/demo.md)
+- [舊版安裝遷移指南（Migration Guide）](docs/migration.md)
 
-大多數使用者只要完成**快速開始**跟**第一次登入**就能正常使用了。
+大多數使用者只要完成**快速開始**與**第一次登入**就能直接開始使用。
