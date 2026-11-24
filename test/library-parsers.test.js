@@ -7,6 +7,7 @@ import {
   parseLibraryPortalLinks,
   parseEndnoteDownloads,
   parseDatabasesList,
+  parseOpacFacets,
   parseOpacSearchResults,
   mergeOpacAvailability,
   parseOpacItemDetail,
@@ -150,6 +151,54 @@ test("parseOpacSearchResults and mergeOpacAvailability parse hits, covers, pagin
   assert.equal(merged[0].totalCount, 3);
   assert.equal(merged[0].holdsCount, 1);
   assert.equal(merged[0].holdable, true);
+});
+
+test("parseOpacFacets extracts SUBJECT, LANGUAGE, PUBDATE (newest first), ITYPE, and SDGs", () => {
+  const html = `
+    <form id="facetFormPUBDATE">
+      <div class="facetTitle">出版日期</div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=PUBDATE%09%E5%87%BA%E7%89%88%E6%97%A5%E6%9C%9F%092018%092018"> 2018 </a></span><div class="navigatorCount"> (120) </div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=PUBDATE%09%E5%87%BA%E7%89%88%E6%97%A5%E6%9C%9F%092025%092025"> 2025 </a></span><div class="navigatorCount"> (45) </div>
+    </form>
+    <form id="facetFormLANGUAGE">
+      <div class="facetTitle">語言</div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=LANGUAGE%09%E8%AA%9E%E8%A8%80%09CHI%09%E4%B8%AD%E6%96%87"> 中文 </a></span><div class="navigatorCount"> (420,985) </div>
+    </form>
+    <form id="facetFormSUBJECT">
+      <div class="facetTitle">主題</div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=SUBJECT%09%E4%B8%BB%E9%A1%8C%09Computer+Science.%09Computer+Science."> Computer Science. </a></span><div class="navigatorCount"> (6057) </div>
+    </form>
+    <form id="facetFormITYPE">
+      <div class="facetTitle">資料類型</div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=ITYPE%09%E8%B3%87%E6%96%99%E9%A1%9E%E5%9E%8B%091%3ABOOK%09%E5%9C%96%E6%9B%B8"> 圖書 </a></span>
+    </form>
+    <form id="facetFormLOCAL_NOTE_590">
+      <div class="facetTitle">SDGS附註</div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=LOCAL_NOTE_590%09SDGS%E9%99%84%E8%A8%BB%09SDG4%09SDG4+%E5%84%AA%E8%B3%AA%E6%95%99%E8%82%B2"> SDG4 優質教育 </a></span><div class="navigatorCount"> (291) </div>
+    </form>
+  `;
+  const facets = parseOpacFacets(html);
+  assert.deepEqual(
+    facets.map((g) => g.key),
+    ["SUBJECT", "LANGUAGE", "PUBDATE", "ITYPE", "LOCAL_NOTE_590"],
+  );
+  assert.deepEqual(facets[0].items[0], {
+    qf: "SUBJECT\t主題\tComputer Science.\tComputer Science.",
+    label: "Computer Science.",
+    count: 6057,
+  });
+  assert.equal(facets[1].items[0].count, 420985);
+  assert.deepEqual(
+    facets[2].items.map((x) => x.label),
+    ["2025", "2018"],
+  );
+  assert.equal(facets[3].items[0].count, null);
+  assert.equal(facets[4].items[0].label, "SDG4 優質教育");
+
+  const parsed = parseOpacSearchResults(html, { sort: "PD", tags: ["LANGUAGE\t語言\tCHI\t中文"] });
+  assert.equal(parsed.sort, "PD");
+  assert.deepEqual(parsed.tags, ["LANGUAGE\t語言\tCHI\t中文"]);
+  assert.equal(parsed.facets.length, 5);
 });
 
 test("parseOpacItemDetail parses bibliographic metadata and holdings table rows", () => {

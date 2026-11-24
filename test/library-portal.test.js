@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { handleLibraryRequest, isAllowedCoverUrl } from "../src/library-portal.js";
+import {
+  handleLibraryRequest,
+  isAllowedCoverUrl,
+  searchLibraryCatalog,
+} from "../src/library-portal.js";
 import { MODULES, moduleById, publicModules } from "../src/eportal.js";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
@@ -110,20 +114,34 @@ test("handleLibraryRequest dispatches overview, catalog, renew, databases, rooms
     assert.deepEqual(seen[0], ["overview", true]);
   }
 
-  // GET /api/library/catalog/search
+  // GET /api/library/catalog/search (empty browse-all + sort + repeated tags)
   {
     const res = makeMockRes();
     await handleLibraryRequest(
       { method: "GET" },
       res,
-      new URL("http://localhost/api/library/catalog/search?q=JS&field=TITLE&scope=SM&page=2"),
+      new URL(
+        "http://localhost/api/library/catalog/search?q=&field=ALL&scope=SM&sort=PD&tag=" +
+          encodeURIComponent("LANGUAGE\t語言\tCHI\t中文") +
+          "&tag=" +
+          encodeURIComponent("PUBDATE\t出版日期\t2025\t2025") +
+          "&page=2",
+      ),
       handlers,
       deps,
     );
     assert.equal(res.statusCode, 200);
     assert.deepEqual(seen[1], [
       "search",
-      { q: "JS", field: "TITLE", scope: "SM", preset: "", page: "2" },
+      {
+        q: "",
+        field: "ALL",
+        scope: "SM",
+        preset: "",
+        sort: "PD",
+        tags: ["LANGUAGE\t語言\tCHI\t中文", "PUBDATE\t出版日期\t2025\t2025"],
+        page: "2",
+      },
     ]);
   }
 
@@ -257,4 +275,19 @@ test("library module, server routing, CSP, logout cleanup, and frontend safety i
   assert.deepEqual(libraryJs.match(/innerHTML\s*=/g), ["innerHTML ="]);
   assert.match(libraryJs, /svg\.innerHTML = ICONS\[name\] \|\| ICONS\.book;/);
   assert.doesNotMatch(libraryJs, /insertAdjacentHTML/);
+});
+
+test("searchLibraryCatalog rejects invalid sort orders and malformed facet tags cleanly", async () => {
+  await assert.rejects(
+    () => searchLibraryCatalog({ sort: "INVALID" }),
+    (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+  );
+  await assert.rejects(
+    () => searchLibraryCatalog({ tags: ["EVIL\tTAG"] }),
+    (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+  );
+  await assert.rejects(
+    () => searchLibraryCatalog({ scope: "UNKNOWN" }),
+    (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+  );
 });

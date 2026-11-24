@@ -23,10 +23,29 @@
     ["ALL", "全部"],
     ["SM", "三民總館"],
     ["MS", "民生分館"],
+    ["BOOK", "紙本圖書"],
     ["EBOOK", "電子書"],
     ["AV", "視聽影片"],
     ["LANG", "語言中心"],
   ];
+
+  const SORTS = [
+    ["RE", "預設排序"],
+    ["PD", "出版年（新→舊）"],
+    ["PA", "出版年（舊→新）"],
+    ["TL", "題名"],
+    ["AT", "作者"],
+  ];
+
+  function formatNumber(val) {
+    const n = Number(val);
+    return Number.isFinite(n) ? n.toLocaleString("en-US") : String(val ?? "");
+  }
+
+  function tagLabelFromQf(qf) {
+    const parts = String(qf || "").split("\t");
+    return parts[3] || parts[2] || String(qf || "");
+  }
 
   const FIELDS = [
     ["ALL", "所有欄位"],
@@ -194,6 +213,9 @@
     catalogField: "ALL",
     catalogScope: "ALL",
     catalogPreset: "",
+    catalogSort: "RE",
+    catalogTags: [],
+    catalogFacetGroup: "SUBJECT",
     catalogPage: 1,
     lastCatalogSearch: null,
     catalogData: null,
@@ -240,26 +262,28 @@
     }
   }
 
+  let catalogRequestSeq = 0;
+
   async function runCatalogSearch({
     q = state.catalogQuery,
     field = state.catalogField,
     scope = state.catalogScope,
     preset = state.catalogPreset,
+    sort = state.catalogSort,
+    tags = state.catalogTags,
     page = state.catalogPage,
   } = {}) {
+    const reqId = ++catalogRequestSeq;
+    const cleanTags = Array.isArray(tags) ? [...new Set(tags.filter(Boolean))] : [];
     state.catalogQuery = q;
     state.catalogDraftQ = q;
     state.catalogField = field;
     state.catalogScope = scope;
     state.catalogPreset = preset;
+    state.catalogSort = sort || "RE";
+    state.catalogTags = cleanTags;
     state.catalogPage = page;
     state.catalogError = "";
-
-    if (!q.trim() && !preset) {
-      state.catalogData = null;
-      render();
-      return;
-    }
 
     state.catalogLoading = true;
     render();
@@ -269,14 +293,23 @@
         field,
         scope,
         preset,
+        sort: state.catalogSort,
         page: String(page),
       });
-      state.catalogData = await apiJson(`/api/library/catalog/search?${qs}`);
+      for (const tag of cleanTags) {
+        qs.append("tag", tag);
+      }
+      const res = await apiJson(`/api/library/catalog/search?${qs}`);
+      if (reqId !== catalogRequestSeq) return;
+      state.catalogData = res;
     } catch (error) {
+      if (reqId !== catalogRequestSeq) return;
       state.catalogError = error?.message || "無法查詢館藏系統。";
     } finally {
-      state.catalogLoading = false;
-      render();
+      if (reqId === catalogRequestSeq) {
+        state.catalogLoading = false;
+        render();
+      }
     }
   }
 
@@ -802,12 +835,14 @@
           e.preventDefault();
           const q = quickInput.value.trim();
           const sc = quickSelect.value;
-          state.catalogQuery = q;
-          state.catalogDraftQ = q;
-          state.catalogScope = sc;
-          state.catalogPreset = "";
-          state.catalogPage = 1;
-          const qs = new URLSearchParams({ q, scope: sc });
+          state.catalogTags = [];
+          state.catalogSort = "RE";
+          state.lastCatalogSearch = null;
+          state.catalogData = null;
+          const qs = new URLSearchParams({
+            ...(q ? { q } : {}),
+            scope: sc,
+          });
           navigate(`${BASE}/catalog?${qs}`);
         },
       },
@@ -832,10 +867,10 @@
             class: "chip-btn",
             type: "button",
             onclick: () => {
-              state.catalogQuery = "";
-              state.catalogDraftQ = "";
-              state.catalogPreset = "SMNEW";
-              state.catalogPage = 1;
+              state.catalogTags = [];
+              state.catalogSort = "RE";
+              state.lastCatalogSearch = null;
+              state.catalogData = null;
               navigate(`${BASE}/catalog?preset=SMNEW`);
             },
           },
@@ -847,10 +882,10 @@
             class: "chip-btn",
             type: "button",
             onclick: () => {
-              state.catalogQuery = "";
-              state.catalogDraftQ = "";
-              state.catalogPreset = "MSNEW";
-              state.catalogPage = 1;
+              state.catalogTags = [];
+              state.catalogSort = "RE";
+              state.lastCatalogSearch = null;
+              state.catalogData = null;
               navigate(`${BASE}/catalog?preset=MSNEW`);
             },
           },
@@ -1074,27 +1109,33 @@
     if (location.search === state.lastCatalogSearch) return;
     state.lastCatalogSearch = location.search;
     const sp = new URLSearchParams(location.search);
-    const q = sp.get("q");
-    const scope = sp.get("scope");
-    const field = sp.get("field");
-    const preset = sp.get("preset");
-    const page = sp.get("page");
-    if (q != null || preset != null) {
-      const changed =
-        (q || "") !== state.catalogQuery ||
-        (scope || "ALL") !== state.catalogScope ||
-        (field || "ALL") !== state.catalogField ||
-        (preset || "") !== state.catalogPreset ||
-        (Number(page) || 1) !== state.catalogPage;
-      if (changed && !state.catalogLoading) {
-        void runCatalogSearch({
-          q: q || "",
-          field: field || "ALL",
-          scope: scope || "ALL",
-          preset: preset || "",
-          page: Number(page) || 1,
-        });
-      }
+    const hasParams =
+      sp.has("q") ||
+      sp.has("preset") ||
+      sp.has("scope") ||
+      sp.has("field") ||
+      sp.has("sort") ||
+      sp.has("tag") ||
+      sp.has("page");
+    if (!hasParams) return;
+    const q = sp.get("q") || "";
+    const scope = sp.get("scope") || "ALL";
+    const field = sp.get("field") || "ALL";
+    const preset = sp.get("preset") || "";
+    const sort = sp.get("sort") || "RE";
+    const tags = sp.getAll("tag").filter(Boolean);
+    const page = Number(sp.get("page")) || 1;
+    const changed =
+      !state.catalogData ||
+      q !== state.catalogQuery ||
+      scope !== state.catalogScope ||
+      field !== state.catalogField ||
+      preset !== state.catalogPreset ||
+      sort !== state.catalogSort ||
+      tags.join("||") !== state.catalogTags.join("||") ||
+      page !== state.catalogPage;
+    if (changed && !state.catalogLoading) {
+      void runCatalogSearch({ q, field, scope, preset, sort, tags, page });
     }
   }
 
@@ -1133,8 +1174,14 @@
         field: fieldEl.value,
         scope: state.catalogScope,
         ...(nextPreset ? { preset: nextPreset } : {}),
+        ...(state.catalogSort && state.catalogSort !== "RE"
+          ? { sort: state.catalogSort }
+          : {}),
         page: String(nextPage),
       });
+      for (const tag of state.catalogTags) {
+        qs.append("tag", tag);
+      }
       const nextSearch = `?${qs}`;
       state.lastCatalogSearch = nextSearch;
       history.replaceState(null, "", `${BASE}/catalog${nextSearch}`);
@@ -1143,9 +1190,110 @@
         field: fieldEl.value,
         scope: state.catalogScope,
         preset: nextPreset,
+        sort: state.catalogSort,
+        tags: state.catalogTags,
         page: nextPage,
       });
     };
+
+    const toggleTag = (qf) => {
+      const next = new Set(state.catalogTags);
+      if (next.has(qf)) {
+        next.delete(qf);
+      } else if (next.size < 6) {
+        next.add(qf);
+      }
+      state.catalogTags = [...next];
+      submitSearch(1, state.catalogPreset);
+    };
+
+    const data = state.catalogData;
+    const facets = Array.isArray(data?.facets) ? data.facets : [];
+    const activeTagsSet = new Set(state.catalogTags);
+    const activeFacetGroup =
+      facets.find((g) => g.key === state.catalogFacetGroup) || facets[0] || null;
+
+    const facetBar =
+      state.catalogTags.length || facets.length
+        ? h(
+            "div",
+            { class: "facet-bar" },
+            state.catalogTags.length
+              ? h(
+                  "div",
+                  { class: "chips facet-active" },
+                  state.catalogTags.map((qf) =>
+                    h(
+                      "button",
+                      {
+                        class: "chip-btn",
+                        type: "button",
+                        "aria-pressed": "true",
+                        onclick: () => toggleTag(qf),
+                      },
+                      tagLabelFromQf(qf),
+                      icon("x"),
+                    ),
+                  ),
+                  h(
+                    "button",
+                    {
+                      class: "btn ghost small",
+                      type: "button",
+                      onclick: () => {
+                        state.catalogTags = [];
+                        submitSearch(1, state.catalogPreset);
+                      },
+                    },
+                    "清除標籤",
+                  ),
+                )
+              : null,
+            facets.length
+              ? h(
+                  "div",
+                  { class: "facet-tabs", role: "tablist", "aria-label": "標籤分類" },
+                  facets.map((g) =>
+                    h(
+                      "button",
+                      {
+                        class: "facet-tab",
+                        type: "button",
+                        role: "tab",
+                        "aria-pressed": String(activeFacetGroup?.key === g.key),
+                        onclick: () => {
+                          state.catalogFacetGroup = g.key;
+                          render();
+                        },
+                      },
+                      g.label,
+                    ),
+                  ),
+                )
+              : null,
+            activeFacetGroup
+              ? h(
+                  "div",
+                  { class: "chips facet-chips" },
+                  activeFacetGroup.items.map((item) =>
+                    h(
+                      "button",
+                      {
+                        class: "chip-btn",
+                        type: "button",
+                        "aria-pressed": String(activeTagsSet.has(item.qf)),
+                        onclick: () => toggleTag(item.qf),
+                      },
+                      h("span", null, item.label),
+                      item.count != null
+                        ? h("span", { class: "chip-count num" }, formatNumber(item.count))
+                        : null,
+                    ),
+                  ),
+                )
+              : null,
+          )
+        : null;
 
     const form = h(
       "form",
@@ -1180,8 +1328,7 @@
               "aria-pressed": String(!state.catalogPreset && state.catalogScope === val),
               onclick: () => {
                 state.catalogScope = val;
-                if (inputEl.value.trim()) submitSearch(1, "");
-                else render();
+                submitSearch(1, "");
               },
             },
             label,
@@ -1195,6 +1342,7 @@
             "aria-pressed": String(state.catalogPreset === "SMNEW"),
             onclick: () => {
               state.catalogDraftQ = "";
+              state.catalogTags = [];
               inputEl.value = "";
               submitSearch(1, "SMNEW");
             },
@@ -1209,6 +1357,7 @@
             "aria-pressed": String(state.catalogPreset === "MSNEW"),
             onclick: () => {
               state.catalogDraftQ = "";
+              state.catalogTags = [];
               inputEl.value = "";
               submitSearch(1, "MSNEW");
             },
@@ -1216,18 +1365,58 @@
           "民生新進",
         ),
       ),
+      facetBar,
     );
 
-    const data = state.catalogData;
     let resultsBody;
     if (state.catalogError) {
       resultsBody = h(
         "div",
-        { class: "notice danger", style: "margin-top:16px" },
+        { class: "notice danger", style: "margin-top:16px;align-items:center" },
         icon("alert"),
-        h("span", null, state.catalogError),
+        h("span", { style: "flex:1" }, state.catalogError),
+        h(
+          "button",
+          {
+            class: "btn small",
+            type: "button",
+            onclick: () => void runCatalogSearch(),
+          },
+          icon("refresh"),
+          "重試",
+        ),
       );
     } else if (data && data.items) {
+      const sortEl = h(
+        "select",
+        {
+          id: "catalogSortSelect",
+          class: "select select--sm",
+          "aria-label": "排序方式",
+          onchange: (e) => {
+            state.catalogSort = e.target.value;
+            submitSearch(1, state.catalogPreset);
+          },
+        },
+        SORTS.map(([val, label]) =>
+          h("option", { value: val, selected: state.catalogSort === val }, label),
+        ),
+      );
+
+      const headingText = data.preset
+        ? data.preset === "SMNEW"
+          ? "三民總館新進館藏"
+          : "民生分館新進館藏"
+        : data.query
+          ? "搜尋結果"
+          : "全部館藏";
+
+      const hasActiveFilters =
+        Boolean(data.query) ||
+        state.catalogScope !== "ALL" ||
+        state.catalogTags.length > 0 ||
+        Boolean(data.preset);
+
       resultsBody = h(
         "section",
         { class: "section" },
@@ -1237,21 +1426,57 @@
           h(
             "h2",
             null,
-            data.preset
-              ? data.preset === "SMNEW"
-                ? "三民總館新進館藏"
-                : "民生分館新進館藏"
-              : "搜尋結果",
-            h("span", { class: "count" }, `(${data.totalResults})`),
+            headingText,
+            h("span", { class: "count" }, `(${formatNumber(data.totalResults)})`),
           ),
-          h("span", { class: "meta num" }, `第 ${data.page} / ${data.totalPages} 頁`),
+          h(
+            "div",
+            { class: "section-controls" },
+            sortEl,
+            h(
+              "span",
+              { class: "meta num" },
+              `第 ${formatNumber(data.page)} / ${formatNumber(data.totalPages)} 頁`,
+            ),
+          ),
         ),
         data.items.length
           ? h("div", { class: "list" }, data.items.map(renderBookRow))
           : h(
               "div",
               { class: "list" },
-              h("div", { class: "empty" }, icon("search"), h("strong", null, "找不到符合條件的館藏"), "嘗試更換關鍵字或放寬館別範圍。"),
+              h(
+                "div",
+                { class: "empty" },
+                icon("search"),
+                h("strong", null, "找不到符合條件的館藏"),
+                hasActiveFilters
+                  ? h(
+                      "div",
+                      { class: "actions", style: "justify-content:center" },
+                      h(
+                        "button",
+                        {
+                          class: "btn small",
+                          type: "button",
+                          onclick: () => {
+                            state.catalogQuery = "";
+                            state.catalogDraftQ = "";
+                            state.catalogField = "ALL";
+                            state.catalogScope = "ALL";
+                            state.catalogPreset = "";
+                            state.catalogSort = "RE";
+                            state.catalogTags = [];
+                            inputEl.value = "";
+                            fieldEl.value = "ALL";
+                            submitSearch(1, "");
+                          },
+                        },
+                        "重設條件",
+                      ),
+                    )
+                  : null,
+              ),
             ),
         data.totalPages > 1
           ? h(
@@ -1268,7 +1493,11 @@
                 icon("left"),
                 "上一頁",
               ),
-              h("span", { class: "meta" }, `${data.page} / ${data.totalPages}`),
+              h(
+                "span",
+                { class: "meta" },
+                `${formatNumber(data.page)} / ${formatNumber(data.totalPages)}`,
+              ),
               h(
                 "button",
                 {
@@ -1293,8 +1522,8 @@
           h(
             "div",
             { class: "empty" },
-            icon("search"),
-            h("strong", null, "輸入關鍵字查詢圖書與館藏"),
+            icon("book"),
+            h("strong", null, "載入館藏中…"),
           ),
         ),
       );
@@ -2292,7 +2521,12 @@
 
   function render() {
     const route = matchRoute(new URL(location.href)) || { name: "home" };
-    if (route.name === "catalog") syncCatalogUrlParams();
+    if (route.name === "catalog") {
+      syncCatalogUrlParams();
+      if (!state.catalogData && !state.catalogLoading && !state.catalogError) {
+        void runCatalogSearch();
+      }
+    }
     if (route.name === "rooms" && !state.calData && !state.calLoading && !state.calError) {
       void loadCarrelCalendar();
     }

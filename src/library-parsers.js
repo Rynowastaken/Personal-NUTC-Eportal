@@ -261,12 +261,77 @@ function firstMatch(text, pattern, group = 1) {
   return match ? match[group] : "";
 }
 
+const FACET_GROUPS = [
+  ["SUBJECT", "主題"],
+  ["LANGUAGE", "語言"],
+  ["PUBDATE", "出版年"],
+  ["ITYPE", "類型"],
+  ["LOCAL_NOTE_590", "SDGs"],
+];
+
+/**
+ * Extract structured facet tag groups (`SUBJECT`, `LANGUAGE`, `PUBDATE`, `ITYPE`,
+ * `LOCAL_NOTE_590`) and clickable `qf` query parameters from SirsiDynix OPAC HTML.
+ */
+export function parseOpacFacets(html = "") {
+  const source = String(html || "");
+  const byKey = new Map();
+  const formRegex =
+    /<form\b[^>]*id="facetForm(SUBJECT|LANGUAGE|PUBDATE|ITYPE|LOCAL_NOTE_590)"[^>]*>([\s\S]*?)<\/form>/gi;
+
+  for (const [, keyRaw, body] of source.matchAll(formRegex)) {
+    const key = keyRaw.toUpperCase();
+    const seenQf = new Set();
+    const items = [];
+    const linkRegex =
+      /<a\b[^>]*href="([^"]*navigatorclick\?[^"]*)"[^>]*>([\s\S]*?)<\/a>(?:\s*<\/span>)?(?:\s*<div\b[^>]*class="[^"]*navigatorCount[^"]*"[^>]*>\s*\(?([\d,]+)\)?\s*<\/div>)?/gi;
+
+    for (const [, rawHref, rawLabel, rawCount] of body.matchAll(linkRegex)) {
+      let qf = "";
+      try {
+        qf =
+          new URL(decodeHtmlEntities(rawHref), OPAC_ORIGIN).searchParams.get("qf") ||
+          "";
+      } catch {
+        qf = "";
+      }
+      qf = qf.trim();
+      const label = stripHtml(rawLabel);
+      if (!qf || !label || seenQf.has(qf)) continue;
+      seenQf.add(qf);
+
+      const count = rawCount ? Number.parseInt(rawCount.replace(/,/g, ""), 10) : null;
+      items.push({
+        qf,
+        label,
+        count: Number.isFinite(count) ? count : null,
+      });
+    }
+
+    if (!items.length) continue;
+    if (key === "PUBDATE") {
+      items.sort((a, b) => {
+        const ya = /^\d{4}$/.test(a.label) ? Number.parseInt(a.label, 10) : -1;
+        const yb = /^\d{4}$/.test(b.label) ? Number.parseInt(b.label, 10) : -1;
+        return yb - ya;
+      });
+    }
+    byKey.set(key, items.slice(0, 14));
+  }
+
+  return FACET_GROUPS.filter(([key]) => byKey.has(key)).map(([key, label]) => ({
+    key,
+    label,
+    items: byKey.get(key),
+  }));
+}
+
 /**
  * Parse SirsiDynix Enterprise OPAC search results HTML.
  */
 export function parseOpacSearchResults(
   html = "",
-  { query = "", field = "ALL", scope = "ALL", preset = "", page = 1 } = {},
+  { query = "", field = "ALL", scope = "ALL", preset = "", sort = "RE", tags = [], page = 1 } = {},
 ) {
   const source = String(html || "");
   const totalRaw = firstMatch(
@@ -381,10 +446,13 @@ export function parseOpacSearchResults(
     field,
     scope,
     preset,
+    sort,
+    tags: Array.isArray(tags) ? tags : [],
     page: Math.max(1, Number(page) || 1),
     totalResults: effectiveTotal,
     totalPages,
     availabilityUrl,
+    facets: parseOpacFacets(source),
     items,
   };
 }

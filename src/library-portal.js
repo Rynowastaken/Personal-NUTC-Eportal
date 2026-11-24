@@ -31,7 +31,7 @@ const USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 
 const OVERVIEW_TTL_MS = 5 * 60_000;
-const CATALOG_TTL_MS = 2 * 60_000;
+const CATALOG_TTL_MS = 5 * 60_000;
 const DATABASES_TTL_MS = 5 * 60_000;
 const CALENDAR_TTL_MS = 2 * 60_000;
 const MAX_COVER_BYTES = 2 * 1024 * 1024;
@@ -51,14 +51,20 @@ export const COVER_ALLOWED_HOSTS = new Set([
   "static.findbook.com.tw",
 ]);
 
-const SCOPE_TO_LIMIT = {
+const SCOPE_TO_QF = {
   ALL: "",
-  SM: "BNTIT",
-  MS: "BMSNUTC",
-  EBOOK: "BEBOOK",
-  AV: "BAV",
-  LANG: "BA-LC",
+  SM: "LIBRARY\t圖書館\t1:NTIT\t臺中科技大學 - 三民總館",
+  MS: "LIBRARY\t圖書館\t1:MSNUTC\t臺中科技大學 - 民生分館",
+  BOOK: "ITYPE\t資料類型\t1:BOOK\t圖書",
+  EBOOK: "ITYPE\t資料類型\t1:ELECRES\t電子資源",
+  AV: "ITYPE\t資料類型\t1:AV\t視聽",
+  LANG: "LOCATION\t永久館藏位置\t1:A-LC\t語言中心",
 };
+
+const VALID_SORTS = new Set(["RE", "PD", "PA", "TL", "AT"]);
+
+const VALID_TAG_QF =
+  /^(SUBJECT|LANGUAGE|PUBDATE|ITYPE|LIBRARY|LOCATION|LOCAL_NOTE_590)\t[^\r\n\t]{1,40}\t[^\r\n\t]{1,180}\t[^\r\n\t]{1,180}$/;
 
 const FIELD_TO_RT = {
   ALL: "",
@@ -145,6 +151,7 @@ let overviewCache = null;
 let overviewInFlight = null;
 let downloadsCache = null;
 const catalogCache = new Map();
+const catalogInFlight = new Map();
 const itemDetailCache = new Map();
 const databasesCache = new Map();
 const calendarCache = new Map();
@@ -555,120 +562,161 @@ function normalizeCatalogItemForPublic(item) {
 }
 
 /**
- * Search NUTC SirsiDynix OPAC directly over HTTPS without touching Chromium.
+ * Search or browse NUTC SirsiDynix OPAC directly over HTTPS with scope/facet tags and sorting.
  */
 export async function searchLibraryCatalog({
   q = "",
   field = "ALL",
   scope = "ALL",
   preset = "",
+  sort = "RE",
+  tags = [],
   page = 1,
 } = {}) {
   const cleanQ = String(q || "").trim().slice(0, 160);
   const upperField = String(field || "ALL").trim().toUpperCase();
   const upperScope = String(scope || "ALL").trim().toUpperCase();
   const upperPreset = String(preset || "").trim().toUpperCase();
-  const pageNum = Math.max(1, Math.min(50, Number.parseInt(page, 10) || 1));
+  const upperSort = String(sort || "RE").trim().toUpperCase() || "RE";
+  const pageNum = Math.max(1, Math.min(500, Number.parseInt(page, 10) || 1));
 
   if (!Object.hasOwn(FIELD_TO_RT, upperField)) {
     throw libraryError("Unsupported catalog search field.", "LIBRARY_INVALID_PARAM", 400);
   }
-  if (!Object.hasOwn(SCOPE_TO_LIMIT, upperScope)) {
+  if (!Object.hasOwn(SCOPE_TO_QF, upperScope)) {
     throw libraryError("Unsupported catalog search scope.", "LIBRARY_INVALID_PARAM", 400);
   }
   if (!Object.hasOwn(PRESET_TO_LIMIT, upperPreset)) {
     throw libraryError("Unsupported catalog preset.", "LIBRARY_INVALID_PARAM", 400);
   }
-
-  if (!cleanQ && !upperPreset) {
-    return {
-      query: "",
-      field: upperField,
-      scope: upperScope,
-      preset: "",
-      page: 1,
-      totalResults: 0,
-      totalPages: 1,
-      items: [],
-    };
+  if (!VALID_SORTS.has(upperSort)) {
+    throw libraryError("Unsupported catalog sort order.", "LIBRARY_INVALID_PARAM", 400);
   }
 
-  const cacheKey = `${upperPreset}|${upperScope}|${upperField}|${pageNum}|${cleanQ}`;
+  const rawTags = Array.isArray(tags) ? tags : tags ? [tags] : [];
+  const cleanTags = [];
+  const seenTags = new Set();
+  for (const raw of rawTags) {
+    const t = String(raw || "").trim();
+    if (!t) continue;
+    if (!VALID_TAG_QF.test(t)) {
+      throw libraryError("Invalid catalog facet tag.", "LIBRARY_INVALID_PARAM", 400);
+    }
+    if (!seenTags.has(t)) {
+      seenTags.add(t);
+      cleanTags.push(t);
+      if (cleanTags.length >= 6) break;
+    }
+  }
+
+  const cacheKey = `${upperPreset}|${upperScope}|${upperField}|${upperSort}|${pageNum}|${cleanTags.join("||")}|${cleanQ}`;
   const cached = getCachedMap(catalogCache, cacheKey);
   if (cached) return cached;
 
-  const url = new URL(`${OPAC_BASE}/search/results`);
-  if (upperPreset) {
-    url.searchParams.set("lm", PRESET_TO_LIMIT[upperPreset]);
-  } else {
-    url.searchParams.set("qu", cleanQ);
-    if (SCOPE_TO_LIMIT[upperScope]) {
-      url.searchParams.set("te", SCOPE_TO_LIMIT[upperScope]);
+  const existing = catalogInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const url = new URL(`${OPAC_BASE}/search/results`);
+    const qfList = [];
+    if (upperPreset) {
+      url.searchParams.set("lm", PRESET_TO_LIMIT[upperPreset]);
     } else {
-      url.searchParams.set("te", "");
-    }
-    if (FIELD_TO_RT[upperField]) {
-      url.searchParams.set("rt", FIELD_TO_RT[upperField]);
-    }
-  }
-  if (pageNum > 1) {
-    url.searchParams.set("rw", String((pageNum - 1) * 12));
-  }
-
-  const { response } = await httpRequestWithCookies(url.toString(), {
-    useCookies: false,
-    timeoutMs: 12_000,
-  });
-  if (!response.ok) {
-    throw libraryError(
-      `Catalog search failed with HTTP ${response.status}.`,
-      "LIBRARY_OPAC_UNAVAILABLE",
-      502,
-    );
-  }
-
-  const html = await response.text();
-  const parsed = parseOpacSearchResults(html, {
-    query: cleanQ,
-    field: upperField,
-    scope: upperScope,
-    preset: upperPreset,
-    page: pageNum,
-  });
-
-  let mergedItems = parsed.items;
-  if (parsed.availabilityUrl && parsed.items.length > 0) {
-    try {
-      const availRes = await httpRequestWithCookies(parsed.availabilityUrl, {
-        useCookies: false,
-        headers: {
-          "X-Requested-With": "XMLHttpRequest",
-          Accept: "application/json, text/javascript, */*",
-        },
-        timeoutMs: 8_000,
-      });
-      if (availRes.response.ok) {
-        const json = await availRes.response.json();
-        mergedItems = mergeOpacAvailability(parsed.items, json);
+      url.searchParams.set("qu", cleanQ);
+      if (cleanQ && FIELD_TO_RT[upperField]) {
+        url.searchParams.set("rt", FIELD_TO_RT[upperField]);
       }
-    } catch {
-      // Availability enrichment is best-effort; still show catalog results.
+      if (SCOPE_TO_QF[upperScope]) {
+        qfList.push(SCOPE_TO_QF[upperScope]);
+      }
     }
-  }
+    for (const t of cleanTags) {
+      if (!qfList.includes(t)) qfList.push(t);
+    }
+    for (const qf of qfList) {
+      url.searchParams.append("qf", qf);
+    }
+    if (upperSort !== "RE") {
+      url.searchParams.set("st", upperSort);
+    }
+    if (pageNum > 1) {
+      url.searchParams.set("rw", String((pageNum - 1) * 12));
+    }
 
-  const result = {
-    query: parsed.query,
-    field: parsed.field,
-    scope: parsed.scope,
-    preset: parsed.preset,
-    page: parsed.page,
-    totalResults: parsed.totalResults,
-    totalPages: parsed.totalPages,
-    items: mergedItems.map(normalizeCatalogItemForPublic),
-  };
+    let response;
+    let html;
+    try {
+      ({ response } = await httpRequestWithCookies(url.toString(), {
+        useCookies: false,
+        timeoutMs: 25_000,
+      }));
+      if (!response.ok) {
+        throw libraryError(
+          `Catalog search failed with HTTP ${response.status}.`,
+          "LIBRARY_OPAC_UNAVAILABLE",
+          502,
+        );
+      }
+      html = await response.text();
+    } catch (error) {
+      if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+        throw libraryError("館藏系統回應逾時，請稍後再試。", "LIBRARY_OPAC_TIMEOUT", 504);
+      }
+      throw error;
+    }
 
-  setCachedMap(catalogCache, cacheKey, result, CATALOG_TTL_MS, 60);
-  return result;
+    const parsed = parseOpacSearchResults(html, {
+      query: cleanQ,
+      field: upperField,
+      scope: upperScope,
+      preset: upperPreset,
+      sort: upperSort,
+      tags: cleanTags,
+      page: pageNum,
+    });
+
+    let mergedItems = parsed.items;
+    if (parsed.availabilityUrl && parsed.items.length > 0) {
+      try {
+        const availRes = await httpRequestWithCookies(parsed.availabilityUrl, {
+          useCookies: false,
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            Accept: "application/json, text/javascript, */*",
+          },
+          timeoutMs: 10_000,
+        });
+        if (availRes.response.ok) {
+          const json = await availRes.response.json();
+          mergedItems = mergeOpacAvailability(parsed.items, json);
+        }
+      } catch {
+        // Availability enrichment is best-effort; still show catalog results.
+      }
+    }
+
+    const result = {
+      query: parsed.query,
+      field: parsed.field,
+      scope: parsed.scope,
+      preset: parsed.preset,
+      sort: parsed.sort,
+      tags: parsed.tags,
+      page: parsed.page,
+      totalResults: parsed.totalResults,
+      totalPages: parsed.totalPages,
+      facets: parsed.facets,
+      items: mergedItems.map(normalizeCatalogItemForPublic),
+    };
+
+    setCachedMap(catalogCache, cacheKey, result, CATALOG_TTL_MS, 60);
+    return result;
+  })().finally(() => {
+    catalogInFlight.delete(cacheKey);
+  });
+
+  catalogInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 /**
@@ -1441,6 +1489,8 @@ export async function handleLibraryRequest(
           field: url.searchParams.get("field") || "ALL",
           scope: url.searchParams.get("scope") || "ALL",
           preset: url.searchParams.get("preset") || "",
+          sort: url.searchParams.get("sort") || "RE",
+          tags: url.searchParams.getAll("tag"),
           page: url.searchParams.get("page") || "1",
         }),
       );
