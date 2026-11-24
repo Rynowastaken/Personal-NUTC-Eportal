@@ -1,11 +1,13 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createModuleHandoff } from "./portal-session.js";
 import {
+  buildOpacAvailabilityUrl,
   decodeHtmlEntities,
-  mergeOpacAvailability,
+  normalizeIsbn,
   parseCarrelCalendar,
   parseCarrelForm,
   parseCarrelReservations,
@@ -15,6 +17,7 @@ import {
   parseOpacAccount,
   parseOpacItemDetail,
   parseOpacSearchResults,
+  sanminCoverUrlFromIsbn,
   stripHtml,
 } from "./library-parsers.js";
 
@@ -26,14 +29,23 @@ export const LIBRARY_ORIGIN = "https://library.nutc.edu.tw";
 export const OPAC_ORIGIN = "https://ntit.ent.sirsidynix.net";
 export const OPAC_BASE = `${OPAC_ORIGIN}/client/zh_TW/NUTC`;
 const SESSION_FILE = path.join(ROOT, "data", "library-session.json");
+const CATALOG_CACHE_FILE = path.join(ROOT, "data", "library-catalog-cache.json");
 
 const USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 
 const OVERVIEW_TTL_MS = 5 * 60_000;
-const CATALOG_TTL_MS = 5 * 60_000;
+const CATALOG_FRESH_TTL_MS = 10 * 60_000;
+const CATALOG_STALE_TTL_MS = 6 * 60 * 60_000;
+const FACET_TTL_MS = 30 * 60_000;
+const AVAILABILITY_TTL_MS = 2 * 60_000;
 const DATABASES_TTL_MS = 5 * 60_000;
 const CALENDAR_TTL_MS = 2 * 60_000;
+const COVER_HIT_TTL_MS = 24 * 60 * 60_000;
+const COVER_MISS_TTL_MS = 6 * 60 * 60_000;
+const MAX_COVER_CACHE_ENTRIES = 200;
+const MAX_COVER_CACHE_BYTES = 16 * 1024 * 1024;
+const MIN_COVER_BYTES = 400;
 const MAX_COVER_BYTES = 2 * 1024 * 1024;
 
 export const ALLOWED_LIBRARY_HOSTS = new Set([
@@ -48,7 +60,13 @@ export const COVER_ALLOWED_HOSTS = new Set([
   "ntit.ent.sirsidynix.net",
   "books.google.com",
   "covers.openlibrary.org",
+  "cover.openbd.jp",
   "static.findbook.com.tw",
+]);
+
+const GOOGLE_PLACEHOLDER_HASHES = new Set([
+  "e3f8c414b288cbdf4e6d1e00eb6d3826157d10a5b5628b9318f726ea490eca12",
+  "a9af512c1e52ed9cafd06b8f212bf13940976703ee3a38573df558e28ce31a21",
 ]);
 
 const SCOPE_TO_QF = {
@@ -134,13 +152,28 @@ export function isAllowedCoverUrl(rawUrl) {
   }
 }
 
-function toCoverProxyUrl(rawUrl) {
-  if (!isAllowedCoverUrl(rawUrl)) return "";
-  return `/api/library/cover?url=${encodeURIComponent(rawUrl)}`;
+function isAllowedCoverRedirectHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  return (
+    COVER_ALLOWED_HOSTS.has(host) ||
+    host === "archive.org" ||
+    host.endsWith(".archive.org") ||
+    host.endsWith(".googleusercontent.com")
+  );
+}
+
+function toCoverProxyUrl(rawUrl, rawIsbn = "") {
+  const safeUrl = isAllowedCoverUrl(rawUrl) ? String(rawUrl).trim() : "";
+  const isbn = normalizeIsbn(rawIsbn);
+  if (!safeUrl && !isbn) return "";
+  const qs = new URLSearchParams();
+  if (safeUrl) qs.set("url", safeUrl);
+  if (isbn) qs.set("isbn", isbn);
+  return `/api/library/cover?${qs.toString()}`;
 }
 
 // ---------------------------------------------------------------------------
-// Bounded TTL caches + Cookie jar persistence
+// Bounded TTL caches + Cookie jar & catalog disk persistence
 
 let jar = [];
 let jarLoaded = false;
@@ -152,6 +185,17 @@ let overviewInFlight = null;
 let downloadsCache = null;
 const catalogCache = new Map();
 const catalogInFlight = new Map();
+const facetCache = new Map();
+const availabilityCache = new Map();
+const availabilityInFlight = new Map();
+const googleCoverUrlCache = new Map();
+const googleCoverInFlight = new Map();
+const coverImageCache = new Map();
+let coverImageCacheBytes = 0;
+const coverInFlight = new Map();
+let catalogDiskLoaded = false;
+let catalogDiskLoadPromise = null;
+let catalogPersistTimer = null;
 const itemDetailCache = new Map();
 const databasesCache = new Map();
 const calendarCache = new Map();
@@ -173,6 +217,83 @@ function setCachedMap(map, key, value, ttlMs, maxEntries) {
     const oldestKey = map.keys().next().value;
     map.delete(oldestKey);
   }
+}
+
+function setCatalogCacheEntry(key, value, freshUntil, staleUntil) {
+  if (catalogCache.has(key)) catalogCache.delete(key);
+  catalogCache.set(key, { value, freshUntil, staleUntil });
+  while (catalogCache.size > 80) {
+    const oldestKey = catalogCache.keys().next().value;
+    catalogCache.delete(oldestKey);
+  }
+}
+
+async function loadCatalogCacheFromDisk() {
+  if (catalogDiskLoaded) return;
+  if (catalogDiskLoadPromise) return catalogDiskLoadPromise;
+  catalogDiskLoadPromise = (async () => {
+    try {
+      const parsed = JSON.parse(await fs.readFile(CATALOG_CACHE_FILE, "utf8"));
+      const now = Date.now();
+      const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+      for (const entry of entries) {
+        if (
+          !entry?.key ||
+          !entry?.value ||
+          !Number.isFinite(entry.staleUntil) ||
+          entry.staleUntil <= now
+        ) {
+          continue;
+        }
+        const freshUntil = Number.isFinite(entry.freshUntil)
+          ? entry.freshUntil
+          : now + CATALOG_FRESH_TTL_MS;
+        setCatalogCacheEntry(entry.key, entry.value, freshUntil, entry.staleUntil);
+        if (Array.isArray(entry.value.facets) && entry.value.facets.length > 0) {
+          const filterKey = String(entry.key).replace(/\|p\d+$/, "");
+          setCachedMap(facetCache, filterKey, entry.value.facets, FACET_TTL_MS, 80);
+        }
+      }
+    } catch {
+      // Missing or invalid disk cache is non-fatal; cold requests populate it.
+    } finally {
+      catalogDiskLoaded = true;
+      catalogDiskLoadPromise = null;
+    }
+  })();
+  return catalogDiskLoadPromise;
+}
+
+function schedulePersistCatalogCache() {
+  if (catalogPersistTimer) clearTimeout(catalogPersistTimer);
+  catalogPersistTimer = setTimeout(() => {
+    catalogPersistTimer = null;
+    const now = Date.now();
+    const entries = [...catalogCache.entries()]
+      .filter(([, entry]) => entry.staleUntil > now)
+      .slice(-24)
+      .map(([key, entry]) => ({
+        key,
+        freshUntil: entry.freshUntil,
+        staleUntil: entry.staleUntil,
+        value: entry.value,
+      }));
+    void (async () => {
+      try {
+        await fs.mkdir(path.dirname(CATALOG_CACHE_FILE), { recursive: true, mode: 0o700 });
+        const temp = `${CATALOG_CACHE_FILE}.${process.pid}.${Date.now()}.tmp`;
+        await fs.writeFile(
+          temp,
+          JSON.stringify({ savedAt: new Date().toISOString(), entries }),
+          { mode: 0o600 },
+        );
+        await fs.rename(temp, CATALOG_CACHE_FILE);
+      } catch {
+        // Ignore non-critical disk cache persistence errors.
+      }
+    })();
+  }, 1500);
+  catalogPersistTimer.unref?.();
 }
 
 function parseSetCookie(line, url) {
@@ -318,6 +439,11 @@ export async function clearLibrarySession() {
   overviewInFlight = null;
   downloadsCache = null;
   catalogCache.clear();
+  facetCache.clear();
+  availabilityCache.clear();
+  googleCoverUrlCache.clear();
+  coverImageCache.clear();
+  coverImageCacheBytes = 0;
   itemDetailCache.clear();
   databasesCache.clear();
   calendarCache.clear();
@@ -556,9 +682,455 @@ async function fetchAuthenticatedLibraryPage(
 // Public fast HTTP catalog & databases endpoints
 
 function normalizeCatalogItemForPublic(item) {
-  const coverProxyUrl = toCoverProxyUrl(item.rawCoverUrl);
+  const coverProxyUrl = toCoverProxyUrl(item.rawCoverUrl, item.isbn);
   const { rawCoverUrl, ...rest } = item;
   return { ...rest, coverProxyUrl };
+}
+
+function normalizeGoogleThumbUrl(raw = "") {
+  const clean = String(raw || "").trim().replace(/^http:\/\//i, "https://");
+  if (!clean) return "";
+  try {
+    const parsed = new URL(clean);
+    if (parsed.protocol !== "https:" || parsed.hostname !== "books.google.com") {
+      return "";
+    }
+    parsed.searchParams.set("zoom", "1");
+    parsed.searchParams.delete("edge");
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Batch-resolve Google Books `viewapi` thumbnail URLs for ISBNs and share in-flight lookups.
+ */
+function warmGoogleBooksCovers(rawIsbns = []) {
+  const normalized = [
+    ...new Set(rawIsbns.map((x) => normalizeIsbn(x)).filter(Boolean)),
+  ];
+  const pending = normalized.filter(
+    (isbn) =>
+      getCachedMap(googleCoverUrlCache, isbn) === null &&
+      !googleCoverInFlight.has(isbn),
+  );
+  if (!pending.length) return Promise.resolve();
+
+  const batches = [];
+  for (let i = 0; i < pending.length; i += 15) {
+    const chunk = pending.slice(i, i + 15);
+    const idPromises = new Map();
+    const batchPromise = (async () => {
+      const bibkeys = chunk.map((isbn) => `ISBN:${isbn}`).join(",");
+      const url = `https://books.google.com/books?bibkeys=${encodeURIComponent(bibkeys)}&jscmd=viewapi`;
+      try {
+        const res = await fetch(url, {
+          headers: { "User-Agent": USER_AGENT, Accept: "*/*" },
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) {
+          for (const isbn of chunk) {
+            setCachedMap(googleCoverUrlCache, isbn, "", 60_000, 1000);
+          }
+          return {};
+        }
+        const text = await res.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+        const out = {};
+        for (const isbn of chunk) {
+          const thumbRaw = parsed?.[`ISBN:${isbn}`]?.thumbnail_url || "";
+          const normalizedUrl = normalizeGoogleThumbUrl(thumbRaw);
+          out[isbn] = normalizedUrl;
+          setCachedMap(
+            googleCoverUrlCache,
+            isbn,
+            normalizedUrl,
+            COVER_MISS_TTL_MS,
+            1000,
+          );
+        }
+        return out;
+      } catch {
+        for (const isbn of chunk) {
+          setCachedMap(googleCoverUrlCache, isbn, "", 60_000, 1000);
+        }
+        return {};
+      }
+    })();
+
+    for (const isbn of chunk) {
+      const p = batchPromise
+        .then((map) => map[isbn] || "")
+        .finally(() => {
+          if (googleCoverInFlight.get(isbn) === idPromises.get(isbn)) {
+            googleCoverInFlight.delete(isbn);
+          }
+        });
+      idPromises.set(isbn, p);
+      googleCoverInFlight.set(isbn, p);
+    }
+    batches.push(batchPromise);
+  }
+  return Promise.all(batches).then(() => {});
+}
+
+async function lookupGoogleBooksCover(isbn) {
+  const cached = getCachedMap(googleCoverUrlCache, isbn);
+  if (cached !== null) return cached;
+  const existing = googleCoverInFlight.get(isbn);
+  if (existing) return existing;
+  await warmGoogleBooksCovers([isbn]);
+  const after = getCachedMap(googleCoverUrlCache, isbn);
+  if (after !== null) return after;
+  const inflight = googleCoverInFlight.get(isbn);
+  return inflight ? inflight : "";
+}
+
+function parseAvailabilityIds(rawIds = "") {
+  const rawList = Array.isArray(rawIds)
+    ? rawIds
+    : String(rawIds || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+  if (!rawList.length || rawList.length > 24) {
+    throw libraryError(
+      "Invalid catalog availability title ids.",
+      "LIBRARY_INVALID_PARAM",
+      400,
+    );
+  }
+  const ids = [];
+  const seen = new Set();
+  for (const raw of rawList) {
+    const id = String(raw || "").trim();
+    if (!/^\d{1,12}$/.test(id)) {
+      throw libraryError(
+        "Invalid catalog availability title ids.",
+        "LIBRARY_INVALID_PARAM",
+        400,
+      );
+    }
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+async function fetchAvailabilityMap(ids = []) {
+  const cleanIds = [];
+  const seen = new Set();
+  for (const raw of ids) {
+    const id = String(raw || "").trim();
+    if (/^\d{1,12}$/.test(id) && !seen.has(id)) {
+      seen.add(id);
+      cleanIds.push(id);
+    }
+  }
+  if (!cleanIds.length) return {};
+
+  const items = {};
+  const waitEntries = [];
+  const toFetch = [];
+
+  for (const id of cleanIds) {
+    const cached = getCachedMap(availabilityCache, id);
+    if (cached) {
+      items[id] = cached;
+      continue;
+    }
+    const existing = availabilityInFlight.get(id);
+    if (existing) {
+      waitEntries.push([id, existing]);
+    } else {
+      toFetch.push(id);
+    }
+  }
+
+  if (toFetch.length > 0) {
+    const availUrl = buildOpacAvailabilityUrl(toFetch);
+    if (availUrl) {
+      const idPromises = new Map();
+      const batchPromise = (async () => {
+        const { response } = await httpRequestWithCookies(availUrl, {
+          useCookies: false,
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            Accept: "application/json, text/javascript, */*",
+          },
+          timeoutMs: 10_000,
+        });
+        if (!response.ok) return {};
+        const json = await response.json();
+        const fetched = {};
+        if (Array.isArray(json)) {
+          for (const entry of json) {
+            const id = String(entry?.titleId || "").trim();
+            if (!id) continue;
+            const normalized = {
+              availableCount: Number.parseInt(entry.availableCount, 10) || 0,
+              totalCount: Number.parseInt(entry.copyCount, 10) || 0,
+              holdsCount: Number.parseInt(entry.holdCount, 10) || 0,
+              holdable: Boolean(entry.holdable),
+            };
+            fetched[id] = normalized;
+            setCachedMap(availabilityCache, id, normalized, AVAILABILITY_TTL_MS, 600);
+          }
+        }
+        return fetched;
+      })()
+        .catch(() => ({}))
+        .finally(() => {
+          for (const id of toFetch) {
+            if (availabilityInFlight.get(id) === idPromises.get(id)) {
+              availabilityInFlight.delete(id);
+            }
+          }
+        });
+
+      for (const id of toFetch) {
+        const p = batchPromise.then((map) => map[id] || null);
+        idPromises.set(id, p);
+        availabilityInFlight.set(id, p);
+        waitEntries.push([id, p]);
+      }
+    }
+  }
+
+  if (waitEntries.length > 0) {
+    const settled = await Promise.all(
+      waitEntries.map(async ([id, p]) => [id, await p]),
+    );
+    for (const [id, data] of settled) {
+      if (data) items[id] = data;
+    }
+  }
+
+  return items;
+}
+
+/**
+ * Resolve copy availability counts for up to 24 OPAC title IDs via cache or `:loadavailability`.
+ */
+export async function getLibraryCatalogAvailability(rawIds = "") {
+  const ids = parseAvailabilityIds(rawIds);
+  const items = await fetchAvailabilityMap(ids);
+  return { items };
+}
+
+function prefetchCatalogAvailability(ids = []) {
+  if (!ids.length) return Promise.resolve({});
+  return fetchAvailabilityMap(ids).catch(() => ({}));
+}
+
+function mergeCachedAvailabilityIntoItems(items = []) {
+  return items.map((item) => {
+    const avail = getCachedMap(availabilityCache, item.id);
+    return avail ? { ...item, ...avail } : item;
+  });
+}
+
+async function fetchOpacResultsStream(
+  rawUrl,
+  { cachedFacets = null, searchMeta = {}, timeoutMs = 25_000 } = {},
+) {
+  let current = new URL(rawUrl);
+  if (!isAllowedLibraryUrl(current)) {
+    throw libraryError(
+      `Disallowed library URL host: ${current.hostname}`,
+      "LIBRARY_HOST_DISALLOWED",
+      400,
+    );
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+  let abortedEarly = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  timer.unref?.();
+
+  try {
+    let response = null;
+    for (let hop = 0; hop <= 6; hop += 1) {
+      response = await fetch(current, {
+        method: "GET",
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+        },
+        redirect: "manual",
+        signal: controller.signal,
+      });
+
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        if (!location) break;
+        const next = new URL(location, current);
+        if (!isAllowedLibraryUrl(next)) break;
+        current = next;
+        continue;
+      }
+      break;
+    }
+
+    if (!response) {
+      throw libraryError("Empty response from OPAC.", "LIBRARY_OPAC_UNAVAILABLE", 502);
+    }
+    if (!response.ok) {
+      throw libraryError(
+        `Catalog search failed with HTTP ${response.status}.`,
+        "LIBRARY_OPAC_UNAVAILABLE",
+        502,
+      );
+    }
+
+    let html = "";
+    let availPromise = null;
+    let resultsParsedEarly = false;
+
+    if (response.body && typeof response.body.getReader === "function") {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) html += decoder.decode(value, { stream: true });
+        if (done) {
+          html += decoder.decode();
+          break;
+        }
+        if (!resultsParsedEarly && /<form\b[^>]*id="facetForm/i.test(html)) {
+          resultsParsedEarly = true;
+          const earlyParsed = parseOpacSearchResults(html, searchMeta);
+          const ids = earlyParsed.items.map((item) => item.id);
+          if (ids.length > 0) {
+            availPromise = prefetchCatalogAvailability(ids);
+          }
+          const missingIsbns = earlyParsed.items
+            .filter((item) => !item.rawCoverUrl && item.isbn)
+            .map((item) => normalizeIsbn(item.isbn))
+            .filter(Boolean);
+          if (missingIsbns.length > 0) {
+            void warmGoogleBooksCovers(missingIsbns).catch(() => {});
+          }
+          if (cachedFacets) {
+            abortedEarly = true;
+            await reader.cancel().catch(() => {});
+            controller.abort();
+            break;
+          }
+        }
+      }
+    } else {
+      html = await response.text();
+    }
+
+    return { html, availPromise };
+  } catch (error) {
+    if (timedOut || (!abortedEarly && (error?.name === "TimeoutError" || error?.name === "AbortError"))) {
+      throw libraryError("館藏系統回應逾時，請稍後再試。", "LIBRARY_OPAC_TIMEOUT", 504);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function fetchCatalogPage({
+  urlStr,
+  searchMeta,
+  filterKey,
+  cacheKey,
+  cachedFacets,
+}) {
+  const existing = catalogInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const { html, availPromise: earlyAvailPromise } = await fetchOpacResultsStream(
+      urlStr,
+      { cachedFacets, searchMeta, timeoutMs: 25_000 },
+    );
+
+    const parsed = parseOpacSearchResults(html, searchMeta);
+    const facets = parsed.facets.length > 0 ? parsed.facets : cachedFacets || [];
+    if (parsed.facets.length > 0) {
+      setCachedMap(facetCache, filterKey, parsed.facets, FACET_TTL_MS, 80);
+    }
+
+    let availPromise = earlyAvailPromise;
+    if (!availPromise && parsed.items.length > 0) {
+      availPromise = prefetchCatalogAvailability(parsed.items.map((i) => i.id));
+    }
+    if (!earlyAvailPromise && parsed.items.length > 0) {
+      const missingIsbns = parsed.items
+        .filter((item) => !item.rawCoverUrl && item.isbn)
+        .map((item) => normalizeIsbn(item.isbn))
+        .filter(Boolean);
+      if (missingIsbns.length > 0) {
+        void warmGoogleBooksCovers(missingIsbns).catch(() => {});
+      }
+    }
+
+    const publicItems = mergeCachedAvailabilityIntoItems(
+      parsed.items.map(normalizeCatalogItemForPublic),
+    );
+    const availabilityPending = publicItems.some(
+      (item) => item.availableCount == null,
+    );
+
+    const result = {
+      query: parsed.query,
+      field: parsed.field,
+      scope: parsed.scope,
+      preset: parsed.preset,
+      sort: parsed.sort,
+      tags: parsed.tags,
+      page: parsed.page,
+      totalResults: parsed.totalResults,
+      totalPages: parsed.totalPages,
+      facets,
+      availabilityPending,
+      items: publicItems,
+    };
+
+    const now = Date.now();
+    setCatalogCacheEntry(
+      cacheKey,
+      result,
+      now + CATALOG_FRESH_TTL_MS,
+      now + CATALOG_STALE_TTL_MS,
+    );
+    schedulePersistCatalogCache();
+
+    if (availPromise && availabilityPending) {
+      void availPromise
+        .then((availMap) => {
+          if (!availMap || !Object.keys(availMap).length) return;
+          result.items = result.items.map((item) =>
+            availMap[item.id] ? { ...item, ...availMap[item.id] } : item,
+          );
+          result.availabilityPending = result.items.some(
+            (item) => item.availableCount == null,
+          );
+          schedulePersistCatalogCache();
+        })
+        .catch(() => {});
+    }
+
+    return result;
+  })().finally(() => {
+    catalogInFlight.delete(cacheKey);
+  });
+
+  catalogInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 /**
@@ -609,114 +1181,97 @@ export async function searchLibraryCatalog({
     }
   }
 
-  const cacheKey = `${upperPreset}|${upperScope}|${upperField}|${upperSort}|${pageNum}|${cleanTags.join("||")}|${cleanQ}`;
-  const cached = getCachedMap(catalogCache, cacheKey);
-  if (cached) return cached;
+  await loadCatalogCacheFromDisk();
 
-  const existing = catalogInFlight.get(cacheKey);
-  if (existing) return existing;
+  const filterKey = `${upperPreset}|${upperScope}|${upperField}|${upperSort}|${cleanTags.join("||")}|${cleanQ}`;
+  const cacheKey = `${filterKey}|p${pageNum}`;
 
-  const promise = (async () => {
-    const url = new URL(`${OPAC_BASE}/search/results`);
-    const qfList = [];
-    if (upperPreset) {
-      url.searchParams.set("lm", PRESET_TO_LIMIT[upperPreset]);
-    } else {
-      url.searchParams.set("qu", cleanQ);
-      if (cleanQ && FIELD_TO_RT[upperField]) {
-        url.searchParams.set("rt", FIELD_TO_RT[upperField]);
-      }
-      if (SCOPE_TO_QF[upperScope]) {
-        qfList.push(SCOPE_TO_QF[upperScope]);
-      }
+  const url = new URL(`${OPAC_BASE}/search/results`);
+  const qfList = [];
+  if (upperPreset) {
+    url.searchParams.set("lm", PRESET_TO_LIMIT[upperPreset]);
+  } else {
+    url.searchParams.set("qu", cleanQ);
+    if (cleanQ && FIELD_TO_RT[upperField]) {
+      url.searchParams.set("rt", FIELD_TO_RT[upperField]);
     }
-    for (const t of cleanTags) {
-      if (!qfList.includes(t)) qfList.push(t);
+    if (SCOPE_TO_QF[upperScope]) {
+      qfList.push(SCOPE_TO_QF[upperScope]);
     }
-    for (const qf of qfList) {
-      url.searchParams.append("qf", qf);
-    }
-    if (upperSort !== "RE") {
-      url.searchParams.set("st", upperSort);
-    }
-    if (pageNum > 1) {
-      url.searchParams.set("rw", String((pageNum - 1) * 12));
-    }
+  }
+  for (const t of cleanTags) {
+    if (!qfList.includes(t)) qfList.push(t);
+  }
+  for (const qf of qfList) {
+    url.searchParams.append("qf", qf);
+  }
+  if (upperSort !== "RE") {
+    url.searchParams.set("st", upperSort);
+  }
+  if (pageNum > 1) {
+    url.searchParams.set("rw", String((pageNum - 1) * 12));
+  }
 
-    let response;
-    let html;
-    try {
-      ({ response } = await httpRequestWithCookies(url.toString(), {
-        useCookies: false,
-        timeoutMs: 25_000,
-      }));
-      if (!response.ok) {
-        throw libraryError(
-          `Catalog search failed with HTTP ${response.status}.`,
-          "LIBRARY_OPAC_UNAVAILABLE",
-          502,
-        );
-      }
-      html = await response.text();
-    } catch (error) {
-      if (error?.name === "TimeoutError" || error?.name === "AbortError") {
-        throw libraryError("館藏系統回應逾時，請稍後再試。", "LIBRARY_OPAC_TIMEOUT", 504);
-      }
-      throw error;
+  const searchMeta = {
+    query: cleanQ,
+    field: upperField,
+    scope: upperScope,
+    preset: upperPreset,
+    sort: upperSort,
+    tags: cleanTags,
+    page: pageNum,
+  };
+  const cachedFacets = pageNum > 1 ? getCachedMap(facetCache, filterKey) : null;
+
+  const entry = catalogCache.get(cacheKey);
+  const now = Date.now();
+  if (entry && now < entry.staleUntil) {
+    const items = mergeCachedAvailabilityIntoItems(entry.value.items);
+    const availabilityPending = items.some((it) => it.availableCount == null);
+    const hydrated = { ...entry.value, items, availabilityPending };
+    if (now >= entry.freshUntil && !catalogInFlight.has(cacheKey)) {
+      void fetchCatalogPage({
+        urlStr: url.toString(),
+        searchMeta,
+        filterKey,
+        cacheKey,
+        cachedFacets,
+      }).catch(() => {});
     }
+    return hydrated;
+  }
 
-    const parsed = parseOpacSearchResults(html, {
-      query: cleanQ,
-      field: upperField,
-      scope: upperScope,
-      preset: upperPreset,
-      sort: upperSort,
-      tags: cleanTags,
-      page: pageNum,
-    });
-
-    let mergedItems = parsed.items;
-    if (parsed.availabilityUrl && parsed.items.length > 0) {
-      try {
-        const availRes = await httpRequestWithCookies(parsed.availabilityUrl, {
-          useCookies: false,
-          headers: {
-            "X-Requested-With": "XMLHttpRequest",
-            Accept: "application/json, text/javascript, */*",
-          },
-          timeoutMs: 10_000,
-        });
-        if (availRes.response.ok) {
-          const json = await availRes.response.json();
-          mergedItems = mergeOpacAvailability(parsed.items, json);
-        }
-      } catch {
-        // Availability enrichment is best-effort; still show catalog results.
-      }
-    }
-
-    const result = {
-      query: parsed.query,
-      field: parsed.field,
-      scope: parsed.scope,
-      preset: parsed.preset,
-      sort: parsed.sort,
-      tags: parsed.tags,
-      page: parsed.page,
-      totalResults: parsed.totalResults,
-      totalPages: parsed.totalPages,
-      facets: parsed.facets,
-      items: mergedItems.map(normalizeCatalogItemForPublic),
-    };
-
-    setCachedMap(catalogCache, cacheKey, result, CATALOG_TTL_MS, 60);
-    return result;
-  })().finally(() => {
-    catalogInFlight.delete(cacheKey);
+  return fetchCatalogPage({
+    urlStr: url.toString(),
+    searchMeta,
+    filterKey,
+    cacheKey,
+    cachedFacets,
   });
+}
 
-  catalogInFlight.set(cacheKey, promise);
-  return promise;
+/**
+ * Hydrate catalog disk cache and pre-warm the default browse-all view in background.
+ */
+export async function warmLibraryCatalog() {
+  try {
+    await loadCatalogCacheFromDisk();
+    const defaultKey = "|ALL|ALL|RE||p1";
+    const entry = catalogCache.get(defaultKey);
+    if (!entry || Date.now() >= entry.freshUntil) {
+      await searchLibraryCatalog({
+        q: "",
+        field: "ALL",
+        scope: "ALL",
+        preset: "",
+        sort: "RE",
+        tags: [],
+        page: 1,
+      });
+    }
+  } catch {
+    // Warmup is best-effort and must never fail server startup.
+  }
 }
 
 /**
@@ -748,11 +1303,11 @@ export async function getLibraryCatalogItem(detailPath) {
   const detail = parseOpacItemDetail(html, cleanPath);
   const publicDetail = {
     ...detail,
-    coverProxyUrl: toCoverProxyUrl(detail.rawCoverUrl),
+    coverProxyUrl: toCoverProxyUrl(detail.rawCoverUrl, detail.isbn),
   };
   delete publicDetail.rawCoverUrl;
 
-  setCachedMap(itemDetailCache, cleanPath, publicDetail, CATALOG_TTL_MS, 60);
+  setCachedMap(itemDetailCache, cleanPath, publicDetail, CATALOG_FRESH_TTL_MS, 60);
   return publicDetail;
 }
 
@@ -825,39 +1380,192 @@ export async function searchLibraryDatabases({
   return result;
 }
 
+function getCoverImageCache(key) {
+  const entry = coverImageCache.get(key);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    coverImageCacheBytes = Math.max(0, coverImageCacheBytes - (entry.bytes || 0));
+    coverImageCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function setCoverImageCache(key, entry, ttlMs = COVER_HIT_TTL_MS) {
+  const existing = coverImageCache.get(key);
+  if (existing) {
+    coverImageCacheBytes = Math.max(0, coverImageCacheBytes - (existing.bytes || 0));
+    coverImageCache.delete(key);
+  }
+  const bytes = entry.bytes || 0;
+  coverImageCache.set(key, { ...entry, expiresAt: Date.now() + ttlMs });
+  coverImageCacheBytes += bytes;
+  while (
+    coverImageCache.size > MAX_COVER_CACHE_ENTRIES ||
+    coverImageCacheBytes > MAX_COVER_CACHE_BYTES
+  ) {
+    const oldestKey = coverImageCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = coverImageCache.get(oldestKey);
+    coverImageCacheBytes = Math.max(0, coverImageCacheBytes - (oldest?.bytes || 0));
+    coverImageCache.delete(oldestKey);
+  }
+}
+
+async function tryFetchCoverImage(rawUrl, { timeoutMs = 6_000 } = {}) {
+  if (!isAllowedCoverUrl(rawUrl)) return null;
+  let current = new URL(rawUrl);
+
+  for (let hop = 0; hop <= 3; hop += 1) {
+    let res;
+    try {
+      res = await fetch(current, {
+        redirect: "manual",
+        headers: { "User-Agent": USER_AGENT, Accept: "image/*" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch {
+      return null;
+    }
+
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get("location");
+      if (!location) return null;
+      let next;
+      try {
+        next = new URL(location, current);
+      } catch {
+        return null;
+      }
+      if (next.protocol !== "https:" || !isAllowedCoverRedirectHost(next.hostname)) {
+        return null;
+      }
+      current = next;
+      continue;
+    }
+
+    if (!res.ok) return null;
+    const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.startsWith("image/") || contentType.includes("svg")) {
+      return null;
+    }
+    const len = Number(res.headers.get("content-length") || 0);
+    if (len > MAX_COVER_BYTES) return null;
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length < MIN_COVER_BYTES || buffer.length > MAX_COVER_BYTES) {
+      return null;
+    }
+    const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
+    if (GOOGLE_PLACEHOLDER_HASHES.has(sha256)) {
+      return null;
+    }
+
+    return { contentType, buffer };
+  }
+
+  return null;
+}
+
 /**
- * Proxy vetted HTTPS book cover images so `/library` keeps a strict `'self'` CSP.
+ * Proxy vetted HTTPS book cover images and automatically fall back by ISBN across
+ * Sanmin, Google Books, OpenBD, and Open Library while keeping `/library` CSP strict.
  */
-export async function fetchLibraryCover(rawUrl) {
-  if (!isAllowedCoverUrl(rawUrl)) {
+export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
+  const opts =
+    rawUrlOrOpts && typeof rawUrlOrOpts === "object"
+      ? rawUrlOrOpts
+      : { url: rawUrlOrOpts, isbn: maybeIsbn };
+  const rawUrl = String(opts.url || "").trim();
+  const rawIsbn = String(opts.isbn || "").trim();
+
+  if (rawUrl && !isAllowedCoverUrl(rawUrl)) {
+    throw libraryError("Unsupported cover image host.", "LIBRARY_COVER_DISALLOWED", 400);
+  }
+  const isbn = rawIsbn ? normalizeIsbn(rawIsbn) : "";
+  if (rawIsbn && !isbn) {
+    throw libraryError("Invalid ISBN for cover lookup.", "LIBRARY_INVALID_PARAM", 400);
+  }
+  if (!rawUrl && !isbn) {
     throw libraryError("Unsupported cover image host.", "LIBRARY_COVER_DISALLOWED", 400);
   }
 
-  const res = await fetch(rawUrl, {
-    redirect: "error",
-    headers: { "User-Agent": USER_AGENT, Accept: "image/*" },
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!res.ok) {
+  const cacheKey = `${rawUrl}|${isbn}`;
+  const cached = getCoverImageCache(cacheKey);
+  if (cached) {
+    if (cached.hit) return { contentType: cached.contentType, buffer: cached.buffer };
     throw libraryError("Cover image not available.", "LIBRARY_COVER_NOT_FOUND", 404);
   }
 
-  const contentType = String(res.headers.get("content-type") || "").toLowerCase();
-  if (!contentType.startsWith("image/") || contentType.includes("svg")) {
-    throw libraryError("Invalid cover content type.", "LIBRARY_COVER_INVALID", 404);
-  }
+  const existing = coverInFlight.get(cacheKey);
+  if (existing) return existing;
 
-  const len = Number(res.headers.get("content-length") || 0);
-  if (len > MAX_COVER_BYTES) {
-    throw libraryError("Cover image too large.", "LIBRARY_COVER_TOO_LARGE", 413);
-  }
+  const promise = (async () => {
+    const attempted = new Set();
+    const tryCandidateUrl = async (candidateUrl) => {
+      if (!candidateUrl || attempted.has(candidateUrl)) return null;
+      attempted.add(candidateUrl);
+      return tryFetchCoverImage(candidateUrl);
+    };
 
-  const buffer = Buffer.from(await res.arrayBuffer());
-  if (buffer.length === 0 || buffer.length > MAX_COVER_BYTES) {
-    throw libraryError("Invalid cover payload size.", "LIBRARY_COVER_INVALID", 404);
-  }
+    const tryProvider = async (provider) => {
+      if (provider === "sanmin") {
+        const url = sanminCoverUrlFromIsbn(isbn);
+        return url ? tryCandidateUrl(url) : null;
+      }
+      if (provider === "openbd") {
+        return isbn.startsWith("9784")
+          ? tryCandidateUrl(`https://cover.openbd.jp/${isbn}.jpg`)
+          : null;
+      }
+      if (provider === "gbooks") {
+        const url = await lookupGoogleBooksCover(isbn);
+        return url ? tryCandidateUrl(url) : null;
+      }
+      if (provider === "openlibrary") {
+        return tryCandidateUrl(
+          `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg?default=false`,
+        );
+      }
+      return null;
+    };
 
-  return { contentType, buffer };
+    let resolved = rawUrl ? await tryCandidateUrl(rawUrl) : null;
+    if (!resolved && isbn) {
+      let order;
+      if (/^978(957|986|626|7)/.test(isbn)) {
+        order = ["sanmin", "gbooks", "openlibrary"];
+      } else if (/^9784/.test(isbn)) {
+        order = ["openbd", "gbooks", "sanmin", "openlibrary"];
+      } else {
+        order = isbn.startsWith("978")
+          ? ["gbooks", "openlibrary", "sanmin"]
+          : ["gbooks", "openlibrary"];
+      }
+      for (const provider of order) {
+        resolved = await tryProvider(provider);
+        if (resolved) break;
+      }
+    }
+
+    if (resolved) {
+      setCoverImageCache(cacheKey, {
+        hit: true,
+        contentType: resolved.contentType,
+        buffer: resolved.buffer,
+        bytes: resolved.buffer.length,
+      });
+      return resolved;
+    }
+
+    setCoverImageCache(cacheKey, { hit: false, bytes: 0 }, COVER_MISS_TTL_MS);
+    throw libraryError("Cover image not available.", "LIBRARY_COVER_NOT_FOUND", 404);
+  })().finally(() => {
+    coverInFlight.delete(cacheKey);
+  });
+
+  coverInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 // ---------------------------------------------------------------------------
@@ -1450,6 +2158,7 @@ export async function handleLibraryRequest(
   const {
     overviewFn = getLibraryOverview,
     searchCatalogFn = searchLibraryCatalog,
+    catalogAvailabilityFn = getLibraryCatalogAvailability,
     catalogItemFn = getLibraryCatalogItem,
     renewFn = renewOpacCheckouts,
     databasesFn = searchLibraryDatabases,
@@ -1500,6 +2209,25 @@ export async function handleLibraryRequest(
         res,
         error,
         "Unable to search the library catalog.",
+        "LIBRARY_OPAC_UNAVAILABLE",
+      );
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/library/catalog/availability") {
+    try {
+      sendJson(
+        res,
+        200,
+        await catalogAvailabilityFn(url.searchParams.get("ids") || ""),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to load catalog availability.",
         "LIBRARY_OPAC_UNAVAILABLE",
       );
     }
@@ -1629,9 +2357,10 @@ export async function handleLibraryRequest(
 
   if (req.method === "GET" && url.pathname === "/api/library/cover") {
     try {
-      const { contentType, buffer } = await coverFn(
-        url.searchParams.get("url") || "",
-      );
+      const { contentType, buffer } = await coverFn({
+        url: url.searchParams.get("url") || "",
+        isbn: url.searchParams.get("isbn") || "",
+      });
       res.writeHead(200, {
         "Content-Type": contentType,
         "Content-Length": buffer.length,

@@ -54,6 +54,7 @@ import {
 import {
   clearLibrarySession,
   handleLibraryRequest,
+  warmLibraryCatalog,
 } from "./src/library-portal.js";
 import { stampHtmlAssetRevision, staticCacheControl } from "./src/static-assets.js";
 import {
@@ -1553,4 +1554,5 @@ server.listen(port, host, () => {
       ? `ePortal keepalive: every ${keepalive.intervalMinutes} minute(s).`
       : "ePortal keepalive: disabled.",
   );
+  void warmLibraryCatalog().catch(() => {});
 });

@@ -67,6 +67,90 @@ export function maskLibraryIdentifier(value = "") {
   );
 }
 
+function ean13CheckDigit(twelveDigits) {
+  let sum = 0;
+  for (let i = 0; i < 12; i += 1) {
+    sum += Number(twelveDigits[i]) * (i % 2 === 0 ? 1 : 3);
+  }
+  return String((10 - (sum % 10)) % 10);
+}
+
+function isValidIsbn13(digits) {
+  return /^97[89]\d{10}$/.test(digits) && ean13CheckDigit(digits.slice(0, 12)) === digits[12];
+}
+
+function isbn10To13(rawIsbn10) {
+  const upper = String(rawIsbn10 || "").toUpperCase();
+  if (!/^\d{9}[\dX]$/.test(upper)) return "";
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum += Number(upper[i]) * (10 - i);
+  }
+  const last = upper[9] === "X" ? 10 : Number(upper[9]);
+  if ((sum + last) % 11 !== 0) return "";
+  const core = `978${upper.slice(0, 9)}`;
+  return `${core}${ean13CheckDigit(core)}`;
+}
+
+/**
+ * Extract and validate an ISBN-13 (converting valid ISBN-10 to ISBN-13) from noisy metadata.
+ */
+export function normalizeIsbn(raw = "") {
+  const text = String(raw || "");
+  if (!text.trim()) return "";
+
+  const isbn13Matches = text.match(/(?<![0-9])97[89](?:[ -]?\d){10}(?![0-9])/g) || [];
+  for (const candidate of isbn13Matches) {
+    const clean = candidate.replace(/[\s-]+/g, "");
+    if (isValidIsbn13(clean)) return clean;
+  }
+
+  const isbn10Matches =
+    text.match(/(?<![0-9])\d(?:[ -]?\d){8}[ -]?[\dXx](?![0-9A-Za-z])/g) || [];
+  for (const candidate of isbn10Matches) {
+    const clean = candidate.replace(/[\s-]+/g, "");
+    const converted = isbn10To13(clean);
+    if (converted) return converted;
+  }
+
+  return "";
+}
+
+/**
+ * Derive Sanmin's direct CDN book cover URL from a valid 978-* ISBN-13.
+ */
+export function sanminCoverUrlFromIsbn(rawIsbn = "") {
+  const isbn13 = normalizeIsbn(rawIsbn);
+  if (!isbn13 || !isbn13.startsWith("978")) return "";
+  const isbn9 = isbn13.slice(3, 12);
+  return `https://cdnec.sanmin.com.tw/product_images/${isbn9.slice(0, 3)}/${isbn9}.jpg`;
+}
+
+/**
+ * Construct SirsiDynix's Tapestry `:loadavailability` URL deterministically from title IDs.
+ */
+export function buildOpacAvailabilityUrl(titleIds = []) {
+  const list = Array.isArray(titleIds) ? titleIds : [titleIds];
+  const ids = [];
+  const seen = new Set();
+  for (const raw of list) {
+    const id = String(raw || "").trim();
+    if (!/^\d{1,12}$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= 24) break;
+  }
+  if (!ids.length) return "";
+  const payload = JSON.stringify({
+    ILS: ids.map((id) => `ent://SD_ILS/0/SD_ILS:${id}`),
+  });
+  const encoded = payload.replace(
+    /[^A-Za-z0-9\-_.:]/g,
+    (ch) => `$${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+  return `${OPAC_BASE}/search/results.displaypanel.any_0:loadavailability/${encoded}`;
+}
+
 function resolveLibraryHref(rawHref, baseUrl) {
   if (!rawHref || rawHref === "#") return "";
   const normalized = decodeHtmlEntities(rawHref).replace(/\\/g, "/").trim();
@@ -405,7 +489,7 @@ export function parseOpacSearchResults(
       firstMatch(
         source,
         new RegExp(
-          `id="hitlist${hitIndex}_BOOKCOVER"[\\s\\S]{0,400}?class="BOOKCOVER_value"[^>]*>([\\s\\S]*?)<\\/div>`,
+          `id="hitlist${hitIndex}_BOOKCOVER"[^>]*>\\s*<div\\b[^>]*class="[^"]*BOOKCOVER_value[^"]*"[^>]*>([\\s\\S]*?)<\\/div>`,
           "i",
         ),
       ) ||

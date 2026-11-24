@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  fetchLibraryCover,
+  getLibraryCatalogAvailability,
   handleLibraryRequest,
   isAllowedCoverUrl,
   searchLibraryCatalog,
@@ -46,6 +48,7 @@ function makeHandlers() {
 test("isAllowedCoverUrl permits only safe HTTPS cover CDN/catalog hosts", () => {
   assert.equal(isAllowedCoverUrl("https://cdnec.sanmin.com.tw/cover.jpg"), true);
   assert.equal(isAllowedCoverUrl("https://ntit.ent.sirsidynix.net/img/a.png"), true);
+  assert.equal(isAllowedCoverUrl("https://cover.openbd.jp/9784846021177.jpg"), true);
   assert.equal(isAllowedCoverUrl("http://cdnec.sanmin.com.tw/cover.jpg"), false);
   assert.equal(isAllowedCoverUrl("https://127.0.0.1/secret.png"), false);
   assert.equal(isAllowedCoverUrl("https://169.254.169.254/latest/meta-data"), false);
@@ -65,6 +68,10 @@ test("handleLibraryRequest dispatches overview, catalog, renew, databases, rooms
     searchCatalogFn: async (opts) => {
       seen.push(["search", opts]);
       return { items: [] };
+    },
+    catalogAvailabilityFn: async (ids) => {
+      seen.push(["availability", ids]);
+      return { items: { 226822: { availableCount: 1, totalCount: 2, holdsCount: 0, holdable: true } } };
     },
     catalogItemFn: async (path) => ({ title: "Demo Book", detailPath: path }),
     renewFn: async (itemIds) => ({ message: `Renewed ${itemIds.length}`, results: [] }),
@@ -163,17 +170,39 @@ test("handleLibraryRequest dispatches overview, catalog, renew, databases, rooms
     assert.match(String(res.body), new RegExp(expectSub));
   }
 
-  // GET /api/library/cover sets strict image headers
+  // GET /api/library/catalog/availability?ids=226822,306166
   {
     const res = makeMockRes();
     await handleLibraryRequest(
       { method: "GET" },
       res,
-      new URL("http://localhost/api/library/cover?url=https%3A%2F%2Fcdnec.sanmin.com.tw%2Fa.jpg"),
+      new URL("http://localhost/api/library/catalog/availability?ids=226822,306166"),
       handlers,
       deps,
     );
     assert.equal(res.statusCode, 200);
+    assert.match(String(res.body), /226822/);
+  }
+
+  // GET /api/library/cover?isbn=... sets strict image headers and forwards isbn
+  {
+    const seenCoverOpts = [];
+    const res = makeMockRes();
+    await handleLibraryRequest(
+      { method: "GET" },
+      res,
+      new URL("http://localhost/api/library/cover?isbn=9789864514489"),
+      handlers,
+      {
+        ...deps,
+        coverFn: async (opts) => {
+          seenCoverOpts.push(opts);
+          return deps.coverFn(opts);
+        },
+      },
+    );
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(seenCoverOpts, [{ url: "", isbn: "9789864514489" }]);
     assert.equal(res.headers["content-type"], "image/jpeg");
     assert.equal(res.headers["x-content-type-options"], "nosniff");
     assert.equal(res.headers["cache-control"], "private, max-age=3600");
@@ -265,8 +294,9 @@ test("library module, server routing, CSP, logout cleanup, and frontend safety i
 
   assert.match(
     server,
-    /import\s*\{\s*clearLibrarySession,\s*handleLibraryRequest,?\s*\}\s*from\s*"\.\/src\/library-portal\.js"/,
+    /import\s*\{[\s\S]*clearLibrarySession[\s\S]*handleLibraryRequest[\s\S]*\}\s*from\s*"\.\/src\/library-portal\.js"/,
   );
+  assert.match(server, /warmLibraryCatalog\(\)/);
   assert.match(server, /await clearLibrarySession\(\)/);
   assert.match(server, /url\.pathname === "\/library" \|\| url\.pathname\.startsWith\("\/library\/"\)/);
   assert.match(server, /serveStatic\(req, res, "\/library\.html"\)/);
@@ -290,4 +320,128 @@ test("searchLibraryCatalog rejects invalid sort orders and malformed facet tags 
     () => searchLibraryCatalog({ scope: "UNKNOWN" }),
     (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
   );
+});
+
+test("getLibraryCatalogAvailability rejects empty or non-numeric IDs", async () => {
+  await assert.rejects(
+    () => getLibraryCatalogAvailability(""),
+    (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+  );
+  await assert.rejects(
+    () => getLibraryCatalogAvailability("123,abc"),
+    (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+  );
+});
+
+test("fetchLibraryCover resolves missing covers by ISBN fallback, follows safe redirects, and rejects invalid payloads or unsafe hosts", async () => {
+  const realFetch = globalThis.fetch;
+  const fakeJpeg = Buffer.alloc(650, 0xab);
+  try {
+    // 1. Rejects malformed ISBN and empty inputs
+    await assert.rejects(
+      () => fetchLibraryCover({ url: "", isbn: "bad-isbn" }),
+      (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+    );
+    await assert.rejects(
+      () => fetchLibraryCover({ url: "", isbn: "" }),
+      (err) => err?.code === "LIBRARY_COVER_DISALLOWED" && err?.statusCode === 400,
+    );
+
+    // 2. TW ISBN falls back from 200 text/html Sanmin to Google Books viewapi -> zoom=1 image
+    const seenUrls1 = [];
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      seenUrls1.push(u);
+      if (u.startsWith("https://cdnec.sanmin.com.tw/")) {
+        return new Response("<html>no image</html>", {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+      if (u.startsWith("https://books.google.com/books?bibkeys=")) {
+        return new Response(
+          'var _GBSBookInfo = {"ISBN:9789864761234":{"thumbnail_url":"http://books.google.com/books/content?id=abc&printsec=frontcover&img=1&zoom=5&edge=curl"}};',
+          { status: 200, headers: { "content-type": "text/javascript" } },
+        );
+      }
+      if (u.startsWith("https://books.google.com/books/content?")) {
+        assert.match(u, /zoom=1/);
+        assert.doesNotMatch(u, /edge=curl/);
+        return new Response(fakeJpeg, {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const twHit = await fetchLibraryCover({ url: "", isbn: "9789864761234" });
+    assert.equal(twHit.contentType, "image/jpeg");
+    assert.equal(twHit.buffer.length, 650);
+    assert.equal(seenUrls1.some((u) => u.includes("cdnec.sanmin.com.tw")), true);
+
+    // 3. Rejects tiny <400B image & unsafe redirect; follows safe archive.org redirect on Open Library
+    const seenUrls2 = [];
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      seenUrls2.push(u);
+      if (u.startsWith("https://books.google.com/books?bibkeys=")) {
+        return new Response('var _GBSBookInfo = {"ISBN:9780134685991":{}};', {
+          status: 200,
+          headers: { "content-type": "text/javascript" },
+        });
+      }
+      if (u.startsWith("https://covers.openlibrary.org/")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://archive.org/download/m_covers/cover.jpg" },
+        });
+      }
+      if (u.startsWith("https://archive.org/")) {
+        return new Response(fakeJpeg, {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      return new Response("no", { status: 404 });
+    };
+    const olHit = await fetchLibraryCover({ url: "", isbn: "9780134685991" });
+    assert.equal(olHit.buffer.length, 650);
+    assert.equal(seenUrls2.some((u) => u.startsWith("https://archive.org/")), true);
+
+    // 4. Rejects tiny image, SVG content-type, and unsafe redirect target to evil.example.com
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.startsWith("https://cover.openbd.jp/")) {
+        return new Response(Buffer.alloc(120, 1), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      if (u.startsWith("https://books.google.com/books?bibkeys=")) {
+        return new Response(
+          'var _GBSBookInfo = {"ISBN:9784846021177":{"thumbnail_url":"https://books.google.com/books/content?id=svgtest&printsec=frontcover&img=1&zoom=5"}};',
+          { status: 200, headers: { "content-type": "text/javascript" } },
+        );
+      }
+      if (u.startsWith("https://books.google.com/books/content?")) {
+        return new Response("<svg xmlns='http://www.w3.org/2000/svg'></svg>", {
+          status: 200,
+          headers: { "content-type": "image/svg+xml" },
+        });
+      }
+      if (u.startsWith("https://covers.openlibrary.org/")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://evil.example.com/pwn.jpg" },
+        });
+      }
+      return new Response("no", { status: 404 });
+    };
+    await assert.rejects(
+      () => fetchLibraryCover({ url: "", isbn: "9784846021177" }),
+      (err) => err?.code === "LIBRARY_COVER_NOT_FOUND" && err?.statusCode === 404,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

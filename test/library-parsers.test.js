@@ -4,6 +4,9 @@ import {
   decodeHtmlEntities,
   stripHtml,
   maskLibraryIdentifier,
+  normalizeIsbn,
+  sanminCoverUrlFromIsbn,
+  buildOpacAvailabilityUrl,
   parseLibraryPortalLinks,
   parseEndnoteDownloads,
   parseDatabasesList,
@@ -355,4 +358,52 @@ test("parseCarrelForm, parseCarrelCalendar, and parseCarrelReservations handle A
   assert.equal(cancel.reservations[0].room, "研究小間10F-2");
   assert.equal(cancel.reservations[0].canCancel, true);
   assert.equal(cancel.reservations[0].postbackTarget, "gv$ctl02$lbDel");
+});
+
+test("normalizeIsbn, sanminCoverUrlFromIsbn, and buildOpacAvailabilityUrl validate and format OPAC metadata", () => {
+  assert.equal(normalizeIsbn("978-986-451-448-9 (平裝)"), "9789864514489");
+  assert.equal(normalizeIsbn("0-596-15810-6 ; 9780596158102"), "9780596158101");
+  assert.equal(normalizeIsbn("043942089X"), "9780439420891");
+  assert.equal(normalizeIsbn("9791090636071"), "9791090636071");
+  assert.equal(normalizeIsbn("9780596158109"), "");
+  assert.equal(normalizeIsbn("not-an-isbn"), "");
+
+  assert.equal(
+    sanminCoverUrlFromIsbn("978-986-451-448-9"),
+    "https://cdnec.sanmin.com.tw/product_images/986/986451448.jpg",
+  );
+  assert.equal(sanminCoverUrlFromIsbn("9791090636071"), "");
+  assert.equal(sanminCoverUrlFromIsbn("bad"), "");
+
+  const availUrl = buildOpacAvailabilityUrl(["226822", "bad-id", "226822", "306166"]);
+  assert.equal(
+    availUrl,
+    "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/results.displaypanel.any_0:loadavailability/$007b$0022ILS$0022:$005b$0022ent:$002f$002fSD_ILS$002f0$002fSD_ILS:226822$0022$002c$0022ent:$002f$002fSD_ILS$002f0$002fSD_ILS:306166$0022$005d$007d",
+  );
+  assert.equal(buildOpacAvailabilityUrl(["bad"]), "");
+});
+
+test("parseOpacSearchResults does not bleed adjacent hitlist BOOKCOVER values into empty cover slots", () => {
+  const html = `
+    <div id="hitlist0_BOOKCOVER"></div>
+    <div id="hitlist0_CALLNUMBER"><div class="CALLNUMBER_value">123.4</div></div>
+    <div id="results_cell0" class="results_cell"><div>
+      <input type="hidden" value="ent://SD_ILS/0/SD_ILS:1001" />
+      <input class="isbnValue" value="9789574174799" />
+      <div class="displayDetailLink"><a id="detailLink0" href="#">無封面書籍</a></div>
+    </div></div>
+    <div id="hitlist1_BOOKCOVER"><div class="BOOKCOVER_value">https://cdnec.sanmin.com.tw/product_images/986/986451448.jpg</div></div>
+    <div id="results_cell1" class="results_cell"><div>
+      <input type="hidden" value="ent://SD_ILS/0/SD_ILS:1002" />
+      <input class="isbnValue" value="9789864514489" />
+      <div class="displayDetailLink"><a id="detailLink1" href="#">有封面書籍</a></div>
+    </div></div>
+  `;
+  const parsed = parseOpacSearchResults(html);
+  assert.equal(parsed.items.length, 2);
+  assert.equal(parsed.items[0].rawCoverUrl, "");
+  assert.equal(
+    parsed.items[1].rawCoverUrl,
+    "https://cdnec.sanmin.com.tw/product_images/986/986451448.jpg",
+  );
 });

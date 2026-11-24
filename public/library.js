@@ -263,6 +263,134 @@
   }
 
   let catalogRequestSeq = 0;
+  const CATALOG_CLIENT_TTL_MS = 5 * 60_000;
+  const clientCatalogCache = new Map();
+  const prefetchInFlight = new Set();
+  let nextPagePrefetchTimer = null;
+  let homePrefetchScheduled = false;
+
+  function buildCatalogSearchParams({
+    q = "",
+    field = "ALL",
+    scope = "ALL",
+    preset = "",
+    sort = "RE",
+    tags = [],
+    page = 1,
+  } = {}) {
+    const qs = new URLSearchParams({
+      q: String(q || "").trim(),
+      field: field || "ALL",
+      scope: scope || "ALL",
+      preset: preset || "",
+      sort: sort || "RE",
+      page: String(page || 1),
+    });
+    const cleanTags = Array.isArray(tags) ? [...new Set(tags.filter(Boolean))] : [];
+    for (const tag of cleanTags) {
+      qs.append("tag", tag);
+    }
+    return qs;
+  }
+
+  function getClientCatalogCache(key) {
+    const entry = clientCatalogCache.get(key);
+    if (!entry) return null;
+    if (Date.now() >= entry.expiresAt) {
+      clientCatalogCache.delete(key);
+      return null;
+    }
+    return entry.value;
+  }
+
+  function setClientCatalogCache(key, value) {
+    if (clientCatalogCache.has(key)) clientCatalogCache.delete(key);
+    clientCatalogCache.set(key, {
+      value,
+      expiresAt: Date.now() + CATALOG_CLIENT_TTL_MS,
+    });
+    while (clientCatalogCache.size > 30) {
+      const oldestKey = clientCatalogCache.keys().next().value;
+      clientCatalogCache.delete(oldestKey);
+    }
+  }
+
+  function prefetchCatalogQuery(params) {
+    const qs = buildCatalogSearchParams(params);
+    const cacheKey = qs.toString();
+    if (getClientCatalogCache(cacheKey) || prefetchInFlight.has(cacheKey)) return;
+    prefetchInFlight.add(cacheKey);
+    void apiJson(`/api/library/catalog/search?${qs}`)
+      .then((res) => {
+        setClientCatalogCache(cacheKey, res);
+      })
+      .catch(() => {})
+      .finally(() => {
+        prefetchInFlight.delete(cacheKey);
+      });
+  }
+
+  function scheduleNextPagePrefetch(data) {
+    if (nextPagePrefetchTimer) {
+      clearTimeout(nextPagePrefetchTimer);
+      nextPagePrefetchTimer = null;
+    }
+    if (!data || !(data.page < data.totalPages)) return;
+    const nextParams = {
+      q: data.query || "",
+      field: data.field || "ALL",
+      scope: data.scope || "ALL",
+      preset: data.preset || "",
+      sort: data.sort || "RE",
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      page: (data.page || 1) + 1,
+    };
+    nextPagePrefetchTimer = setTimeout(() => {
+      nextPagePrefetchTimer = null;
+      prefetchCatalogQuery(nextParams);
+    }, 350);
+  }
+
+  async function hydrateCatalogAvailability(data, reqId) {
+    if (!data || !data.availabilityPending || !Array.isArray(data.items)) return;
+    const pendingIds = [
+      ...new Set(
+        data.items
+          .filter((item) => item.availableCount == null && item.id)
+          .map((item) => item.id),
+      ),
+    ];
+    if (!pendingIds.length) {
+      data.availabilityPending = false;
+      return;
+    }
+    try {
+      const reply = await apiJson(
+        `/api/library/catalog/availability?ids=${encodeURIComponent(pendingIds.join(","))}`,
+      );
+      if (reqId !== catalogRequestSeq) return;
+      const availMap = reply?.items || {};
+      const rowsById = new Map();
+      for (const el of mainEl.querySelectorAll(".book-row[data-book-id]")) {
+        rowsById.set(el.getAttribute("data-book-id"), el);
+      }
+      for (const item of data.items) {
+        const hit = availMap[item.id];
+        if (!hit) continue;
+        item.availableCount = hit.availableCount;
+        item.totalCount = hit.totalCount;
+        item.holdsCount = hit.holdsCount;
+        item.holdable = hit.holdable;
+        const endEl = rowsById.get(String(item.id))?.querySelector(".book-end");
+        if (endEl) {
+          endEl.replaceChildren(...buildBookEndChildren(item));
+        }
+      }
+      data.availabilityPending = false;
+    } catch {
+      // Availability lookup is best-effort; keep catalog interactive.
+    }
+  }
 
   async function runCatalogSearch({
     q = state.catalogQuery,
@@ -285,28 +413,46 @@
     state.catalogPage = page;
     state.catalogError = "";
 
+    const qs = buildCatalogSearchParams({
+      q,
+      field,
+      scope,
+      preset,
+      sort: state.catalogSort,
+      tags: cleanTags,
+      page,
+    });
+    const cacheKey = qs.toString();
+    const cached = getClientCatalogCache(cacheKey);
+    if (cached) {
+      state.catalogData = cached;
+      state.catalogLoading = false;
+      render();
+      if (cached.availabilityPending) {
+        void hydrateCatalogAvailability(cached, reqId);
+      }
+      scheduleNextPagePrefetch(cached);
+      return;
+    }
+
     state.catalogLoading = true;
     render();
     try {
-      const qs = new URLSearchParams({
-        q: q.trim(),
-        field,
-        scope,
-        preset,
-        sort: state.catalogSort,
-        page: String(page),
-      });
-      for (const tag of cleanTags) {
-        qs.append("tag", tag);
-      }
       const res = await apiJson(`/api/library/catalog/search?${qs}`);
       if (reqId !== catalogRequestSeq) return;
+      setClientCatalogCache(cacheKey, res);
       state.catalogData = res;
+      state.catalogLoading = false;
+      render();
+      if (res.availabilityPending) {
+        void hydrateCatalogAvailability(res, reqId);
+      }
+      scheduleNextPagePrefetch(res);
     } catch (error) {
       if (reqId !== catalogRequestSeq) return;
       state.catalogError = error?.message || "無法查詢館藏系統。";
     } finally {
-      if (reqId === catalogRequestSeq) {
+      if (reqId === catalogRequestSeq && state.catalogLoading) {
         state.catalogLoading = false;
         render();
       }
@@ -460,7 +606,23 @@
         const body = dialog.querySelector(".dialog-body");
         if (!body) return;
         const holdings = Array.isArray(detail.holdings) ? detail.holdings : [];
-        body.replaceChildren(
+        const coverUrl = detail.coverProxyUrl || item.coverProxyUrl || "";
+        const modalCover = coverUrl
+          ? h(
+              "div",
+              { class: "book-modal-cover" },
+              h("img", {
+                src: coverUrl,
+                alt: "",
+                onerror: (e) => {
+                  e.currentTarget.closest(".book-modal-cover")?.remove();
+                },
+              }),
+            )
+          : null;
+        const biblioMeta = h(
+          "div",
+          { class: "book-modal-meta" },
           h(
             "div",
             { class: "meta-row", style: "margin-top:0;margin-bottom:14px" },
@@ -471,10 +633,15 @@
           detail.summary
             ? h(
                 "p",
-                { class: "meta", style: "color:var(--soft);margin-bottom:14px" },
+                { class: "meta", style: "color:var(--soft);margin-bottom:0" },
                 detail.summary,
               )
             : null,
+        );
+        body.replaceChildren(
+          modalCover
+            ? h("div", { class: "book-modal-head" }, modalCover, biblioMeta)
+            : biblioMeta,
           h("h3", null, `館藏複本 (${holdings.length})`),
           holdings.length
             ? h(
@@ -716,6 +883,27 @@
   // ---------------------------------------------------------------------------
   // Book Row helper
 
+  function buildBookEndChildren(item) {
+    const availBadge =
+      item.availableCount == null
+        ? null
+        : h(
+            "span",
+            {
+              class: `chip num ${
+                item.availableCount > 0 ? "done" : "urgent"
+              }`,
+            },
+            `可借 ${item.availableCount} / ${item.totalCount ?? item.availableCount}`,
+          );
+    return [
+      availBadge,
+      item.holdsCount > 0
+        ? h("span", { class: "meta num" }, `預約 ${item.holdsCount}`)
+        : null,
+    ].filter(Boolean);
+  }
+
   function renderBookRow(item) {
     const coverImg = item.coverProxyUrl
       ? h("img", {
@@ -730,24 +918,12 @@
         })
       : icon("book");
 
-    const availBadge =
-      item.availableCount == null
-        ? null
-        : h(
-            "span",
-            {
-              class: `chip num ${
-                item.availableCount > 0 ? "done" : "urgent"
-              }`,
-            },
-            `可借 ${item.availableCount} / ${item.totalCount ?? item.availableCount}`,
-          );
-
     return h(
       "button",
       {
         class: "book-row",
         type: "button",
+        "data-book-id": item.id,
         onclick: () => openBookModal(item),
       },
       h("div", { class: "book-cover" }, coverImg),
@@ -770,14 +946,7 @@
           item.isbn ? h("span", { class: "num" }, `ISBN ${item.isbn}`) : null,
         ),
       ),
-      h(
-        "div",
-        { class: "book-end" },
-        availBadge,
-        item.holdsCount > 0
-          ? h("span", { class: "meta num" }, `預約 ${item.holdsCount}`)
-          : null,
-      ),
+      h("div", { class: "book-end" }, buildBookEndChildren(item)),
     );
   }
 
@@ -2515,12 +2684,28 @@
   // ---------------------------------------------------------------------------
   // Root Mount + Lazy Data Trigger
 
+  const headerSlot = h("div");
   const mainEl = h("main");
-  const rootWrap = h("div", { id: "libraryApp" });
+  const rootWrap = h("div", { id: "libraryApp" }, headerSlot, mainEl);
   document.body.append(rootWrap, modalEl);
+  let lastRouteName = "";
 
   function render() {
     const route = matchRoute(new URL(location.href)) || { name: "home" };
+    if (route.name === "home" && !homePrefetchScheduled) {
+      homePrefetchScheduled = true;
+      setTimeout(() => {
+        prefetchCatalogQuery({
+          q: "",
+          field: "ALL",
+          scope: "ALL",
+          preset: "",
+          sort: "RE",
+          tags: [],
+          page: 1,
+        });
+      }, 500);
+    }
     if (route.name === "catalog") {
       syncCatalogUrlParams();
       if (!state.catalogData && !state.catalogLoading && !state.catalogError) {
@@ -2562,6 +2747,7 @@
       }
     }
 
+    headerSlot.replaceChildren(renderHeader(route.name));
     mainEl.replaceChildren(
       view,
       h(
@@ -2576,9 +2762,12 @@
         ),
       ),
     );
-    mainEl.className = "enter";
-
-    rootWrap.replaceChildren(renderHeader(route.name), mainEl);
+    if (route.name !== lastRouteName) {
+      lastRouteName = route.name;
+      mainEl.classList.remove("enter");
+      void mainEl.offsetWidth;
+      mainEl.classList.add("enter");
+    }
 
     if (activeInputState) {
       const nextInput = document.getElementById(activeInputState.id);
