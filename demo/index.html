@@ -177,22 +177,109 @@
     <div class="modal-actions"><button type="button" class="primary-button" data-close="serviceDialog">了解</button></div>
   </dialog>
 
-  <dialog id="settingsDialog" class="modal" closedby="any" aria-labelledby="settingsTitle">
-    <div class="modal-head"><div class="modal-heading"><h2 id="settingsTitle">外觀設定</h2></div><button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
-    <p id="demoFeatureStatus" class="form-error" role="status" aria-live="polite"></p>
-    <div class="settings-group"><h3>Color scheme</h3><div id="demoColorSchemeOptions" class="color-scheme-grid" role="radiogroup" aria-label="Color scheme"></div><div id="demoColorPreview" class="color-preview" aria-label="主題配色預覽"></div></div>
-    <div class="settings-group"><label for="demoColorfulness">Colorfulness <output id="demoColorfulnessValue" for="demoColorfulness">1.00</output></label><input id="demoColorfulness" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
-    <div class="settings-group"><label for="demoThemeBrightness">Theme brightness <output id="demoThemeBrightnessValue" for="demoThemeBrightness">1.00</output></label><input id="demoThemeBrightness" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
-    <div class="settings-group"><h3>背景圖片</h3><div class="action-line"><label class="secondary-button file-button" for="demoBackgroundFile">選擇背景圖片</label><input id="demoBackgroundFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden><button class="secondary-button" type="button" id="demoRemoveBackground">移除背景</button></div><div id="demoBackgroundDropzone" class="drop-zone" tabindex="0">也可以拖放或貼上圖片（最多 3 MB，僅儲存在此瀏覽器）</div><label for="brightness"><svg class="icon"><use href="#i-sun"></use></svg> 背景亮度 <output id="brightnessValue" for="brightness">100%</output></label><input id="brightness" type="range" min="0" max="200" value="100" step="5"><p class="field-help">0% 最暗 · 100% 原始亮度 · 200% 最亮</p><label for="backgroundBlur"><svg class="icon"><use href="#i-sun"></use></svg> 背景模糊 <output id="backgroundBlurValue" for="backgroundBlur">0%</output></label><input id="backgroundBlur" type="range" min="0" max="100" value="0" step="5"><p class="field-help">0% 清晰 · 100% 最模糊</p></div>
-    <div class="settings-group"><label class="switch-label" for="motionToggle"><span>捲動視差效果<small>背景隨頁面輕柔移動</small></span><input type="checkbox" id="motionToggle" checked></label></div>
-    <div class="settings-group"><h3>歡迎語錄 · Hitokoto</h3><label class="switch-label" for="demoHitokotoEnabled"><span>使用隨機一言<small>語錄替換歡迎副標題</small></span><input type="checkbox" id="demoHitokotoEnabled"></label>
-      <label for="demoHitokotoLanguage" class="field-label">顯示語言</label><select id="demoHitokotoLanguage" class="text-input select-glass"><option value="original">繁體中文（OpenCC）</option><option value="en">English（需瀏覽器翻譯支援）</option><option value="ja">日本語（需瀏覽器翻譯支援）</option></select>
-      <label class="switch-label" for="demoHitokotoSpeaker"><span>顯示角色／作者<small>一言 from_who 欄位</small></span><input type="checkbox" id="demoHitokotoSpeaker" checked></label>
-      <label class="switch-label" for="demoHitokotoSource"><span>顯示作品／出處<small>一言 from 欄位</small></span><input type="checkbox" id="demoHitokotoSource" checked></label>
-      <p class="field-help">語錄來自公開的 Hitokoto API，頁面不會傳送學校資料。翻譯不支援時保留繁體中文。</p>
+  <dialog id="settingsDialog" class="modal modal-settings" closedby="any" aria-labelledby="settingsTitle">
+    <div class="settings-modal-header">
+      <div class="modal-head">
+        <div class="modal-heading"><h2 id="settingsTitle">網站設定</h2></div>
+        <button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button>
+      </div>
+      <div id="demoSettingsTablist" class="settings-tablist" role="tablist" aria-label="設定分類">
+        <button id="demoTabAppearance" class="settings-tab" type="button" role="tab" aria-selected="true" tabindex="0" data-demo-tab="appearance">外觀</button>
+        <button id="demoTabBackground" class="settings-tab" type="button" role="tab" aria-selected="false" tabindex="-1" data-demo-tab="background">背景</button>
+        <button id="demoTabFeatures" class="settings-tab" type="button" role="tab" aria-selected="false" tabindex="-1" data-demo-tab="features">功能</button>
+      </div>
     </div>
-    <div class="settings-group"><h3>課表設定</h3><label for="demoAcademicProgram" class="field-label">學制</label><select id="demoAcademicProgram" class="text-input select-glass"><option value="day">日間部</option><option value="evening">進修部夜間班</option><option value="weekend">進修部假日班</option></select><p class="field-help">改變示範課表和校曆提示，無須登入。</p></div>
-    <div class="modal-actions"><button type="button" class="secondary-button" id="resetAppearance">恢復預設</button><button type="button" class="primary-button" data-close="settingsDialog">完成</button></div>
+
+    <div class="settings-modal-body">
+      <div id="demoPanelAppearance" role="tabpanel" aria-labelledby="demoTabAppearance" data-demo-panel="appearance">
+        <div class="settings-group">
+          <h3>色彩主題</h3>
+          <div id="demoColorSchemeOptions" class="color-scheme-grid" role="radiogroup" aria-label="色彩主題"></div>
+          <div id="demoColorPreview" class="color-preview" aria-label="主題配色預覽"></div>
+          <div class="settings-slider-grid">
+            <label class="settings-slider-card" for="demoColorfulness">
+              <span class="settings-slider-head">色彩飽和度 <output id="demoColorfulnessValue" for="demoColorfulness">1.00</output></span>
+              <input id="demoColorfulness" type="range" min="0.5" max="1.5" step="0.05" value="1">
+            </label>
+            <label class="settings-slider-card" for="demoThemeBrightness">
+              <span class="settings-slider-head">主題亮度 <output id="demoThemeBrightnessValue" for="demoThemeBrightness">1.00</output></span>
+              <input id="demoThemeBrightness" type="range" min="0.5" max="1.5" step="0.05" value="1">
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div id="demoPanelBackground" role="tabpanel" aria-labelledby="demoTabBackground" data-demo-panel="background" hidden>
+        <div class="settings-group">
+          <h3>背景圖片</h3>
+          <div class="action-line">
+            <label class="secondary-button file-button" for="demoBackgroundFile">選擇背景圖片</label>
+            <input id="demoBackgroundFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+            <button class="danger-glass-button" type="button" id="demoRemoveBackground">移除背景</button>
+          </div>
+          <div id="demoBackgroundDropzone" class="drop-zone" tabindex="0">拖放或貼上圖片（上限 3 MB，僅存於此瀏覽器）</div>
+          <div class="settings-slider-grid">
+            <label class="settings-slider-card" for="brightness">
+              <span class="settings-slider-head">背景亮度 <output id="brightnessValue" for="brightness">100%</output></span>
+              <input id="brightness" type="range" min="0" max="200" value="100" step="5">
+            </label>
+            <label class="settings-slider-card" for="backgroundBlur">
+              <span class="settings-slider-head">背景模糊 <output id="backgroundBlurValue" for="backgroundBlur">0%</output></span>
+              <input id="backgroundBlur" type="range" min="0" max="100" value="0" step="5">
+            </label>
+          </div>
+        </div>
+        <div class="settings-group settings-group-last">
+          <label class="switch-label switch-card" for="motionToggle">
+            <span>捲動視差效果</span>
+            <input type="checkbox" role="switch" id="motionToggle" checked>
+          </label>
+        </div>
+      </div>
+
+      <div id="demoPanelFeatures" role="tabpanel" aria-labelledby="demoTabFeatures" data-demo-panel="features" hidden>
+        <div class="settings-group">
+          <h3>課表設定</h3>
+          <label for="demoAcademicProgram" class="field-label">學制</label>
+          <select id="demoAcademicProgram" class="text-input select-glass">
+            <option value="day">日間部</option>
+            <option value="evening">進修部夜間班</option>
+            <option value="weekend">進修部假日班</option>
+          </select>
+        </div>
+        <div class="settings-group settings-group-last settings-features-pad">
+          <h3>歡迎語錄 · Hitokoto</h3>
+          <label class="switch-label switch-card" for="demoHitokotoEnabled">
+            <span>使用隨機一言</span>
+            <input type="checkbox" role="switch" id="demoHitokotoEnabled">
+          </label>
+          <label for="demoHitokotoLanguage" class="field-label">顯示語言</label>
+          <select id="demoHitokotoLanguage" class="text-input select-glass">
+            <option value="original">繁體中文（OpenCC）</option>
+            <option value="en">English（需瀏覽器翻譯支援）</option>
+            <option value="ja">日本語（需瀏覽器翻譯支援）</option>
+          </select>
+          <div class="settings-switch-grid">
+            <label class="switch-label switch-card" for="demoHitokotoSpeaker">
+              <span>顯示角色／作者</span>
+              <input type="checkbox" role="switch" id="demoHitokotoSpeaker" checked>
+            </label>
+            <label class="switch-label switch-card" for="demoHitokotoSource">
+              <span>顯示作品／出處</span>
+              <input type="checkbox" role="switch" id="demoHitokotoSource" checked>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-modal-footer">
+      <p id="demoFeatureStatus" class="form-error" role="status" aria-live="polite"></p>
+      <div class="settings-footer-actions">
+        <button type="button" class="ghost-button" id="resetAppearance">恢復預設</button>
+        <button type="button" class="primary-button" data-close="settingsDialog">完成</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="shortcutDialog" class="modal" closedby="any" aria-labelledby="shortcutTitle">

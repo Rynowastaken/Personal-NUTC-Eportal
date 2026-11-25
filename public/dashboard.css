@@ -478,8 +478,8 @@ dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
   gap: 12px;
   padding: 9px 12px 9px 14px;
   border: 1px solid rgba(255,255,255,.14);
-  border-radius: 6px;
-  background: rgba(255,255,255,.075);
+  border-radius: 5px;
+  background: rgba(255,255,255,.07);
   background-clip: padding-box;
   color: var(--foreground);
   font-size: .875rem;
@@ -490,7 +490,7 @@ dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
   transition: background-color .18s ease, border-color .18s ease;
 }
 .hitokoto-language-trigger:hover:not(:disabled) {
-  border-color: rgba(255,255,255,.24);
+  border-color: rgba(255,255,255,.22);
   background: rgba(255,255,255,.10);
 }
 .hitokoto-language-trigger:focus-visible {
@@ -504,8 +504,8 @@ dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
 .hitokoto-language-chevron {
   display: grid;
   flex: none;
-  height: 26px;
-  width: 26px;
+  height: 24px;
+  width: 24px;
   place-items: center;
   border-radius: 4px;
   background: rgba(255,255,255,.07);
@@ -591,15 +591,22 @@ dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
 }
 .hitokoto-attribution-option {
   display: flex;
+  min-height: 48px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 14px;
   border: 1px solid rgba(255,255,255,.12);
   border-radius: 5px;
   background: rgba(255,255,255,.045);
   font-size: .875rem;
   font-weight: 600;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+.hitokoto-attribution-option:hover {
+  border-color: rgba(255,255,255,.18);
+  background: rgba(255,255,255,.07);
 }
 .hitokoto-attribution-option small {
   color: var(--muted);
@@ -611,9 +618,330 @@ dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
   opacity: .4;
 }
 .portal-hitokoto-meta [hidden] { display: none; }
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.settings-tablist {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+}
+.settings-tab {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: .8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .16s ease, background-color .16s ease, border-color .16s ease;
+}
+.settings-tab:hover {
+  color: var(--foreground);
+  background: rgba(255,255,255,.06);
+}
+.settings-tab[aria-selected="true"] {
+  color: var(--foreground);
+  background: var(--primary-soft);
+  border-color: var(--primary-ring);
+}
+.settings-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 22%;
+  inset-block-end: 0;
+  border-block-end: 2px solid var(--primary);
+}
+.settings-tab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.settings-scroll-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.18) transparent;
+}
+
+.settings-output-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+  color: var(--primary);
+  font-size: .75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-range {
+  --slider-track-size: 6px;
+  --slider-thumb-size: 16px;
+  --slider-track-radius: 999px;
+  --slider-thumb-radius: 50%;
+  --slider-track-color: rgba(255,255,255,.16);
+  --slider-fill-color: var(--primary);
+  --slider-thumb-color: var(--primary);
+  --attr-min: 0;
+  --attr-max: 100;
+  --control-value: 50;
+  --slider-progress: calc((var(--control-value) - var(--attr-min)) / max(var(--attr-max) - var(--attr-min), 0.0001) * 100%);
+  appearance: none;
+  -webkit-appearance: none;
+  inline-size: 100%;
+  block-size: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.settings-range::-webkit-slider-runnable-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(
+    to right,
+    var(--slider-fill-color) var(--slider-progress),
+    var(--slider-track-color) var(--slider-progress)
+  );
+}
+.settings-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+  border: 2px solid rgba(14,12,16,.92);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  transition: transform .14s ease;
+}
+.settings-range:hover::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+.settings-range::-moz-range-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-track-color);
+}
+.settings-range::-moz-range-progress {
+  block-size: var(--slider-track-size);
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-fill-color);
+}
+.settings-range::-moz-range-thumb {
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  border: 2px solid rgba(14,12,16,.92);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  box-shadow: 0 2px 6px rgba(0,0,0,.45);
+}
+.settings-range:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.settings-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  margin: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.12);
+  cursor: pointer;
+  transition: background-color .18s ease, border-color .18s ease, opacity .16s ease;
+}
+.settings-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--foreground);
+  box-shadow: 0 1px 3px rgba(0,0,0,.38);
+  transition: transform .18s cubic-bezier(.22,1,.36,1), background-color .18s ease;
+}
+.settings-switch:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.settings-switch:checked::after {
+  transform: translateX(18px);
+  background: var(--control-text, #141018);
+}
+.settings-switch:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+.settings-switch:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.theme-scheme-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 54px;
+  padding: 9px 11px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.045);
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .16s ease, background-color .16s ease, color .16s ease;
+}
+.theme-scheme-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.22);
+  background: rgba(255,255,255,.08);
+  color: var(--foreground);
+}
+.theme-scheme-card[aria-checked="true"] {
+  border-color: var(--primary-ring);
+  background: var(--primary-soft);
+  color: var(--foreground);
+}
+.theme-scheme-card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.theme-scheme-swatches {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.theme-scheme-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.22);
+  flex: none;
+}
+
+.settings-glass-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.075);
+  color: var(--foreground);
+  font-size: .8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .15s ease, background-color .16s ease, border-color .16s ease;
+}
+.settings-glass-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.24);
+  background: rgba(255,255,255,.12);
+}
+.settings-glass-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.settings-glass-button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.settings-danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: 5px;
+  border: 1px solid rgba(244,160,165,.28);
+  background: rgba(244,160,165,.09);
+  color: #f6b8bc;
+  font-size: .8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .15s ease, background-color .16s ease, border-color .16s ease;
+}
+.settings-danger-button.hidden {
+  display: none;
+}
+.settings-danger-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(244,160,165,.45);
+  background: rgba(244,160,165,.18);
+}
+.settings-danger-button:focus-visible {
+  outline: 2px solid #f4a0a5;
+  outline-offset: 2px;
+}
+
+.settings-ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: transparent;
+  color: var(--muted);
+  font-size: .8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .15s ease, background-color .16s ease, border-color .16s ease;
+}
+.settings-ghost-button:hover:not(:disabled) {
+  border-color: rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color: var(--foreground);
+}
+.settings-ghost-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hitokoto-language-menu, .hitokoto-language-menu[data-state="open"],
-  .hitokoto-language-chevron {
+  .hitokoto-language-chevron,
+  .settings-tab, .settings-switch, .settings-switch::after,
+  .theme-scheme-card, .settings-glass-button, .settings-danger-button,
+  .settings-range::-webkit-slider-thumb {
     transition: none;
     transform: none;
   }

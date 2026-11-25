@@ -407,17 +407,53 @@
     $("absenceMeta").textContent = "模擬統計 · 更新 " + taipeiClock() + "（台灣時間）";
   }));
 
+  function syncDemoRange(input) {
+    if (!input) return;
+    input.style.setProperty("--attr-min", input.min || "0");
+    input.style.setProperty("--attr-max", input.max || "100");
+    input.style.setProperty("--control-value", input.value || "0");
+  }
+  const demoTabs = Array.from(document.querySelectorAll("[data-demo-tab]"));
+  const demoPanels = Array.from(document.querySelectorAll("[data-demo-panel]"));
+  function setDemoSettingsTab(key, { moveFocus = false } = {}) {
+    for (const tab of demoTabs) {
+      const selected = tab.dataset.demoTab === key;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && moveFocus) tab.focus({ preventScroll: true });
+    }
+    for (const panel of demoPanels) {
+      panel.hidden = panel.dataset.demoPanel !== key;
+    }
+  }
+  demoTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => setDemoSettingsTab(tab.dataset.demoTab));
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      let target = index;
+      if (event.key === "Home") target = 0;
+      else if (event.key === "End") target = demoTabs.length - 1;
+      else if (event.key === "ArrowRight") target = (index + 1) % demoTabs.length;
+      else if (event.key === "ArrowLeft") target = (index - 1 + demoTabs.length) % demoTabs.length;
+      if (demoTabs[target]) setDemoSettingsTab(demoTabs[target].dataset.demoTab, { moveFocus: true });
+    });
+  });
+
   function applyAppearance() {
     document.documentElement.style.setProperty("--brightness", String(state.brightness / 100));
     $("brightness").value = String(state.brightness);
     $("brightnessValue").textContent = state.brightness + "%";
+    syncDemoRange($("brightness"));
     // 100% matches the dashboard's strongest background blur.
     document.documentElement.style.setProperty("--bg-blur", (state.blur / 100) * 24 + "px");
     $("backgroundBlur").value = String(state.blur);
     $("backgroundBlurValue").textContent = state.blur + "%";
+    syncDemoRange($("backgroundBlur"));
     $("motionToggle").checked = state.motion;
   }
   $("settingsButton").addEventListener("click", () => {
+    setDemoSettingsTab("appearance");
     applyAppearance();
     openDialog("settingsDialog");
   });

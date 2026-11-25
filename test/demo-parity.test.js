@@ -94,3 +94,24 @@ test("demo build bundles OpenCC locally and publishes build outputs only", () =>
   assert.match(workflow, /github\.event_name != 'pull_request'/);
   assert.doesNotMatch(workflow, /path: \.\/?$/m);
 });
+
+test("settings dialogs use accessible tabs, swatch previews, and styled switches", async () => {
+  const [portalHtml, portalApp, portalCss] = await Promise.all([
+    read("public/index.html"),
+    read("public/app.js"),
+    read("public/dashboard.css"),
+  ]);
+  for (const [doc, tablistId, firstPanelId, nextPanelId] of [
+    [portalHtml, "settingsTablist", "settingsPanelAppearance", "settingsPanelFeatures"],
+    [html, "demoSettingsTablist", "demoPanelAppearance", "demoPanelBackground"],
+  ]) {
+    assert.ok(doc.includes(`id="${tablistId}"`), `Missing tablist ${tablistId}`);
+    assert.match(doc, new RegExp(`id="${firstPanelId}"[^>]*role="tabpanel"`));
+    assert.match(doc, new RegExp(`id="${nextPanelId}"[\\s\\S]*?hidden`));
+    assert.match(doc, /role="switch"/);
+  }
+  assert.match(portalApp, /data-scheme-dot/);
+  assert.match(features, /data-scheme-dot/);
+  assert.match(portalCss, /\.settings-range::-webkit-slider-thumb/);
+  assert.match(portalCss, /\.settings-range::-moz-range-thumb/);
+});

@@ -58,24 +58,59 @@ import OpenCC from "opencc-js";
     if (state.avatar) $("demoAvatarImage").src = state.avatar;
     else $("demoAvatarImage").removeAttribute("src");
   }
+  function syncFeatureRange(input) {
+    if (!input) return;
+    input.style.setProperty("--attr-min", input.min || "0");
+    input.style.setProperty("--attr-max", input.max || "100");
+    input.style.setProperty("--control-value", input.value || "0");
+  }
+  function schemePalette(scheme, colorfulness, themeBrightness) {
+    const baseSat = scheme[0] === "monochrome" ? 0
+      : scheme[0] === "neutral" ? 22
+      : scheme[0] === "vibrant" ? 78
+      : scheme[0] === "tonalSpot" ? 48
+      : 57;
+    const sat = clamp(colorfulness * baseSat, 0, 96);
+    const light = clamp(Math.round(74 * themeBrightness), 35, 92);
+    const colors = [];
+    for (let n = 0; n < 5; n++) {
+      const hue = scheme[0] === "rainbow"
+        ? (scheme[2] + n * 52) % 360
+        : scheme[0] === "fruitSalad"
+          ? (scheme[2] + (n % 2 === 0 ? n * 35 : 170 + n * 24)) % 360
+          : scheme[0] === "expressive"
+            ? (scheme[2] + n * 38) % 360
+            : (scheme[2] + n * 15) % 360;
+      colors.push("hsl(" + hue + " " + sat + "% " + clamp(light + 10 - n * 11, 9, 95) + "%)");
+    }
+    return { primary: "hsl(" + scheme[2] + " " + sat + "% " + light + "%)", colors };
+  }
   function renderAppearance() {
     const scheme = schemes.find(item => item[0] === state.scheme) || schemes[0];
-    const sat = scheme[0] === "monochrome" ? 0 : state.colorfulness * (scheme[0] === "neutral" ? 22 : 57);
-    const light = clamp(Math.round(74 * state.themeBrightness), 35, 92);
-    const cssColor = "hsl(" + scheme[2] + " " + sat + "% " + light + "%)";
-    document.documentElement.style.setProperty("--demo-primary", cssColor);
+    const generated = schemePalette(scheme, state.colorfulness, state.themeBrightness);
+    document.documentElement.style.setProperty("--demo-primary", generated.primary);
     $("demoColorfulness").value = String(state.colorfulness);
     $("demoColorfulnessValue").textContent = state.colorfulness.toFixed(2);
+    syncFeatureRange($("demoColorfulness"));
     $("demoThemeBrightness").value = String(state.themeBrightness);
     $("demoThemeBrightnessValue").textContent = state.themeBrightness.toFixed(2);
+    syncFeatureRange($("demoThemeBrightness"));
     for (const item of $("demoColorSchemeOptions").children) {
       item.setAttribute("aria-checked", String(item.dataset.scheme === state.scheme));
+      const itemScheme = schemes.find(entry => entry[0] === item.dataset.scheme);
+      if (itemScheme) {
+        const { colors } = schemePalette(itemScheme, state.colorfulness, state.themeBrightness);
+        const indices = [0, 1, 2, 3];
+        item.querySelectorAll("[data-scheme-dot]").forEach((dot, idx) => {
+          dot.style.backgroundColor = colors[indices[idx]] || colors[idx] || "";
+        });
+      }
     }
     const preview = $("demoColorPreview");
     preview.replaceChildren();
-    for (let n=0; n<5; n++) {
+    for (const color of generated.colors) {
       const swatch = document.createElement("span");
-      swatch.style.backgroundColor = "hsl(" + ((scheme[2]+n*15)%360) + " " + sat + "% " + clamp(light+10-n*11,9,95) + "%)";
+      swatch.style.backgroundColor = color;
       preview.append(swatch);
     }
     if (state.background) {
@@ -218,8 +253,21 @@ import OpenCC from "opencc-js";
   for (const [id,name] of schemes) {
     const button = document.createElement("button");
     button.type = "button"; button.className = "scheme-chip";
-    button.textContent = name; button.dataset.scheme = id;
+    button.dataset.scheme = id;
     button.setAttribute("role","radio");
+    const label = document.createElement("span");
+    label.className = "scheme-chip-label";
+    label.textContent = name;
+    const swatches = document.createElement("span");
+    swatches.className = "scheme-swatches";
+    swatches.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 4; i++) {
+      const dot = document.createElement("span");
+      dot.className = "scheme-dot";
+      dot.dataset.schemeDot = String(i);
+      swatches.append(dot);
+    }
+    button.append(label, swatches);
     button.addEventListener("click", () => { state.scheme = id; renderAppearance(); persist(); });
     $("demoColorSchemeOptions").append(button);
   }

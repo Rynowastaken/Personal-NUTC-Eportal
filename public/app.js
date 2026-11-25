@@ -95,6 +95,9 @@ const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
 const backgroundInput = document.querySelector("#backgroundInput");
 const themeDialog = document.querySelector("#themeDialog");
 const themeDialogClose = document.querySelector("#themeDialogClose");
+const settingsTablist = document.querySelector("#settingsTablist");
+const settingsTabs = Array.from(document.querySelectorAll("[data-settings-tab]"));
+const settingsPanels = Array.from(document.querySelectorAll("[data-settings-panel]"));
 const themeSchemeOptions = document.querySelector("#themeSchemeOptions");
 const themePreview = document.querySelector("#themePreview");
 const themeColorfulness = document.querySelector("#themeColorfulness");
@@ -515,6 +518,64 @@ function formatThemeFactor(value) {
     .replace(/\.?0+$/, "");
 }
 
+function syncSettingsSlider(input) {
+  if (!input) return;
+  input.style.setProperty("--attr-min", input.min || "0");
+  input.style.setProperty("--attr-max", input.max || "100");
+  input.style.setProperty("--control-value", input.value || "0");
+}
+
+function setActiveSettingsTab(tabKey, { moveFocus = false } = {}) {
+  if (tabKey !== "features") {
+    setAcademicProgramMenuOpen(false);
+    setHitokotoLanguageMenuOpen(false);
+  }
+  for (const tab of settingsTabs) {
+    const selected = tab.dataset.settingsTab === tabKey;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    if (selected && moveFocus) {
+      tab.focus({ preventScroll: true });
+    }
+  }
+  for (const panel of settingsPanels) {
+    panel.hidden = panel.dataset.settingsPanel !== tabKey;
+  }
+}
+
+settingsTabs.forEach((tab, index) => {
+  tab.addEventListener("click", () => {
+    setActiveSettingsTab(tab.dataset.settingsTab);
+  });
+  tab.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    let targetIndex = index;
+    if (event.key === "Home") targetIndex = 0;
+    else if (event.key === "End") targetIndex = settingsTabs.length - 1;
+    else if (event.key === "ArrowRight") targetIndex = (index + 1) % settingsTabs.length;
+    else if (event.key === "ArrowLeft") {
+      targetIndex = (index - 1 + settingsTabs.length) % settingsTabs.length;
+    }
+    const nextTab = settingsTabs[targetIndex];
+    if (nextTab) setActiveSettingsTab(nextTab.dataset.settingsTab, { moveFocus: true });
+  });
+});
+
+function syncSchemeButtonSwatches(button) {
+  const dots = button.querySelectorAll("[data-scheme-dot]");
+  if (!dots.length || !stagedThemeSettings) return;
+  const schemePalette = window.NutcTheme.previewSettings({
+    ...stagedThemeSettings,
+    colorScheme: button.dataset.themeScheme,
+  });
+  const indices = [0, 1, 2, 4];
+  dots.forEach((dot, idx) => {
+    const color = schemePalette[indices[idx]] || schemePalette[idx] || "";
+    dot.style.backgroundColor = color;
+  });
+}
+
 function renderThemePreview({ animate = false } = {}) {
   if (!stagedThemeSettings) return;
 
@@ -554,6 +615,15 @@ function renderThemePreview({ animate = false } = {}) {
   backgroundBlurValue.value =
     stagedThemeSettings.backgroundBlur + "%";
 
+  for (const slider of [
+    themeColorfulness,
+    themeBrightness,
+    backgroundBrightness,
+    backgroundBlur,
+  ]) {
+    syncSettingsSlider(slider);
+  }
+
   for (const button of themeSchemeOptions.querySelectorAll(
     "[data-theme-scheme]",
   )) {
@@ -562,21 +632,7 @@ function renderThemePreview({ animate = false } = {}) {
       stagedThemeSettings.colorScheme;
 
     button.setAttribute("aria-checked", String(selected));
-    button.classList.toggle(
-      "border-[var(--primary-ring)]",
-      selected,
-    );
-    button.classList.toggle(
-      "bg-[var(--primary-soft)]",
-      selected,
-    );
-    button.classList.toggle(
-      "text-[var(--foreground)]",
-      selected,
-    );
-    button.classList.toggle("border-white/[.12]", !selected);
-    button.classList.toggle("bg-white/[.05]", !selected);
-    button.classList.toggle("text-[var(--muted)]", !selected);
+    syncSchemeButtonSwatches(button);
   }
 }
 
@@ -588,9 +644,23 @@ function renderThemeSchemes() {
     button.type = "button";
     button.role = "radio";
     button.dataset.themeScheme = scheme.id;
-    button.className =
-      "min-h-[46px] rounded-[5px] border px-3 py-2 text-sm font-semibold transition duration-150 hover:-translate-y-px hover:border-white/[.18] hover:bg-white/[.09] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]";
-    button.textContent = scheme.name;
+    button.className = "theme-scheme-card";
+
+    const label = document.createElement("span");
+    label.className = "truncate text-xs font-semibold leading-tight";
+    label.textContent = scheme.name;
+
+    const swatches = document.createElement("span");
+    swatches.className = "theme-scheme-swatches";
+    swatches.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 4; i++) {
+      const dot = document.createElement("span");
+      dot.className = "theme-scheme-dot";
+      dot.dataset.schemeDot = String(i);
+      swatches.append(dot);
+    }
+
+    button.append(label, swatches);
     button.addEventListener("click", () => {
       stagedThemeSettings.colorScheme = scheme.id;
       renderThemePreview({ animate: true });
@@ -700,6 +770,7 @@ document.addEventListener("pointerdown", (event) => {
 
 themeDialog.addEventListener("close", () => {
   setAcademicProgramMenuOpen(false);
+  setHitokotoLanguageMenuOpen(false);
   window.NutcTheme.previewBackground(window.NutcTheme.settings());
 });
 
@@ -816,6 +887,7 @@ async function openThemeDialog() {
     ...window.NutcTheme.settings(),
   };
   setAcademicProgramSelection(currentAcademicProgram);
+  setActiveSettingsTab("appearance");
   setAcademicProgramMenuOpen(false);
   setHitokotoLanguageMenuOpen(false);
   stagedHitokotoSettings = { ...currentHitokotoSettings };
@@ -2577,6 +2649,7 @@ backgroundBrightness.addEventListener("input", () => {
   if (!stagedThemeSettings) return;
   stagedThemeSettings.backgroundBrightness = Number(backgroundBrightness.value);
   backgroundBrightnessValue.value = backgroundBrightness.value + "%";
+  syncSettingsSlider(backgroundBrightness);
   window.NutcTheme.previewBackground(stagedThemeSettings);
 });
 
@@ -2584,6 +2657,7 @@ backgroundBlur.addEventListener("input", () => {
   if (!stagedThemeSettings) return;
   stagedThemeSettings.backgroundBlur = Number(backgroundBlur.value);
   backgroundBlurValue.value = backgroundBlur.value + "%";
+  syncSettingsSlider(backgroundBlur);
   window.NutcTheme.previewBackground(stagedThemeSettings);
 });
 
