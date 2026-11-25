@@ -637,180 +637,157 @@
     <dialog
       id="themeDialog"
       aria-labelledby="themeDialogTitle"
-      class="fixed inset-0 m-auto max-h-[88dvh] w-[calc(100%_-_1.5rem)] max-w-xl overflow-hidden bg-transparent p-0 text-[var(--foreground)] backdrop:bg-black/65 backdrop:backdrop-blur-sm"
+      class="fixed inset-0 m-auto max-h-[88dvh] w-[calc(100%_-_1.5rem)] max-w-lg overflow-hidden bg-transparent p-0 text-[var(--foreground)] backdrop:bg-black/30 backdrop:backdrop-blur-[6px]"
     >
       <section
-        class="flex max-h-[88dvh] flex-col overflow-hidden rounded-[8px] border border-white/[.14] bg-[rgba(14,12,16,.95)] shadow-[0_24px_80px_rgba(0,0,0,.5)] backdrop-blur-[22px] backdrop-saturate-[170%]"
+        class="settings-sheet flex max-h-[88dvh] flex-col overflow-hidden rounded-[12px] border border-white/[.14]"
       >
-        <header class="shrink-0 border-b border-white/[.08] px-4 pt-4 pb-3.5 sm:px-5 sm:pt-5">
-          <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div
-                class="grid h-10 w-10 shrink-0 place-items-center rounded-[6px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
-                aria-hidden="true"
-              >
-                <i data-lucide="palette" class="h-5 w-5"></i>
-              </div>
-              <h2 id="themeDialogTitle" class="text-base font-semibold tracking-[-0.02em] sm:text-lg">
-                網站設定
-              </h2>
+        <header class="shrink-0 flex items-center justify-between gap-3 border-b border-white/[.08] px-4 py-3.5 sm:px-5">
+          <div class="flex items-center gap-2.5">
+            <div
+              class="grid h-8 w-8 shrink-0 place-items-center rounded-[6px] border border-[var(--primary-ring)] bg-[var(--primary-soft)] text-[var(--primary)]"
+              aria-hidden="true"
+            >
+              <i data-lucide="sliders-horizontal" class="h-4 w-4"></i>
             </div>
-
-            <button
-              id="themeDialogClose"
-              class="grid h-10 w-10 shrink-0 place-items-center rounded-[5px] border border-white/[.12] bg-white/[.07] text-[var(--muted)] transition hover:border-white/[.20] hover:bg-white/[.11] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
-              type="button"
-              aria-label="關閉網站設定"
-            >
-              <i data-lucide="x" class="h-5 w-5"></i>
-            </button>
+            <h2 id="themeDialogTitle" class="text-base font-semibold tracking-[-0.02em]">
+              網站設定
+            </h2>
           </div>
 
-          <div
-            id="settingsTablist"
-            class="settings-tablist mt-3.5"
-            role="tablist"
-            aria-label="設定分類"
+          <button
+            id="themeDialogClose"
+            class="grid h-8 w-8 shrink-0 place-items-center rounded-[6px] text-[var(--muted)] transition hover:bg-white/[.09] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)]"
+            type="button"
+            aria-label="關閉網站設定"
           >
-            <button
-              id="settingsTabAppearance"
-              class="settings-tab"
-              type="button"
-              role="tab"
-              aria-selected="true"
-              tabindex="0"
-              data-settings-tab="appearance"
-            >
-              <i data-lucide="palette" class="h-3.5 w-3.5"></i>
-              <span>外觀</span>
-            </button>
-            <button
-              id="settingsTabFeatures"
-              class="settings-tab"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              tabindex="-1"
-              data-settings-tab="features"
-            >
-              <i data-lucide="sliders-horizontal" class="h-3.5 w-3.5"></i>
-              <span>功能</span>
-            </button>
-            <button
-              id="settingsTabSystem"
-              class="settings-tab"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              tabindex="-1"
-              data-settings-tab="system"
-            >
-              <i data-lucide="wrench" class="h-3.5 w-3.5"></i>
-              <span>系統</span>
-            </button>
-          </div>
+            <i data-lucide="x" class="h-4 w-4"></i>
+          </button>
         </header>
 
-        <div class="settings-scroll-body min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
-          <div
-            id="settingsPanelAppearance"
-            role="tabpanel"
-            aria-labelledby="settingsTabAppearance"
-            data-settings-panel="appearance"
-          >
-            <div>
-              <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                  <i data-lucide="palette" class="h-4 w-4 text-[var(--primary)]"></i>
-                  <h3 class="text-sm font-semibold">色彩主題</h3>
-                </div>
-              </div>
+        <div class="settings-scroll-body min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3.5 py-3.5 sm:px-4 sm:py-4">
+          <details id="settingsCardTheme" class="settings-card" open>
+            <summary class="settings-card-trigger">
+              <span class="flex min-w-0 items-center gap-2.5">
+                <span class="settings-card-icon" aria-hidden="true">
+                  <i data-lucide="palette" class="h-4 w-4"></i>
+                </span>
+                <span class="settings-card-title truncate">色彩主題</span>
+              </span>
+              <span class="flex shrink-0 items-center gap-2.5">
+                <span class="settings-card-summary">
+                  <span id="settingsSummaryThemeDot" class="theme-scheme-orb" style="width:11px;height:11px;" aria-hidden="true"></span>
+                  <span id="settingsSummaryThemeName">Tonal Spot</span>
+                </span>
+                <span class="settings-card-chevron" aria-hidden="true">
+                  <i data-lucide="chevron-down" class="h-4 w-4"></i>
+                </span>
+              </span>
+            </summary>
+
+            <div class="settings-card-body">
               <div
                 id="themeSchemeOptions"
-                class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3"
+                class="flex flex-wrap gap-1.5"
                 role="radiogroup"
                 aria-label="色彩主題"
               ></div>
               <div
                 id="themePreview"
-                class="mt-3 grid h-7 grid-cols-5 overflow-hidden rounded-[5px] border border-white/[.12]"
+                class="mt-3 grid h-3.5 grid-cols-5 overflow-hidden rounded-[4px] border border-white/[.12]"
                 aria-label="主題配色預覽"
               ></div>
-            </div>
 
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="grid gap-1.5 rounded-[6px] border border-white/[.09] bg-white/[.03] px-3.5 py-3">
-                <span class="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--foreground)]">
-                  <span>色彩飽和度</span>
-                  <output
-                    id="themeColorfulnessValue"
-                    class="settings-output-pill"
-                    for="themeColorfulness"
-                  >1</output>
-                </span>
-                <input
-                  id="themeColorfulness"
-                  class="settings-range"
-                  type="range"
-                  min="0.5"
-                  max="1.5"
-                  step="0.05"
-                  value="1"
-                />
-              </label>
+              <div class="mt-3.5 grid gap-3.5 border-t border-white/[.08] pt-3 sm:grid-cols-2">
+                <label class="grid gap-1">
+                  <span class="flex items-center justify-between gap-2 text-xs font-medium text-[var(--muted)]">
+                    <span>色彩飽和度</span>
+                    <output
+                      id="themeColorfulnessValue"
+                      class="text-xs font-semibold tabular-nums text-[var(--primary)]"
+                      for="themeColorfulness"
+                    >1</output>
+                  </span>
+                  <input
+                    id="themeColorfulness"
+                    class="settings-range"
+                    type="range"
+                    min="0.5"
+                    max="1.5"
+                    step="0.05"
+                    value="1"
+                  />
+                </label>
 
-              <label class="grid gap-1.5 rounded-[6px] border border-white/[.09] bg-white/[.03] px-3.5 py-3">
-                <span class="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--foreground)]">
-                  <span>主題亮度</span>
-                  <output
-                    id="themeBrightnessValue"
-                    class="settings-output-pill"
-                    for="themeBrightness"
-                  >1</output>
-                </span>
-                <input
-                  id="themeBrightness"
-                  class="settings-range"
-                  type="range"
-                  min="0.5"
-                  max="1.5"
-                  step="0.05"
-                  value="1"
-                />
-              </label>
-            </div>
-
-            <div class="mt-5 border-t border-white/[.10] pt-4">
-              <div class="flex items-center gap-2">
-                <i data-lucide="image" class="h-4 w-4 text-[var(--primary)]"></i>
-                <h3 class="text-sm font-semibold">背景圖片</h3>
+                <label class="grid gap-1">
+                  <span class="flex items-center justify-between gap-2 text-xs font-medium text-[var(--muted)]">
+                    <span>主題亮度</span>
+                    <output
+                      id="themeBrightnessValue"
+                      class="text-xs font-semibold tabular-nums text-[var(--primary)]"
+                      for="themeBrightness"
+                    >1</output>
+                  </span>
+                  <input
+                    id="themeBrightness"
+                    class="settings-range"
+                    type="range"
+                    min="0.5"
+                    max="1.5"
+                    step="0.05"
+                    value="1"
+                  />
+                </label>
               </div>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <button
-                  id="backgroundAction"
-                  class="settings-glass-button flex-1"
-                  type="button"
-                >
-                  <i data-lucide="image-up" class="h-4 w-4"></i>
-                  <span>選擇背景圖片</span>
-                </button>
-                <button
-                  id="clearBackgroundAction"
-                  class="settings-danger-button hidden flex-1"
-                  type="button"
-                >
-                  <i data-lucide="image-minus" class="h-4 w-4"></i>
-                  <span>移除背景</span>
-                </button>
+            </div>
+          </details>
+
+          <details id="settingsCardBackground" class="settings-card">
+            <summary class="settings-card-trigger">
+              <span class="flex min-w-0 items-center gap-2.5">
+                <span class="settings-card-icon" aria-hidden="true">
+                  <i data-lucide="image" class="h-4 w-4"></i>
+                </span>
+                <span class="settings-card-title truncate">背景圖片</span>
+              </span>
+              <span class="flex shrink-0 items-center gap-2.5">
+                <span id="settingsSummaryBackground" class="settings-card-summary tabular-nums">100% · 模糊 0%</span>
+                <span class="settings-card-chevron" aria-hidden="true">
+                  <i data-lucide="chevron-down" class="h-4 w-4"></i>
+                </span>
+              </span>
+            </summary>
+
+            <div class="settings-card-body">
+              <div class="flex flex-wrap items-center justify-between gap-2.5">
+                <span class="text-xs font-medium text-[var(--muted)]">自訂背景圖片</span>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    id="backgroundAction"
+                    class="settings-glass-button"
+                    type="button"
+                  >
+                    <i data-lucide="image-up" class="h-3.5 w-3.5"></i>
+                    <span>選擇背景</span>
+                  </button>
+                  <button
+                    id="clearBackgroundAction"
+                    class="settings-danger-button hidden"
+                    type="button"
+                  >
+                    <i data-lucide="image-minus" class="h-3.5 w-3.5"></i>
+                    <span>移除背景</span>
+                  </button>
+                </div>
               </div>
 
-              <div class="mt-3.5 grid gap-4 sm:grid-cols-2">
-                <label class="grid gap-1.5 rounded-[6px] border border-white/[.09] bg-white/[.03] px-3.5 py-3">
-                  <span class="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--foreground)]">
+              <div class="mt-3.5 grid gap-3.5 border-t border-white/[.08] pt-3 sm:grid-cols-2">
+                <label class="grid gap-1">
+                  <span class="flex items-center justify-between gap-2 text-xs font-medium text-[var(--muted)]">
                     <span>背景亮度</span>
                     <output
                       id="backgroundBrightnessValue"
-                      class="settings-output-pill"
+                      class="text-xs font-semibold tabular-nums text-[var(--primary)]"
                       for="backgroundBrightness"
                     >100%</output>
                   </span>
@@ -825,12 +802,12 @@
                   />
                 </label>
 
-                <label class="grid gap-1.5 rounded-[6px] border border-white/[.09] bg-white/[.03] px-3.5 py-3">
-                  <span class="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--foreground)]">
+                <label class="grid gap-1">
+                  <span class="flex items-center justify-between gap-2 text-xs font-medium text-[var(--muted)]">
                     <span>背景模糊</span>
                     <output
                       id="backgroundBlurValue"
-                      class="settings-output-pill"
+                      class="text-xs font-semibold tabular-nums text-[var(--primary)]"
                       for="backgroundBlur"
                     >0%</output>
                   </span>
@@ -846,155 +823,163 @@
                 </label>
               </div>
             </div>
-          </div>
+          </details>
 
-          <div
-            id="settingsPanelFeatures"
-            role="tabpanel"
-            aria-labelledby="settingsTabFeatures"
-            data-settings-panel="features"
-            hidden
-          >
-            <div>
-              <div class="flex items-center gap-2">
-                <i data-lucide="calendar-days" class="h-4 w-4 text-[var(--primary)]"></i>
-                <h3 class="text-sm font-semibold">課表設定</h3>
-              </div>
-              <span id="academicProgramLabel" class="mt-3 block text-xs font-semibold text-[var(--muted)]">
-                學制
+          <details id="settingsCardFeatures" class="settings-card">
+            <summary class="settings-card-trigger">
+              <span class="flex min-w-0 items-center gap-2.5">
+                <span class="settings-card-icon" aria-hidden="true">
+                  <i data-lucide="sparkles" class="h-4 w-4"></i>
+                </span>
+                <span class="settings-card-title truncate">課表與語錄</span>
               </span>
-              <div id="academicProgramDropdown" class="relative mt-2">
-                <button
-                  id="academicProgramSelect"
-                  type="button"
-                  class="group flex min-h-[46px] w-full items-center justify-between gap-3 rounded-[5px] border border-white/[.14] bg-white/[.07] py-2 pl-3.5 pr-3 text-left text-sm font-semibold text-[var(--foreground)] shadow-sm backdrop-blur-[12px] transition duration-150 hover:border-white/[.22] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50"
-                  aria-haspopup="listbox"
-                  aria-expanded="false"
-                  aria-controls="academicProgramOptions"
-                  aria-labelledby="academicProgramLabel academicProgramValue"
-                >
-                  <span id="academicProgramValue">日間部</span>
-                  <span id="academicProgramChevron" class="grid h-6 w-6 shrink-0 place-items-center rounded-[4px] bg-white/[.07] text-[var(--muted)] transition-transform duration-200 group-hover:text-[var(--foreground)]" aria-hidden="true">
-                    <i data-lucide="chevron-down" class="h-4 w-4"></i>
+              <span class="flex shrink-0 items-center gap-2.5">
+                <span id="settingsSummaryFeatures" class="settings-card-summary">日間部 · 一言關</span>
+                <span class="settings-card-chevron" aria-hidden="true">
+                  <i data-lucide="chevron-down" class="h-4 w-4"></i>
+                </span>
+              </span>
+            </summary>
+
+            <div class="settings-card-body pb-14">
+              <div class="divide-y divide-white/[.08]">
+                <div class="pb-3.5">
+                  <span id="academicProgramLabel" class="block text-xs font-medium text-[var(--muted)]">
+                    課表學制
                   </span>
-                </button>
-                <div
-                  id="academicProgramOptions"
-                  role="listbox"
-                  aria-label="學制"
-                  aria-hidden="true"
-                  data-state="closed"
-                  inert
-                  class="academic-program-dropdown-menu absolute inset-x-0 top-full z-50 mt-2 origin-top rounded-[6px] border border-white/[.17] bg-[rgba(28,23,32,.98)] p-1.5 shadow-[0_18px_38px_rgba(0,0,0,.40)] backdrop-blur-[22px] backdrop-saturate-[150%]"
-                >
-                  <button type="button" role="option" data-academic-program="day" aria-selected="true" tabindex="-1"
-                    class="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[5px] border border-transparent px-3 text-left text-sm font-medium text-[var(--foreground)] transition duration-150 hover:border-white/[.11] hover:bg-white/[.085] focus-visible:border-[var(--primary-ring)] focus-visible:bg-[var(--primary-soft)] focus-visible:outline-none">
-                    <span>日間部</span>
-                    <span data-academic-check class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]" aria-hidden="true">
-                      <i data-lucide="check" class="h-3.5 w-3.5"></i>
-                    </span>
-                  </button>
-                  <button type="button" role="option" data-academic-program="evening" aria-selected="false" tabindex="-1"
-                    class="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[5px] border border-transparent px-3 text-left text-sm font-medium text-[var(--foreground)] transition duration-150 hover:border-white/[.11] hover:bg-white/[.085] focus-visible:border-[var(--primary-ring)] focus-visible:bg-[var(--primary-soft)] focus-visible:outline-none">
-                    <span>進修部夜間班</span>
-                    <span data-academic-check class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)] opacity-0" aria-hidden="true">
-                      <i data-lucide="check" class="h-3.5 w-3.5"></i>
-                    </span>
-                  </button>
-                  <button type="button" role="option" data-academic-program="weekend" aria-selected="false" tabindex="-1"
-                    class="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[5px] border border-transparent px-3 text-left text-sm font-medium text-[var(--foreground)] transition duration-150 hover:border-white/[.11] hover:bg-white/[.085] focus-visible:border-[var(--primary-ring)] focus-visible:bg-[var(--primary-soft)] focus-visible:outline-none">
-                    <span>進修部假日班</span>
-                    <span data-academic-check class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)] opacity-0" aria-hidden="true">
-                      <i data-lucide="check" class="h-3.5 w-3.5"></i>
-                    </span>
-                  </button>
+                  <div id="academicProgramDropdown" class="relative mt-2">
+                    <button
+                      id="academicProgramSelect"
+                      type="button"
+                      class="group flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[5px] border border-white/[.14] bg-white/[.07] py-2 pl-3.5 pr-3 text-left text-sm font-semibold text-[var(--foreground)] backdrop-blur-[12px] transition duration-150 hover:border-white/[.22] hover:bg-white/[.10] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--primary-ring)] disabled:cursor-wait disabled:opacity-50"
+                      aria-haspopup="listbox"
+                      aria-expanded="false"
+                      aria-controls="academicProgramOptions"
+                      aria-labelledby="academicProgramLabel academicProgramValue"
+                    >
+                      <span id="academicProgramValue">日間部</span>
+                      <span id="academicProgramChevron" class="grid h-6 w-6 shrink-0 place-items-center rounded-[4px] bg-white/[.07] text-[var(--muted)] transition-transform duration-200 group-hover:text-[var(--foreground)]" aria-hidden="true">
+                        <i data-lucide="chevron-down" class="h-4 w-4"></i>
+                      </span>
+                    </button>
+                    <div
+                      id="academicProgramOptions"
+                      role="listbox"
+                      aria-label="學制"
+                      aria-hidden="true"
+                      data-state="closed"
+                      inert
+                      class="academic-program-dropdown-menu absolute inset-x-0 top-full z-50 mt-2 origin-top rounded-[6px] border border-white/[.17] bg-[rgba(28,23,32,.98)] p-1.5 shadow-[0_18px_38px_rgba(0,0,0,.40)] backdrop-blur-[22px] backdrop-saturate-[150%]"
+                    >
+                      <button type="button" role="option" data-academic-program="day" aria-selected="true" tabindex="-1"
+                        class="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[5px] border border-transparent px-3 text-left text-sm font-medium text-[var(--foreground)] transition duration-150 hover:border-white/[.11] hover:bg-white/[.085] focus-visible:border-[var(--primary-ring)] focus-visible:bg-[var(--primary-soft)] focus-visible:outline-none">
+                        <span>日間部</span>
+                        <span data-academic-check class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]" aria-hidden="true">
+                          <i data-lucide="check" class="h-3.5 w-3.5"></i>
+                        </span>
+                      </button>
+                      <button type="button" role="option" data-academic-program="evening" aria-selected="false" tabindex="-1"
+                        class="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[5px] border border-transparent px-3 text-left text-sm font-medium text-[var(--foreground)] transition duration-150 hover:border-white/[.11] hover:bg-white/[.085] focus-visible:border-[var(--primary-ring)] focus-visible:bg-[var(--primary-soft)] focus-visible:outline-none">
+                        <span>進修部夜間班</span>
+                        <span data-academic-check class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)] opacity-0" aria-hidden="true">
+                          <i data-lucide="check" class="h-3.5 w-3.5"></i>
+                        </span>
+                      </button>
+                      <button type="button" role="option" data-academic-program="weekend" aria-selected="false" tabindex="-1"
+                        class="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[5px] border border-transparent px-3 text-left text-sm font-medium text-[var(--foreground)] transition duration-150 hover:border-white/[.11] hover:bg-white/[.085] focus-visible:border-[var(--primary-ring)] focus-visible:bg-[var(--primary-soft)] focus-visible:outline-none">
+                        <span>進修部假日班</span>
+                        <span data-academic-check class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)] opacity-0" aria-hidden="true">
+                          <i data-lucide="check" class="h-3.5 w-3.5"></i>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div class="mt-5 border-t border-white/[.10] pt-4 pb-14">
-              <div class="flex items-center gap-2">
-                <i data-lucide="quote" class="h-4 w-4 text-[var(--primary)]"></i>
-                <h3 class="text-sm font-semibold">歡迎語錄 · Hitokoto</h3>
-              </div>
+                <label class="settings-row cursor-pointer">
+                  <span class="text-sm font-medium text-[var(--foreground)]">使用隨機一言</span>
+                  <input id="hitokotoEnabled" type="checkbox" role="switch" class="settings-switch" />
+                </label>
 
-              <label class="mt-3 flex min-h-[50px] cursor-pointer items-center justify-between gap-3 rounded-[5px] border border-white/[.12] bg-white/[.045] px-3.5 py-2.5 transition hover:border-white/[.18] hover:bg-white/[.07]">
-                <strong class="text-sm font-semibold">使用隨機一言</strong>
-                <input id="hitokotoEnabled" type="checkbox" role="switch" class="settings-switch" />
-              </label>
-
-              <span id="hitokotoLanguageLabel" class="mt-3.5 block text-xs font-semibold text-[var(--muted)]">顯示語言</span>
-              <div id="hitokotoLanguageDropdown" class="relative mt-2">
-                <button id="hitokotoLanguageSelect" type="button"
-                  class="hitokoto-language-trigger"
-                  aria-haspopup="listbox" aria-expanded="false" aria-controls="hitokotoLanguageOptions"
-                  aria-labelledby="hitokotoLanguageLabel hitokotoLanguageValue">
-                  <span id="hitokotoLanguageValue">繁體中文（OpenCC）</span>
-                  <span id="hitokotoLanguageChevron" class="hitokoto-language-chevron" aria-hidden="true">
-                    <i data-lucide="chevron-down" class="h-4 w-4"></i>
-                  </span>
-                </button>
-                <div id="hitokotoLanguageOptions" class="hitokoto-language-menu"
-                  role="listbox" aria-label="一言顯示語言" data-state="closed" aria-hidden="true" inert>
-                  <button type="button" class="hitokoto-language-option" role="option"
-                    data-hitokoto-language="original" aria-selected="true" tabindex="-1">
-                    <span>繁體中文（OpenCC）</span>
-                    <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
-                      <i data-lucide="check" class="h-3.5 w-3.5"></i>
-                    </span>
-                  </button>
-                  <button type="button" class="hitokoto-language-option" role="option"
-                    data-hitokoto-language="en" aria-selected="false" tabindex="-1">
-                    <span>English（需瀏覽器支援翻譯）</span>
-                    <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
-                      <i data-lucide="check" class="h-3.5 w-3.5"></i>
-                    </span>
-                  </button>
-                  <button type="button" class="hitokoto-language-option" role="option"
-                    data-hitokoto-language="ja" aria-selected="false" tabindex="-1">
-                    <span>日本語（需瀏覽器支援翻譯）</span>
-                    <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
-                      <i data-lucide="check" class="h-3.5 w-3.5"></i>
-                    </span>
-                  </button>
+                <div class="py-3.5">
+                  <span id="hitokotoLanguageLabel" class="block text-xs font-medium text-[var(--muted)]">顯示語言</span>
+                  <div id="hitokotoLanguageDropdown" class="relative mt-2">
+                    <button id="hitokotoLanguageSelect" type="button"
+                      class="hitokoto-language-trigger"
+                      aria-haspopup="listbox" aria-expanded="false" aria-controls="hitokotoLanguageOptions"
+                      aria-labelledby="hitokotoLanguageLabel hitokotoLanguageValue">
+                      <span id="hitokotoLanguageValue">繁體中文（OpenCC）</span>
+                      <span id="hitokotoLanguageChevron" class="hitokoto-language-chevron" aria-hidden="true">
+                        <i data-lucide="chevron-down" class="h-4 w-4"></i>
+                      </span>
+                    </button>
+                    <div id="hitokotoLanguageOptions" class="hitokoto-language-menu"
+                      role="listbox" aria-label="一言顯示語言" data-state="closed" aria-hidden="true" inert>
+                      <button type="button" class="hitokoto-language-option" role="option"
+                        data-hitokoto-language="original" aria-selected="true" tabindex="-1">
+                        <span>繁體中文（OpenCC）</span>
+                        <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
+                          <i data-lucide="check" class="h-3.5 w-3.5"></i>
+                        </span>
+                      </button>
+                      <button type="button" class="hitokoto-language-option" role="option"
+                        data-hitokoto-language="en" aria-selected="false" tabindex="-1">
+                        <span>English（需瀏覽器支援翻譯）</span>
+                        <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
+                          <i data-lucide="check" class="h-3.5 w-3.5"></i>
+                        </span>
+                      </button>
+                      <button type="button" class="hitokoto-language-option" role="option"
+                        data-hitokoto-language="ja" aria-selected="false" tabindex="-1">
+                        <span>日本語（需瀏覽器支援翻譯）</span>
+                        <span data-hitokoto-check class="hitokoto-language-check" aria-hidden="true">
+                          <i data-lucide="check" class="h-3.5 w-3.5"></i>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
+
+                <fieldset class="pt-3">
+                  <legend class="mb-1.5 text-xs font-medium text-[var(--muted)]">顯示來源資訊</legend>
+                  <div class="grid gap-1 sm:grid-cols-2 sm:gap-5">
+                    <label class="hitokoto-attribution-option">
+                      <span>顯示角色／作者</span>
+                      <input id="hitokotoShowSpeaker" type="checkbox" role="switch" checked class="settings-switch">
+                    </label>
+                    <label class="hitokoto-attribution-option">
+                      <span>顯示作品／出處</span>
+                      <input id="hitokotoShowSource" type="checkbox" role="switch" checked class="settings-switch">
+                    </label>
+                  </div>
+                </fieldset>
               </div>
-
-              <fieldset class="mt-3.5 grid gap-2 sm:grid-cols-2">
-                <legend class="mb-2 text-xs font-semibold text-[var(--muted)]">顯示來源資訊</legend>
-                <label class="hitokoto-attribution-option">
-                  <span>顯示角色／作者</span>
-                  <input id="hitokotoShowSpeaker" type="checkbox" role="switch" checked class="settings-switch">
-                </label>
-                <label class="hitokoto-attribution-option">
-                  <span>顯示作品／出處</span>
-                  <input id="hitokotoShowSource" type="checkbox" role="switch" checked class="settings-switch">
-                </label>
-              </fieldset>
             </div>
-          </div>
+          </details>
 
-          <div
-            id="settingsPanelSystem"
-            role="tabpanel"
-            aria-labelledby="settingsTabSystem"
-            data-settings-panel="system"
-            hidden
-          >
-            <div class="flex items-center gap-2">
-              <i data-lucide="wrench" class="h-4 w-4 text-[var(--primary)]"></i>
-              <h3 class="text-sm font-semibold">系統維護</h3>
-            </div>
+          <details id="settingsCardSystem" class="settings-card">
+            <summary class="settings-card-trigger">
+              <span class="flex min-w-0 items-center gap-2.5">
+                <span class="settings-card-icon" aria-hidden="true">
+                  <i data-lucide="wrench" class="h-4 w-4"></i>
+                </span>
+                <span class="settings-card-title truncate">系統維護</span>
+              </span>
+              <span class="flex shrink-0 items-center gap-2.5">
+                <span class="settings-card-summary">重啟 / 更新</span>
+                <span class="settings-card-chevron" aria-hidden="true">
+                  <i data-lucide="chevron-down" class="h-4 w-4"></i>
+                </span>
+              </span>
+            </summary>
 
-            <div class="mt-3 grid gap-3">
-              <div
-                class="flex flex-col gap-3 rounded-[6px] border border-white/[.10] bg-white/[.045] p-3.5 sm:flex-row sm:items-center sm:justify-between"
-              >
+            <div class="settings-card-body divide-y divide-white/[.08]">
+              <div class="flex flex-col gap-2.5 pb-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="min-w-0">
-                  <strong class="block text-sm font-semibold">重新啟動 Server</strong>
+                  <strong class="block text-sm font-medium text-[var(--foreground)]">重新啟動 Server</strong>
                   <p
                     id="debugRestartStatus"
-                    class="mt-1 text-xs font-medium leading-5 text-[var(--muted)]"
+                    class="mt-0.5 text-xs leading-5 text-[var(--muted)]"
                     aria-live="polite"
                   >
                     短暫中斷目前的 Server 連線。
@@ -1017,14 +1002,12 @@
                 </button>
               </div>
 
-              <div
-                class="flex flex-col gap-3 rounded-[6px] border border-white/[.10] bg-white/[.045] p-3.5 sm:flex-row sm:items-center sm:justify-between"
-              >
+              <div class="flex flex-col gap-2.5 pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="min-w-0">
-                  <strong class="block text-sm font-semibold">更新 Server</strong>
+                  <strong class="block text-sm font-medium text-[var(--foreground)]">更新 Server</strong>
                   <p
                     id="debugUpdateStatus"
-                    class="mt-1 text-xs font-medium leading-5 text-[var(--muted)]"
+                    class="mt-0.5 text-xs leading-5 text-[var(--muted)]"
                     aria-live="polite"
                   >
                     檢查更新、重建資源並自動重新啟動。
@@ -1047,10 +1030,10 @@
                 </button>
               </div>
             </div>
-          </div>
+          </details>
         </div>
 
-        <footer class="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-white/[.08] bg-white/[.02] px-4 py-3 sm:px-5">
+        <footer class="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-white/[.08] bg-white/[.015] px-4 py-3 sm:px-5">
           <p
             id="academicProgramStatus"
             class="min-h-5 flex-1 text-xs font-medium text-[var(--muted)]"
@@ -1067,7 +1050,7 @@
             </button>
             <button
               id="themeApply"
-              class="portal-button min-h-[42px] rounded-[5px] px-4 text-sm font-semibold"
+              class="portal-button min-h-[38px] rounded-full px-4 text-sm font-semibold"
               type="button"
             >
               套用設定

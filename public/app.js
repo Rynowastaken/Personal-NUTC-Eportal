@@ -95,9 +95,13 @@ const clearBackgroundAction = document.querySelector("#clearBackgroundAction");
 const backgroundInput = document.querySelector("#backgroundInput");
 const themeDialog = document.querySelector("#themeDialog");
 const themeDialogClose = document.querySelector("#themeDialogClose");
-const settingsTablist = document.querySelector("#settingsTablist");
-const settingsTabs = Array.from(document.querySelectorAll("[data-settings-tab]"));
-const settingsPanels = Array.from(document.querySelectorAll("[data-settings-panel]"));
+const settingsCards = Array.from(themeDialog.querySelectorAll("details.settings-card"));
+const settingsCardTheme = document.querySelector("#settingsCardTheme");
+const settingsCardFeatures = document.querySelector("#settingsCardFeatures");
+const settingsSummaryThemeDot = document.querySelector("#settingsSummaryThemeDot");
+const settingsSummaryThemeName = document.querySelector("#settingsSummaryThemeName");
+const settingsSummaryBackground = document.querySelector("#settingsSummaryBackground");
+const settingsSummaryFeatures = document.querySelector("#settingsSummaryFeatures");
 const themeSchemeOptions = document.querySelector("#themeSchemeOptions");
 const themePreview = document.querySelector("#themePreview");
 const themeColorfulness = document.querySelector("#themeColorfulness");
@@ -525,55 +529,56 @@ function syncSettingsSlider(input) {
   input.style.setProperty("--control-value", input.value || "0");
 }
 
-function setActiveSettingsTab(tabKey, { moveFocus = false } = {}) {
-  if (tabKey !== "features") {
+function resetSettingsCards() {
+  for (const card of settingsCards) {
+    card.open = card === settingsCardTheme;
+  }
+  setAcademicProgramMenuOpen(false);
+  setHitokotoLanguageMenuOpen(false);
+}
+
+settingsCardFeatures?.addEventListener("toggle", () => {
+  if (!settingsCardFeatures.open) {
     setAcademicProgramMenuOpen(false);
     setHitokotoLanguageMenuOpen(false);
   }
-  for (const tab of settingsTabs) {
-    const selected = tab.dataset.settingsTab === tabKey;
-    tab.setAttribute("aria-selected", String(selected));
-    tab.tabIndex = selected ? 0 : -1;
-    if (selected && moveFocus) {
-      tab.focus({ preventScroll: true });
+});
+
+function syncSettingsSummaries() {
+  if (stagedThemeSettings) {
+    const scheme = window.NutcTheme?.schemes?.().find(
+      (entry) => entry.id === stagedThemeSettings.colorScheme,
+    );
+    const palette = window.NutcTheme?.previewSettings?.(stagedThemeSettings) || [];
+    if (settingsSummaryThemeName && scheme) {
+      settingsSummaryThemeName.textContent = scheme.name;
+    }
+    if (settingsSummaryThemeDot && palette.length >= 2) {
+      settingsSummaryThemeDot.style.background =
+        `linear-gradient(135deg, ${palette[0]} 50%, ${palette[1]} 50%)`;
+    }
+    if (settingsSummaryBackground) {
+      settingsSummaryBackground.textContent =
+        `${stagedThemeSettings.backgroundBrightness}% · 模糊 ${stagedThemeSettings.backgroundBlur}%`;
     }
   }
-  for (const panel of settingsPanels) {
-    panel.hidden = panel.dataset.settingsPanel !== tabKey;
+  if (settingsSummaryFeatures) {
+    const prog = academicProgramLabels[stagedAcademicProgram] || "日間部";
+    settingsSummaryFeatures.textContent =
+      `${prog} · 一言${stagedHitokotoSettings?.enabled ? "開" : "關"}`;
   }
 }
 
-settingsTabs.forEach((tab, index) => {
-  tab.addEventListener("click", () => {
-    setActiveSettingsTab(tab.dataset.settingsTab);
-  });
-  tab.addEventListener("keydown", (event) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    let targetIndex = index;
-    if (event.key === "Home") targetIndex = 0;
-    else if (event.key === "End") targetIndex = settingsTabs.length - 1;
-    else if (event.key === "ArrowRight") targetIndex = (index + 1) % settingsTabs.length;
-    else if (event.key === "ArrowLeft") {
-      targetIndex = (index - 1 + settingsTabs.length) % settingsTabs.length;
-    }
-    const nextTab = settingsTabs[targetIndex];
-    if (nextTab) setActiveSettingsTab(nextTab.dataset.settingsTab, { moveFocus: true });
-  });
-});
-
 function syncSchemeButtonSwatches(button) {
-  const dots = button.querySelectorAll("[data-scheme-dot]");
-  if (!dots.length || !stagedThemeSettings) return;
+  const orb = button.querySelector("[data-scheme-orb]");
+  if (!orb || !stagedThemeSettings) return;
   const schemePalette = window.NutcTheme.previewSettings({
     ...stagedThemeSettings,
     colorScheme: button.dataset.themeScheme,
   });
-  const indices = [0, 1, 2, 4];
-  dots.forEach((dot, idx) => {
-    const color = schemePalette[indices[idx]] || schemePalette[idx] || "";
-    dot.style.backgroundColor = color;
-  });
+  const primaryColor = schemePalette[0] || "";
+  const secondaryColor = schemePalette[1] || schemePalette[2] || primaryColor;
+  orb.style.background = `linear-gradient(135deg, ${primaryColor} 50%, ${secondaryColor} 50%)`;
 }
 
 function renderThemePreview({ animate = false } = {}) {
@@ -634,6 +639,7 @@ function renderThemePreview({ animate = false } = {}) {
     button.setAttribute("aria-checked", String(selected));
     syncSchemeButtonSwatches(button);
   }
+  syncSettingsSummaries();
 }
 
 function renderThemeSchemes() {
@@ -644,23 +650,17 @@ function renderThemeSchemes() {
     button.type = "button";
     button.role = "radio";
     button.dataset.themeScheme = scheme.id;
-    button.className = "theme-scheme-card";
+    button.className = "theme-scheme-pill";
+
+    const orb = document.createElement("span");
+    orb.className = "theme-scheme-orb";
+    orb.dataset.schemeOrb = scheme.id;
+    orb.setAttribute("aria-hidden", "true");
 
     const label = document.createElement("span");
-    label.className = "truncate text-xs font-semibold leading-tight";
     label.textContent = scheme.name;
 
-    const swatches = document.createElement("span");
-    swatches.className = "theme-scheme-swatches";
-    swatches.setAttribute("aria-hidden", "true");
-    for (let i = 0; i < 4; i++) {
-      const dot = document.createElement("span");
-      dot.className = "theme-scheme-dot";
-      dot.dataset.schemeDot = String(i);
-      swatches.append(dot);
-    }
-
-    button.append(label, swatches);
+    button.append(orb, label);
     button.addEventListener("click", () => {
       stagedThemeSettings.colorScheme = scheme.id;
       renderThemePreview({ animate: true });
@@ -694,6 +694,7 @@ function setAcademicProgramSelection(program) {
       "opacity-0", !selected,
     );
   });
+  syncSettingsSummaries();
 }
 
 function setAcademicProgramMenuOpen(open, { focusSelected = false, returnFocus = false } = {}) {
@@ -869,6 +870,7 @@ function renderHitokotoSettings() {
   hitokotoShowSpeaker.disabled = !stagedHitokotoSettings.enabled;
   hitokotoShowSource.disabled = !stagedHitokotoSettings.enabled;
   if (!stagedHitokotoSettings.enabled) setHitokotoLanguageMenuOpen(false);
+  syncSettingsSummaries();
 }
 
 hitokotoEnabled.addEventListener("change", () => {
@@ -887,9 +889,7 @@ async function openThemeDialog() {
     ...window.NutcTheme.settings(),
   };
   setAcademicProgramSelection(currentAcademicProgram);
-  setActiveSettingsTab("appearance");
-  setAcademicProgramMenuOpen(false);
-  setHitokotoLanguageMenuOpen(false);
+  resetSettingsCards();
   stagedHitokotoSettings = { ...currentHitokotoSettings };
   renderHitokotoSettings();
   academicProgramStatus.textContent = "";
@@ -2650,6 +2650,7 @@ backgroundBrightness.addEventListener("input", () => {
   stagedThemeSettings.backgroundBrightness = Number(backgroundBrightness.value);
   backgroundBrightnessValue.value = backgroundBrightness.value + "%";
   syncSettingsSlider(backgroundBrightness);
+  syncSettingsSummaries();
   window.NutcTheme.previewBackground(stagedThemeSettings);
 });
 
@@ -2658,6 +2659,7 @@ backgroundBlur.addEventListener("input", () => {
   stagedThemeSettings.backgroundBlur = Number(backgroundBlur.value);
   backgroundBlurValue.value = backgroundBlur.value + "%";
   syncSettingsSlider(backgroundBlur);
+  syncSettingsSummaries();
   window.NutcTheme.previewBackground(stagedThemeSettings);
 });
 

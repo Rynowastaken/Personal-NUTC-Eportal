@@ -98,13 +98,17 @@ import OpenCC from "opencc-js";
     for (const item of $("demoColorSchemeOptions").children) {
       item.setAttribute("aria-checked", String(item.dataset.scheme === state.scheme));
       const itemScheme = schemes.find(entry => entry[0] === item.dataset.scheme);
-      if (itemScheme) {
+      const orb = item.querySelector("[data-scheme-orb]");
+      if (itemScheme && orb) {
         const { colors } = schemePalette(itemScheme, state.colorfulness, state.themeBrightness);
-        const indices = [0, 1, 2, 3];
-        item.querySelectorAll("[data-scheme-dot]").forEach((dot, idx) => {
-          dot.style.backgroundColor = colors[indices[idx]] || colors[idx] || "";
-        });
+        orb.style.background = "linear-gradient(135deg, " + colors[0] + " 50%, " + (colors[1] || colors[0]) + " 50%)";
       }
+    }
+    const summaryDot = $("demoSummaryThemeDot");
+    const summaryName = $("demoSummaryThemeName");
+    if (summaryName) summaryName.textContent = scheme[1];
+    if (summaryDot) {
+      summaryDot.style.background = "linear-gradient(135deg, " + generated.colors[0] + " 50%, " + (generated.colors[1] || generated.colors[0]) + " 50%)";
     }
     const preview = $("demoColorPreview");
     preview.replaceChildren();
@@ -122,12 +126,18 @@ import OpenCC from "opencc-js";
     }
     $("demoRemoveBackground").disabled = !state.background;
   }
+  function syncDemoFeaturesSummary() {
+    const label = { day:"日間部", evening:"進修部夜間班", weekend:"進修部假日班" }[state.program] || "日間部";
+    const summary = $("demoSummaryFeatures");
+    if (summary) summary.textContent = label + " · 一言" + (state.hitokotoEnabled ? "開" : "關");
+  }
   function renderProgram() {
     $("demoAcademicProgram").value = state.program;
     $("demoProgramLabel").textContent = {
       day:"日間部", evening:"進修部夜間班", weekend:"進修部假日班",
     }[state.program];
     window.NutcDemo?.setAcademicProgram(state.program);
+    syncDemoFeaturesSummary();
   }
   function credits() {
     const visible = state.hitokotoEnabled && Boolean(quote);
@@ -148,6 +158,7 @@ import OpenCC from "opencc-js";
     $("demoHitokotoSource").checked = state.hitokotoSource;
     for (const id of ["demoHitokotoLanguage","demoHitokotoSpeaker","demoHitokotoSource"]) $(id).disabled = !state.hitokotoEnabled;
     $("demoQuoteRefresh").hidden = !state.hitokotoEnabled;
+    syncDemoFeaturesSummary();
   }
   async function translate(text, language) {
     const localTranslator = window.Translator;
@@ -255,19 +266,14 @@ import OpenCC from "opencc-js";
     button.type = "button"; button.className = "scheme-chip";
     button.dataset.scheme = id;
     button.setAttribute("role","radio");
+    const orb = document.createElement("span");
+    orb.className = "scheme-orb";
+    orb.dataset.schemeOrb = id;
+    orb.setAttribute("aria-hidden", "true");
     const label = document.createElement("span");
     label.className = "scheme-chip-label";
     label.textContent = name;
-    const swatches = document.createElement("span");
-    swatches.className = "scheme-swatches";
-    swatches.setAttribute("aria-hidden", "true");
-    for (let i = 0; i < 4; i++) {
-      const dot = document.createElement("span");
-      dot.className = "scheme-dot";
-      dot.dataset.schemeDot = String(i);
-      swatches.append(dot);
-    }
-    button.append(label, swatches);
+    button.append(orb, label);
     button.addEventListener("click", () => { state.scheme = id; renderAppearance(); persist(); });
     $("demoColorSchemeOptions").append(button);
   }

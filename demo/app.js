@@ -413,32 +413,12 @@
     input.style.setProperty("--attr-max", input.max || "100");
     input.style.setProperty("--control-value", input.value || "0");
   }
-  const demoTabs = Array.from(document.querySelectorAll("[data-demo-tab]"));
-  const demoPanels = Array.from(document.querySelectorAll("[data-demo-panel]"));
-  function setDemoSettingsTab(key, { moveFocus = false } = {}) {
-    for (const tab of demoTabs) {
-      const selected = tab.dataset.demoTab === key;
-      tab.setAttribute("aria-selected", String(selected));
-      tab.tabIndex = selected ? 0 : -1;
-      if (selected && moveFocus) tab.focus({ preventScroll: true });
-    }
-    for (const panel of demoPanels) {
-      panel.hidden = panel.dataset.demoPanel !== key;
+  const demoCards = Array.from(document.querySelectorAll("#settingsDialog details.settings-card"));
+  function resetDemoSettingsCards() {
+    for (const card of demoCards) {
+      card.open = card.id === "demoCardTheme";
     }
   }
-  demoTabs.forEach((tab, index) => {
-    tab.addEventListener("click", () => setDemoSettingsTab(tab.dataset.demoTab));
-    tab.addEventListener("keydown", (event) => {
-      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-      event.preventDefault();
-      let target = index;
-      if (event.key === "Home") target = 0;
-      else if (event.key === "End") target = demoTabs.length - 1;
-      else if (event.key === "ArrowRight") target = (index + 1) % demoTabs.length;
-      else if (event.key === "ArrowLeft") target = (index - 1 + demoTabs.length) % demoTabs.length;
-      if (demoTabs[target]) setDemoSettingsTab(demoTabs[target].dataset.demoTab, { moveFocus: true });
-    });
-  });
 
   function applyAppearance() {
     document.documentElement.style.setProperty("--brightness", String(state.brightness / 100));
@@ -451,9 +431,11 @@
     $("backgroundBlurValue").textContent = state.blur + "%";
     syncDemoRange($("backgroundBlur"));
     $("motionToggle").checked = state.motion;
+    const summaryBg = $("demoSummaryBackground");
+    if (summaryBg) summaryBg.textContent = state.brightness + "% · 模糊 " + state.blur + "%";
   }
   $("settingsButton").addEventListener("click", () => {
-    setDemoSettingsTab("appearance");
+    resetDemoSettingsCards();
     applyAppearance();
     openDialog("settingsDialog");
   });

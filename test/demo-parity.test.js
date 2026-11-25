@@ -95,23 +95,25 @@ test("demo build bundles OpenCC locally and publishes build outputs only", () =>
   assert.doesNotMatch(workflow, /path: \.\/?$/m);
 });
 
-test("settings dialogs use accessible tabs, swatch previews, and styled switches", async () => {
+test("settings dialogs use expandable frosted cards, dual-tone orbs, and styled switches", async () => {
   const [portalHtml, portalApp, portalCss] = await Promise.all([
     read("public/index.html"),
     read("public/app.js"),
     read("public/dashboard.css"),
   ]);
-  for (const [doc, tablistId, firstPanelId, nextPanelId] of [
-    [portalHtml, "settingsTablist", "settingsPanelAppearance", "settingsPanelFeatures"],
-    [html, "demoSettingsTablist", "demoPanelAppearance", "demoPanelBackground"],
+  for (const [doc, themeCardId, summaryNameId] of [
+    [portalHtml, "settingsCardTheme", "settingsSummaryThemeName"],
+    [html, "demoCardTheme", "demoSummaryThemeName"],
   ]) {
-    assert.ok(doc.includes(`id="${tablistId}"`), `Missing tablist ${tablistId}`);
-    assert.match(doc, new RegExp(`id="${firstPanelId}"[^>]*role="tabpanel"`));
-    assert.match(doc, new RegExp(`id="${nextPanelId}"[\\s\\S]*?hidden`));
+    assert.match(doc, new RegExp(`<details[^>]*id="${themeCardId}"[^>]*class="settings-card"[^>]*open>`));
+    assert.match(doc, /<summary class="settings-card-trigger">/);
+    assert.doesNotMatch(doc, /<summary class="settings-card-trigger">(?:(?!<\/summary>)[\s\S])*?<h[1-6]\b/);
+    assert.ok(doc.includes(`id="${summaryNameId}"`), `Missing summary badge ${summaryNameId}`);
     assert.match(doc, /role="switch"/);
   }
-  assert.match(portalApp, /data-scheme-dot/);
-  assert.match(features, /data-scheme-dot/);
+  assert.match(portalApp, /data-scheme-orb|dataset\.schemeOrb/);
+  assert.match(features, /data-scheme-orb|dataset\.schemeOrb/);
+  assert.match(portalCss, /\.settings-card::details-content/);
   assert.match(portalCss, /\.settings-range::-webkit-slider-thumb/);
   assert.match(portalCss, /\.settings-range::-moz-range-thumb/);
 });
