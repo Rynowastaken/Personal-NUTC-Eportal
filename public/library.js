@@ -220,6 +220,8 @@
     compass: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
     users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+    list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+    grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
     spark: '<path d="M12 2.5v19M3.77 7.25l16.46 9.5M20.23 7.25l-16.46 9.5"/>',
   };
 
@@ -256,6 +258,22 @@
     return data;
   }
 
+  const CATALOG_VIEW_STORAGE_KEY = "nutc.library.catalogView";
+
+  function loadSavedCatalogView() {
+    try {
+      return localStorage.getItem(CATALOG_VIEW_STORAGE_KEY) === "grid" ? "grid" : "list";
+    } catch {
+      return "list";
+    }
+  }
+
+  function saveCatalogView(mode) {
+    try {
+      localStorage.setItem(CATALOG_VIEW_STORAGE_KEY, mode);
+    } catch {}
+  }
+
   const state = {
     overview: null,
     overviewError: null,
@@ -268,6 +286,7 @@
     catalogScope: "ALL",
     catalogPreset: "",
     catalogSort: "RE",
+    catalogView: loadSavedCatalogView(),
     catalogTags: [],
     catalogFacetGroup: "SUBJECT",
     catalogPage: 1,
@@ -868,6 +887,7 @@
         ? h("img", {
             src: coverUrl,
             alt: "",
+            decoding: "async",
             onerror: (e) => {
               const box = e.currentTarget.parentElement;
               e.currentTarget.remove();
@@ -1390,19 +1410,33 @@
     ].filter(Boolean);
   }
 
-  function renderBookRow(item) {
-    const coverImg = item.coverProxyUrl
-      ? h("img", {
-          src: item.coverProxyUrl,
-          alt: "",
-          loading: "lazy",
-          onerror: (e) => {
-            const box = e.currentTarget.parentElement;
-            e.currentTarget.remove();
-            if (box) box.append(icon("book"));
-          },
-        })
-      : icon("book");
+  function buildCatalogCoverNode(item, index = 0, { fallbackClass = "" } = {}) {
+    if (!item.coverProxyUrl) {
+      return fallbackClass
+        ? h("div", { class: fallbackClass, "aria-hidden": "true" }, icon("book"))
+        : icon("book");
+    }
+    return h("img", {
+      src: item.coverProxyUrl,
+      alt: "",
+      decoding: "async",
+      fetchpriority: index === 0 ? "high" : null,
+      loading: index >= 6 ? "lazy" : null,
+      onerror: (e) => {
+        const img = e.currentTarget;
+        if (fallbackClass) {
+          img.replaceWith(h("div", { class: fallbackClass, "aria-hidden": "true" }, icon("book")));
+          return;
+        }
+        const box = img.parentElement;
+        img.remove();
+        if (box) box.append(icon("book"));
+      },
+    });
+  }
+
+  function renderBookRow(item, index = 0) {
+    const coverImg = buildCatalogCoverNode(item, index);
 
     return h(
       "button",
@@ -1433,6 +1467,39 @@
         ),
       ),
       h("div", { class: "book-end" }, buildBookEndChildren(item)),
+    );
+  }
+
+  function renderBookCard(item, index = 0) {
+    const subline = [item.author, item.publisherYear].filter(Boolean).join(" · ") || item.campus || "";
+    const endChildren = buildBookEndChildren(item);
+    return h(
+      "article",
+      {
+        class: "book-card",
+        "data-book-id": item.id,
+      },
+      buildCatalogCoverNode(item, index, { fallbackClass: "media book-card-empty" }),
+      h(
+        "h3",
+        { class: "book-card-title" },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "book-card-action",
+            onclick: () => openBookModal(item),
+          },
+          item.title,
+        ),
+      ),
+      subline ? h("p", { class: "book-card-author" }, subline) : null,
+      h(
+        "footer",
+        { class: "book-card-foot" },
+        endChildren,
+        item.callNumber ? h("span", { class: "book-call" }, item.callNumber) : null,
+      ),
     );
   }
 
@@ -2087,6 +2154,40 @@
         "aria-label": "前往頁碼",
       });
 
+      const setView = (nextView) => {
+        if (state.catalogView === nextView) return;
+        state.catalogView = nextView;
+        saveCatalogView(nextView);
+        render();
+      };
+
+      const viewToggle = h(
+        "div",
+        { id: "catalogViewToggle", class: "seg view-seg", role: "group", "aria-label": "顯示模式" },
+        h(
+          "button",
+          {
+            type: "button",
+            "data-view": "list",
+            "aria-pressed": String(state.catalogView === "list"),
+            onclick: () => setView("list"),
+          },
+          icon("list"),
+          "列表",
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            "data-view": "grid",
+            "aria-pressed": String(state.catalogView === "grid"),
+            onclick: () => setView("grid"),
+          },
+          icon("grid"),
+          "圖示",
+        ),
+      );
+
       resultsBody = h(
         "section",
         { class: "section" },
@@ -2102,6 +2203,7 @@
           h(
             "div",
             { class: "section-controls" },
+            viewToggle,
             sortEl,
             h(
               "span",
@@ -2111,7 +2213,17 @@
           ),
         ),
         data.items.length
-          ? h("div", { class: "list" }, data.items.map(renderBookRow))
+          ? state.catalogView === "grid"
+            ? h(
+                "div",
+                { class: "book-grid" },
+                data.items.map((item, idx) => renderBookCard(item, idx)),
+              )
+            : h(
+                "div",
+                { class: "list" },
+                data.items.map((item, idx) => renderBookRow(item, idx)),
+              )
           : h(
               "div",
               { class: "list" },

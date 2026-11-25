@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  clearLibrarySession,
   fetchBookEnrichment,
   fetchLibraryCover,
   getLibraryCatalogAvailability,
@@ -611,4 +612,107 @@ test("library hub uses custom accessible glass listboxes instead of native selec
   assert.match(css, /\.select-menu\s*\{/);
   assert.match(css, /\.select-menu\[data-state="open"\]\s*\{/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("fetchLibraryCover throttles cdnec.sanmin.com.tw, reuses cookies, retries timeouts, and supports ETag 304", async () => {
+  const realFetch = globalThis.fetch;
+  const fakeJpeg = Buffer.alloc(720, 0xcd);
+  await clearLibrarySession();
+
+  try {
+    let activeSanmin = 0;
+    let peakSanmin = 0;
+    let attemptCount = 0;
+    const seenCookies = [];
+
+    globalThis.fetch = async (input, init = {}) => {
+      const u = String(input);
+      if (u.startsWith("https://cdnec.sanmin.com.tw/")) {
+        activeSanmin += 1;
+        peakSanmin = Math.max(peakSanmin, activeSanmin);
+        seenCookies.push(init.headers?.Cookie || "");
+        try {
+          attemptCount += 1;
+          await new Promise((r) => setTimeout(r, 15));
+          // Fail the first attempt for book 2 with a transient timeout to verify automatic retry.
+          if (u.includes("986000002") && attemptCount === 2) {
+            throw new DOMException("Timed out", "TimeoutError");
+          }
+          return new Response(fakeJpeg, {
+            status: 200,
+            headers: {
+              "content-type": "image/jpeg",
+              "set-cookie": "TS01f9b234=warmtoken123; Path=/; Domain=.cdnec.sanmin.com.tw",
+            },
+          });
+        } finally {
+          activeSanmin -= 1;
+        }
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const hits = await Promise.all([
+      fetchLibraryCover({ url: "https://cdnec.sanmin.com.tw/product_images/986/986000001.jpg", isbn: "9789860000016" }),
+      fetchLibraryCover({ url: "https://cdnec.sanmin.com.tw/product_images/986/986000002.jpg", isbn: "9789860000023" }),
+      fetchLibraryCover({ url: "https://cdnec.sanmin.com.tw/product_images/986/986000003.jpg", isbn: "9789860000030" }),
+      fetchLibraryCover({ url: "https://cdnec.sanmin.com.tw/product_images/986/986000004.jpg", isbn: "9789860000047" }),
+    ]);
+
+    assert.equal(hits.length, 4);
+    assert.ok(peakSanmin <= 2, `Expected Sanmin concurrency <= 2, got ${peakSanmin}`);
+    assert.equal(seenCookies[0], "");
+    assert.equal(seenCookies.some((c) => c.includes("TS01f9b234=warmtoken123")), true);
+    assert.ok(hits[0].etag && hits[0].etag.startsWith('"'));
+
+    // GET /api/library/cover returns ETag and responds 304 when If-None-Match matches
+    const res304 = makeMockRes();
+    const deps = {
+      overviewFn: async () => ({}),
+      catalogFn: async () => ({ items: [] }),
+      availabilityFn: async () => ({ availability: {} }),
+      itemDetailFn: async () => ({}),
+      renewFn: async () => ({}),
+      databasesFn: async () => ({}),
+      calendarFn: async () => ({}),
+      bookCarrelFn: async () => ({}),
+      cancelCarrelFn: async () => ({}),
+      coverFn: async () => ({ contentType: "image/jpeg", buffer: fakeJpeg, etag: hits[0].etag }),
+      downloadFn: async () => ({}),
+      openUrlFn: async () => OPAC_ORIGIN,
+    };
+    await handleLibraryRequest(
+      { method: "GET", headers: { "if-none-match": hits[0].etag } },
+      res304,
+      new URL("http://localhost/api/library/cover?isbn=9789860000016"),
+      makeHandlers(),
+      deps,
+    );
+    assert.equal(res304.statusCode, 304);
+    assert.equal(res304.headers["etag"], hits[0].etag);
+    assert.equal(res304.headers["cache-control"], "private, max-age=3600");
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("library catalog images optimize fetchpriority without mixing high priority and lazy loading", async () => {
+  const js = await read("../public/library.js");
+  assert.match(js, /fetchpriority:\s*index === 0 \? "high" : null/);
+  assert.match(js, /loading:\s*index >= 6 \? "lazy" : null/);
+  assert.doesNotMatch(js, /fetchpriority:\s*"low"/);
+});
+
+test("library catalog supports separate list and icon cover-grid views", async () => {
+  const [js, css] = await Promise.all([
+    read("../public/library.js"),
+    read("../public/library.css"),
+  ]);
+  assert.match(js, /id:\s*"catalogViewToggle"/);
+  assert.match(js, /state\.catalogView === "grid"/);
+  assert.match(js, /function renderBookCard\(/);
+  assert.match(css, /\.book-grid\s*\{/);
+  assert.match(css, /aspect-ratio:\s*3 \/ 4/);
+  assert.match(css, /grid-template-rows:\s*subgrid/);
 });

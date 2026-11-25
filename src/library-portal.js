@@ -33,6 +33,7 @@ export const OPAC_ORIGIN = "https://ntit.ent.sirsidynix.net";
 export const OPAC_BASE = `${OPAC_ORIGIN}/client/zh_TW/NUTC`;
 const SESSION_FILE = path.join(ROOT, "data", "library-session.json");
 const CATALOG_CACHE_FILE = path.join(ROOT, "data", "library-catalog-cache.json");
+const COVER_CACHE_DIR = path.join(ROOT, "data", "library-covers");
 
 const USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
@@ -46,10 +47,15 @@ const DATABASES_TTL_MS = 5 * 60_000;
 const CALENDAR_TTL_MS = 2 * 60_000;
 const COVER_HIT_TTL_MS = 24 * 60 * 60_000;
 const COVER_MISS_TTL_MS = 6 * 60 * 60_000;
-const MAX_COVER_CACHE_ENTRIES = 200;
-const MAX_COVER_CACHE_BYTES = 16 * 1024 * 1024;
+const COVER_TRANSIENT_MISS_TTL_MS = 30_000;
+const COVER_DISK_TTL_MS = 7 * 24 * 60 * 60_000;
+const MAX_COVER_DISK_FILES = 500;
+const MAX_COVER_CACHE_ENTRIES = 400;
+const MAX_COVER_CACHE_BYTES = 32 * 1024 * 1024;
 const MIN_COVER_BYTES = 400;
 const MAX_COVER_BYTES = 2 * 1024 * 1024;
+const COVER_DISK_ENABLED =
+  !process.env.NODE_TEST_CONTEXT && !process.execArgv.includes("--test");
 
 export const ALLOWED_LIBRARY_HOSTS = new Set([
   "library.nutc.edu.tw",
@@ -196,6 +202,10 @@ const googleCoverInFlight = new Map();
 const coverImageCache = new Map();
 let coverImageCacheBytes = 0;
 const coverInFlight = new Map();
+const coverHostCookies = new Map();
+const coverHostWarmed = new Set();
+const coverHostStates = new Map();
+let coverDiskWriteCount = 0;
 const bookEnrichmentCache = new Map();
 const bookEnrichmentInFlight = new Map();
 let catalogDiskLoaded = false;
@@ -449,6 +459,9 @@ export async function clearLibrarySession() {
   googleCoverUrlCache.clear();
   coverImageCache.clear();
   coverImageCacheBytes = 0;
+  coverHostCookies.clear();
+  coverHostWarmed.clear();
+  coverHostStates.clear();
   bookEnrichmentCache.clear();
   itemDetailCache.clear();
   databasesCache.clear();
@@ -1018,13 +1031,7 @@ async function fetchOpacResultsStream(
           if (ids.length > 0) {
             availPromise = prefetchCatalogAvailability(ids);
           }
-          const missingIsbns = earlyParsed.items
-            .filter((item) => !item.rawCoverUrl && item.isbn)
-            .map((item) => normalizeIsbn(item.isbn))
-            .filter(Boolean);
-          if (missingIsbns.length > 0) {
-            void warmGoogleBooksCovers(missingIsbns).catch(() => {});
-          }
+          prefetchCatalogCovers(earlyParsed.items);
           if (cachedFacets) {
             abortedEarly = true;
             await reader.cancel().catch(() => {});
@@ -1075,13 +1082,7 @@ function fetchCatalogPage({
       availPromise = prefetchCatalogAvailability(parsed.items.map((i) => i.id));
     }
     if (!earlyAvailPromise && parsed.items.length > 0) {
-      const missingIsbns = parsed.items
-        .filter((item) => !item.rawCoverUrl && item.isbn)
-        .map((item) => normalizeIsbn(item.isbn))
-        .filter(Boolean);
-      if (missingIsbns.length > 0) {
-        void warmGoogleBooksCovers(missingIsbns).catch(() => {});
-      }
+      prefetchCatalogCovers(parsed.items);
     }
 
     const publicItems = mergeCachedAvailabilityIntoItems(
@@ -1235,6 +1236,7 @@ export async function searchLibraryCatalog({
     const items = mergeCachedAvailabilityIntoItems(entry.value.items);
     const availabilityPending = items.some((it) => it.availableCount == null);
     const hydrated = { ...entry.value, items, availabilityPending };
+    prefetchCatalogCovers(hydrated.items);
     if (now >= entry.freshUntil && !catalogInFlight.has(cacheKey)) {
       void fetchCatalogPage({
         urlStr: url.toString(),
@@ -1274,6 +1276,8 @@ export async function warmLibraryCatalog() {
         tags: [],
         page: 1,
       });
+    } else {
+      prefetchCatalogCovers(entry.value?.items);
     }
   } catch {
     // Warmup is best-effort and must never fail server startup.
@@ -1795,59 +1799,286 @@ function setCoverImageCache(key, entry, ttlMs = COVER_HIT_TTL_MS) {
   }
 }
 
-async function tryFetchCoverImage(rawUrl, { timeoutMs = 6_000 } = {}) {
-  if (!isAllowedCoverUrl(rawUrl)) return null;
-  let current = new URL(rawUrl);
+function getCoverHostLimit(host) {
+  if (host === "cdnec.sanmin.com.tw") {
+    return coverHostWarmed.has(host) ? 2 : 1;
+  }
+  return 4;
+}
 
-  for (let hop = 0; hop <= 3; hop += 1) {
-    let res;
+function drainCoverHostQueue(host, st) {
+  while (st.queue.length > 0 && st.active < getCoverHostLimit(host)) {
+    const next = st.queue.shift();
+    st.active += 1;
+    next();
+  }
+  if (st.active === 0 && st.queue.length === 0) {
+    coverHostStates.delete(host);
+  }
+}
+
+async function withCoverHostSlot(hostname, fn) {
+  const host = String(hostname || "").toLowerCase();
+  let st = coverHostStates.get(host);
+  if (!st) {
+    st = { active: 0, queue: [] };
+    coverHostStates.set(host, st);
+  }
+  if (st.active < getCoverHostLimit(host)) {
+    st.active += 1;
+  } else {
+    await new Promise((resolve) => st.queue.push(resolve));
+  }
+  try {
+    return await fn();
+  } finally {
+    st.active = Math.max(0, st.active - 1);
+    drainCoverHostQueue(host, st);
+  }
+}
+
+function readSetCookieHeaders(res) {
+  if (!res?.headers) return [];
+  if (typeof res.headers.getSetCookie === "function") {
     try {
-      res = await fetch(current, {
-        redirect: "manual",
-        headers: { "User-Agent": USER_AGENT, Accept: "image/*" },
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch {
+      return res.headers.getSetCookie();
+    } catch {}
+  }
+  const single = res.headers.get?.("set-cookie");
+  return single ? [single] : [];
+}
+
+function updateCoverHostCookies(host, res) {
+  const lines = readSetCookieHeaders(res);
+  if (!lines.length) return;
+  let map = coverHostCookies.get(host);
+  if (!map) {
+    map = new Map();
+    coverHostCookies.set(host, map);
+  }
+  for (const line of lines) {
+    const pair = String(line || "").split(";")[0].trim();
+    const eq = pair.indexOf("=");
+    if (eq > 0) {
+      map.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+    }
+  }
+  coverHostWarmed.add(host);
+}
+
+function coverCookieHeader(host) {
+  const map = coverHostCookies.get(host);
+  if (!map || !map.size) return "";
+  return [...map.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+function buildCoverRequestSignal(timeoutMs, externalSignal) {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!externalSignal) return timeoutSignal;
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([timeoutSignal, externalSignal]);
+  }
+  return timeoutSignal;
+}
+
+function coverDiskPath(cacheKey) {
+  const hash = crypto.createHash("sha256").update(cacheKey).digest("hex");
+  return path.join(COVER_CACHE_DIR, `${hash}.cache`);
+}
+
+async function readCoverDiskCache(cacheKey) {
+  if (!COVER_DISK_ENABLED) return null;
+  const filePath = coverDiskPath(cacheKey);
+  try {
+    const stat = await fs.stat(filePath);
+    if (Date.now() - stat.mtimeMs >= COVER_DISK_TTL_MS) {
+      await fs.rm(filePath, { force: true }).catch(() => {});
       return null;
     }
-
-    if ([301, 302, 303, 307, 308].includes(res.status)) {
-      const location = res.headers.get("location");
-      if (!location) return null;
-      let next;
-      try {
-        next = new URL(location, current);
-      } catch {
-        return null;
-      }
-      if (next.protocol !== "https:" || !isAllowedCoverRedirectHost(next.hostname)) {
-        return null;
-      }
-      current = next;
-      continue;
-    }
-
-    if (!res.ok) return null;
-    const contentType = String(res.headers.get("content-type") || "").toLowerCase();
-    if (!contentType.startsWith("image/") || contentType.includes("svg")) {
-      return null;
-    }
-    const len = Number(res.headers.get("content-length") || 0);
-    if (len > MAX_COVER_BYTES) return null;
-
-    const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.length < MIN_COVER_BYTES || buffer.length > MAX_COVER_BYTES) {
+    const raw = await fs.readFile(filePath);
+    const nl = raw.indexOf(0x0a);
+    if (nl <= 0 || nl > 120) return null;
+    const contentType = raw.subarray(0, nl).toString("utf8").trim().toLowerCase();
+    const buffer = raw.subarray(nl + 1);
+    if (
+      !contentType.startsWith("image/") ||
+      contentType.includes("svg") ||
+      buffer.length < MIN_COVER_BYTES ||
+      buffer.length > MAX_COVER_BYTES
+    ) {
       return null;
     }
     const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
-    if (GOOGLE_PLACEHOLDER_HASHES.has(sha256)) {
-      return null;
-    }
+    return {
+      contentType,
+      buffer,
+      etag: `"${sha256.slice(0, 16)}"`,
+    };
+  } catch {
+    return null;
+  }
+}
 
-    return { contentType, buffer };
+async function pruneCoverDiskCache() {
+  try {
+    const names = await fs.readdir(COVER_CACHE_DIR);
+    const cacheFiles = names.filter((n) => n.endsWith(".cache"));
+    if (cacheFiles.length <= MAX_COVER_DISK_FILES) return;
+    const entries = await Promise.all(
+      cacheFiles.map(async (name) => {
+        const full = path.join(COVER_CACHE_DIR, name);
+        try {
+          const st = await fs.stat(full);
+          return { full, mtimeMs: st.mtimeMs };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const valid = entries.filter(Boolean).toSorted((a, b) => a.mtimeMs - b.mtimeMs);
+    const excess = valid.length - MAX_COVER_DISK_FILES;
+    for (let i = 0; i < excess; i += 1) {
+      await fs.rm(valid[i].full, { force: true }).catch(() => {});
+    }
+  } catch {
+    // Non-fatal cleanup errors are ignored.
+  }
+}
+
+async function writeCoverDiskCache(cacheKey, contentType, buffer) {
+  if (!COVER_DISK_ENABLED || !contentType || !buffer?.length) return;
+  try {
+    await fs.mkdir(COVER_CACHE_DIR, { recursive: true, mode: 0o700 });
+    const filePath = coverDiskPath(cacheKey);
+    const temp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    const payload = Buffer.concat([Buffer.from(`${contentType}\n`, "utf8"), buffer]);
+    await fs.writeFile(temp, payload, { mode: 0o600 });
+    await fs.rename(temp, filePath);
+    coverDiskWriteCount += 1;
+    if (coverDiskWriteCount % 25 === 0) {
+      await pruneCoverDiskCache();
+    }
+  } catch {
+    // Ignore non-critical disk cache persistence errors.
+  }
+}
+
+async function tryFetchCoverImageOnce(rawUrl, timeoutMs, signal) {
+  if (!isAllowedCoverUrl(rawUrl) || signal?.aborted) {
+    return { ok: false, transient: false };
+  }
+  let current = new URL(rawUrl);
+
+  for (let hop = 0; hop <= 3; hop += 1) {
+    if (signal?.aborted) return { ok: false, transient: false };
+    const host = current.hostname.toLowerCase();
+    const hopTimeout = timeoutMs ?? (host === "cdnec.sanmin.com.tw" ? 3_500 : 4_000);
+
+    const step = await withCoverHostSlot(host, async () => {
+      if (signal?.aborted) return { kind: "miss" };
+      const headers = { "User-Agent": USER_AGENT, Accept: "image/*" };
+      const cookie = coverCookieHeader(host);
+      if (cookie) headers.Cookie = cookie;
+
+      let res;
+      try {
+        res = await fetch(current, {
+          redirect: "manual",
+          headers,
+          signal: buildCoverRequestSignal(hopTimeout, signal),
+        });
+      } catch {
+        return { kind: signal?.aborted ? "miss" : "transient" };
+      }
+
+      coverHostWarmed.add(host);
+      updateCoverHostCookies(host, res);
+
+      if ([301, 302, 303, 307, 308].includes(res.status)) {
+        const location = res.headers.get("location");
+        if (!location) return { kind: "miss" };
+        let next;
+        try {
+          next = new URL(location, current);
+        } catch {
+          return { kind: "miss" };
+        }
+        if (next.protocol !== "https:" || !isAllowedCoverRedirectHost(next.hostname)) {
+          return { kind: "miss" };
+        }
+        return { kind: "redirect", next };
+      }
+
+      if (res.status === 429 || res.status >= 500) {
+        return { kind: "transient" };
+      }
+      if (!res.ok) return { kind: "miss" };
+
+      const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+      if (!contentType.startsWith("image/") || contentType.includes("svg")) {
+        return { kind: "miss" };
+      }
+      const len = Number(res.headers.get("content-length") || 0);
+      if (len > MAX_COVER_BYTES) return { kind: "miss" };
+
+      let buffer;
+      try {
+        buffer = Buffer.from(await res.arrayBuffer());
+      } catch {
+        return { kind: signal?.aborted ? "miss" : "transient" };
+      }
+      if (buffer.length < MIN_COVER_BYTES || buffer.length > MAX_COVER_BYTES) {
+        return { kind: "miss" };
+      }
+      const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
+      if (GOOGLE_PLACEHOLDER_HASHES.has(sha256)) {
+        return { kind: "miss" };
+      }
+
+      return {
+        kind: "hit",
+        contentType,
+        buffer,
+        etag: `"${sha256.slice(0, 16)}"`,
+      };
+    });
+
+    if (step.kind === "redirect") {
+      current = step.next;
+      continue;
+    }
+    if (step.kind === "hit") {
+      return {
+        ok: true,
+        contentType: step.contentType,
+        buffer: step.buffer,
+        etag: step.etag,
+      };
+    }
+    if (step.kind === "transient") {
+      return { ok: false, transient: true };
+    }
+    return { ok: false, transient: false };
   }
 
-  return null;
+  return { ok: false, transient: false };
+}
+
+async function tryFetchCoverImage(rawUrl, { timeoutMs, retries, signal } = {}) {
+  let parsedHost = "";
+  try {
+    parsedHost = new URL(rawUrl).hostname.toLowerCase();
+  } catch {}
+  const maxRetries = retries ?? (parsedHost === "cdnec.sanmin.com.tw" ? 1 : 0);
+  let result = await tryFetchCoverImageOnce(rawUrl, timeoutMs, signal);
+  for (
+    let attempt = 0;
+    attempt < maxRetries && !result.ok && result.transient && !signal?.aborted;
+    attempt += 1
+  ) {
+    result = await tryFetchCoverImageOnce(rawUrl, timeoutMs, signal);
+  }
+  return result;
 }
 
 /**
@@ -1876,7 +2107,9 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
   const cacheKey = `${rawUrl}|${isbn}`;
   const cached = getCoverImageCache(cacheKey);
   if (cached) {
-    if (cached.hit) return { contentType: cached.contentType, buffer: cached.buffer };
+    if (cached.hit) {
+      return { contentType: cached.contentType, buffer: cached.buffer, etag: cached.etag };
+    }
     throw libraryError("Cover image not available.", "LIBRARY_COVER_NOT_FOUND", 404);
   }
 
@@ -1884,30 +2117,48 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
   if (existing) return existing;
 
   const promise = (async () => {
+    const diskHit = await readCoverDiskCache(cacheKey);
+    if (diskHit) {
+      setCoverImageCache(cacheKey, {
+        hit: true,
+        contentType: diskHit.contentType,
+        buffer: diskHit.buffer,
+        etag: diskHit.etag,
+        bytes: diskHit.buffer.length,
+      });
+      return diskHit;
+    }
+
+    let hadTransient = false;
     const attempted = new Set();
-    const tryCandidateUrl = async (candidateUrl) => {
-      if (!candidateUrl || attempted.has(candidateUrl)) return null;
+    const tryCandidateUrl = async (candidateUrl, signal) => {
+      if (!candidateUrl || attempted.has(candidateUrl) || signal?.aborted) return null;
       attempted.add(candidateUrl);
-      return tryFetchCoverImage(candidateUrl);
+      const result = await tryFetchCoverImage(candidateUrl, { signal });
+      if (result.ok) return result;
+      if (result.transient && !signal?.aborted) hadTransient = true;
+      return null;
     };
 
-    const tryProvider = async (provider) => {
+    const tryProvider = async (provider, signal) => {
+      if (signal?.aborted) return null;
       if (provider === "sanmin") {
         const url = sanminCoverUrlFromIsbn(isbn);
-        return url ? tryCandidateUrl(url) : null;
+        return url ? tryCandidateUrl(url, signal) : null;
       }
       if (provider === "openbd") {
         return isbn.startsWith("9784")
-          ? tryCandidateUrl(`https://cover.openbd.jp/${isbn}.jpg`)
+          ? tryCandidateUrl(`https://cover.openbd.jp/${isbn}.jpg`, signal)
           : null;
       }
       if (provider === "gbooks") {
         const url = await lookupGoogleBooksCover(isbn);
-        return url ? tryCandidateUrl(url) : null;
+        return url ? tryCandidateUrl(url, signal) : null;
       }
       if (provider === "openlibrary") {
         return tryCandidateUrl(
           `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg?default=false`,
+          signal,
         );
       }
       return null;
@@ -1925,9 +2176,30 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
           ? ["gbooks", "openlibrary", "sanmin"]
           : ["gbooks", "openlibrary"];
       }
-      for (const provider of order) {
-        resolved = await tryProvider(provider);
-        if (resolved) break;
+      const remaining = order.filter((provider) => {
+        if (provider === "sanmin") {
+          const sanminUrl = sanminCoverUrlFromIsbn(isbn);
+          return Boolean(sanminUrl && !attempted.has(sanminUrl));
+        }
+        return true;
+      });
+      if (remaining.length > 0) {
+        const controller = new AbortController();
+        // Start fallback providers concurrently; await in priority order and abort losers on hit.
+        const tasks = remaining.map((provider) =>
+          tryProvider(provider, controller.signal).catch(() => null),
+        );
+        try {
+          for (const task of tasks) {
+            const hit = await task;
+            if (hit) {
+              resolved = hit;
+              break;
+            }
+          }
+        } finally {
+          controller.abort();
+        }
       }
     }
 
@@ -1936,12 +2208,22 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
         hit: true,
         contentType: resolved.contentType,
         buffer: resolved.buffer,
+        etag: resolved.etag,
         bytes: resolved.buffer.length,
       });
-      return resolved;
+      void writeCoverDiskCache(cacheKey, resolved.contentType, resolved.buffer).catch(() => {});
+      return {
+        contentType: resolved.contentType,
+        buffer: resolved.buffer,
+        etag: resolved.etag,
+      };
     }
 
-    setCoverImageCache(cacheKey, { hit: false, bytes: 0 }, COVER_MISS_TTL_MS);
+    setCoverImageCache(
+      cacheKey,
+      { hit: false, bytes: 0 },
+      hadTransient ? COVER_TRANSIENT_MISS_TTL_MS : COVER_MISS_TTL_MS,
+    );
     throw libraryError("Cover image not available.", "LIBRARY_COVER_NOT_FOUND", 404);
   })().finally(() => {
     coverInFlight.delete(cacheKey);
@@ -1949,6 +2231,43 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
 
   coverInFlight.set(cacheKey, promise);
   return promise;
+}
+
+function prefetchCatalogCovers(items = []) {
+  if (!Array.isArray(items) || !items.length) return;
+  const specs = [];
+  const allIsbns = [];
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    let url = isAllowedCoverUrl(item.rawCoverUrl)
+      ? String(item.rawCoverUrl).trim()
+      : "";
+    let isbn = normalizeIsbn(item.isbn);
+
+    if (!url && !isbn && typeof item.coverProxyUrl === "string" && item.coverProxyUrl) {
+      try {
+        const parsed = new URL(item.coverProxyUrl, "http://localhost");
+        const proxyUrl = parsed.searchParams.get("url") || "";
+        const proxyIsbn = parsed.searchParams.get("isbn") || "";
+        if (isAllowedCoverUrl(proxyUrl)) url = proxyUrl.trim();
+        if (!isbn) isbn = normalizeIsbn(proxyIsbn);
+      } catch {}
+    }
+
+    if (isbn) allIsbns.push(isbn);
+    if (url || isbn) specs.push({ url, isbn });
+  }
+
+  if (allIsbns.length > 0) {
+    void warmGoogleBooksCovers(allIsbns).catch(() => {});
+  }
+
+  for (const { url, isbn } of specs) {
+    const cacheKey = `${url}|${isbn}`;
+    if (getCoverImageCache(cacheKey) || coverInFlight.has(cacheKey)) continue;
+    void fetchLibraryCover({ url, isbn }).catch(() => {});
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2740,17 +3059,30 @@ export async function handleLibraryRequest(
 
   if (req.method === "GET" && url.pathname === "/api/library/cover") {
     try {
-      const { contentType, buffer } = await coverFn({
+      const cover = await coverFn({
         url: url.searchParams.get("url") || "",
         isbn: url.searchParams.get("isbn") || "",
       });
+      const etag =
+        cover.etag ||
+        `"${crypto.createHash("sha256").update(cover.buffer).digest("hex").slice(0, 16)}"`;
+      if (req.headers?.["if-none-match"] === etag) {
+        res.writeHead(304, {
+          ETag: etag,
+          "Cache-Control": "private, max-age=3600",
+          "X-Content-Type-Options": "nosniff",
+        });
+        res.end();
+        return true;
+      }
       res.writeHead(200, {
-        "Content-Type": contentType,
-        "Content-Length": buffer.length,
+        "Content-Type": cover.contentType,
+        "Content-Length": cover.buffer.length,
+        ETag: etag,
         "Cache-Control": "private, max-age=3600",
         "X-Content-Type-Options": "nosniff",
       });
-      res.end(buffer);
+      res.end(cover.buffer);
     } catch (error) {
       sendLibraryFailure(
         sendError,
