@@ -49,7 +49,7 @@
         <span><strong>NUTC Portal</strong><small>Personal Campus Dashboard</small></span>
       </a>
       <div class="header-actions">
-        <button type="button" class="demo-pill demo-status-trigger" id="demoServerButton" aria-label="開啟模擬 Server 狀態"><span class="status-dot"></span> DEMO<span class="demo-pill-wide"> MODE</span></button>
+        <button type="button" class="demo-pill demo-status-trigger" id="demoServerButton" commandfor="demoServerDialog" command="show-modal" aria-label="開啟模擬 Server 狀態"><span class="status-dot"></span> DEMO<span class="demo-pill-wide"> MODE</span></button>
         <button type="button" class="avatar-button" id="demoAccountButton" aria-label="編輯示範使用者" title="帳戶設定"><span id="demoAvatarInitial">D</span><img id="demoAvatarImage" alt="" hidden></button>
         <button type="button" class="icon-button" id="settingsButton" aria-label="開啟外觀設定" title="外觀設定">
           <svg class="icon"><use href="#i-settings"></use></svg>
@@ -170,14 +170,14 @@
     <footer class="footer"><span>NUTC Portal · Static interactive demo</span><span>Not affiliated with or connected to NUTC systems</span></footer>
   </div>
 
-  <dialog id="serviceDialog" class="modal" aria-labelledby="serviceDialogTitle">
+  <dialog id="serviceDialog" class="modal" closedby="any" aria-labelledby="serviceDialogTitle">
     <div class="modal-head"><div class="modal-heading"><h2 id="serviceDialogTitle">服務展示</h2></div><button class="close-button" type="button" data-close="serviceDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p class="modal-description" id="serviceDialogDescription"></p>
     <div class="notice-inline"><svg class="icon"><use href="#i-shield"></use></svg> 這是公開展示，不會啟動真實的校務系統登入。</div>
     <div class="modal-actions"><button type="button" class="primary-button" data-close="serviceDialog">了解</button></div>
   </dialog>
 
-  <dialog id="settingsDialog" class="modal" aria-labelledby="settingsTitle">
+  <dialog id="settingsDialog" class="modal" closedby="any" aria-labelledby="settingsTitle">
     <div class="modal-head"><div class="modal-heading"><h2 id="settingsTitle">外觀設定</h2></div><button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p id="demoFeatureStatus" class="form-error" role="status" aria-live="polite"></p>
     <div class="settings-group"><h3>Color scheme</h3><div id="demoColorSchemeOptions" class="color-scheme-grid" role="radiogroup" aria-label="Color scheme"></div><div id="demoColorPreview" class="color-preview" aria-label="主題配色預覽"></div></div>
@@ -195,7 +195,7 @@
     <div class="modal-actions"><button type="button" class="secondary-button" id="resetAppearance">恢復預設</button><button type="button" class="primary-button" data-close="settingsDialog">完成</button></div>
   </dialog>
 
-  <dialog id="shortcutDialog" class="modal" aria-labelledby="shortcutTitle">
+  <dialog id="shortcutDialog" class="modal" closedby="any" aria-labelledby="shortcutTitle">
     <div class="modal-head"><div class="modal-heading"><h2 id="shortcutTitle">新增 / 管理捷徑</h2></div><button class="close-button" type="button" data-close="shortcutDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p class="modal-description">新增自己的常用連結。這些捷徑只保存在目前瀏覽器，與真正的 ePortal 資料無關。</p>
     <form id="shortcutForm">
@@ -206,14 +206,14 @@
     </form>
     <div class="manager-divider"></div><h3 class="manager-title">已釘選的捷徑</h3><div id="shortcutManagerList" class="manager-list"></div>
   </dialog>
-  <dialog id="demoAccountDialog" class="modal" aria-labelledby="demoAccountTitle">
+  <dialog id="demoAccountDialog" class="modal" closedby="any" aria-labelledby="demoAccountTitle">
     <div class="modal-head"><div class="modal-heading"><h2 id="demoAccountTitle">個人資料</h2></div><button class="close-button" type="button" data-close="demoAccountDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <p class="modal-description">顯示名稱與頭像只保存在目前的瀏覽器，不會寫入任何真實學生資料。</p>
     <form id="demoAccountForm"><label class="field-label" for="demoUsernameInput">顯示名稱</label><input class="text-input" type="text" id="demoUsernameInput" maxlength="40" required>
     <label class="field-label" for="demoAvatarFile">上傳頭像（最大 2 MB）</label><input class="text-input" id="demoAvatarFile" type="file" accept="image/png,image/jpeg,image/webp">
     <div class="modal-actions"><button class="secondary-button" type="button" id="demoRemoveAvatar">移除頭像</button><button class="primary-button" type="submit">儲存</button></div></form>
   </dialog>
-  <dialog id="demoServerDialog" class="modal" aria-labelledby="demoServerTitle">
+  <dialog id="demoServerDialog" class="modal" closedby="any" aria-labelledby="demoServerTitle">
     <div class="modal-head"><div class="modal-heading"><h2 id="demoServerTitle">Server 控制台</h2></div><button class="close-button" type="button" data-close="demoServerDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button></div>
     <div class="notice-inline"><svg class="icon"><use href="#i-info"></use></svg> 此為靜態展示。登入、SSO、登出、更新與重新啟動均不會操作真正的伺服器。</div>
     <div class="demo-server-details"><span>Server ePortal</span><strong>Demo mode · 模擬已連線</strong><span>版本與部署</span><strong>GitHub Pages · Static preview</strong></div>

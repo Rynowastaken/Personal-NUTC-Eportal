@@ -563,9 +563,12 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
 .ai-followup[hidden] { display: none; }
 .ai-followup-row { display: flex; align-items: flex-end; gap: 8px; }
 .ai-followup textarea {
-  flex: 1; min-height: 40px; height: 40px; max-height: 120px; padding: 8px 12px; border: 1px solid var(--edge);
+  flex: 1; min-height: 40px; height: auto; max-height: 120px; field-sizing: content; padding: 8px 12px; border: 1px solid var(--edge);
   border-radius: var(--radius); background: var(--sunken); color: var(--text); font: inherit; font-size: 14px;
   line-height: 22px; resize: none; overflow-y: auto; transition: border-color .15s, box-shadow .15s;
+}
+@supports not (field-sizing: content) {
+  .ai-followup textarea { height: 40px; }
 }
 .ai-followup textarea::placeholder { color: var(--muted); }
 .ai-followup textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
@@ -1332,7 +1335,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   }
   function chartQuantile(values, q) {
     if (!values.length) return 0;
-    const sorted = values.slice().sort((a, b) => a - b);
+    const sorted = values.toSorted((a, b) => a - b);
     const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * q)));
     return sorted[index];
   }
@@ -2919,7 +2922,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
             ),
             score != null ? h("span", { class: "chip accent num" }, `${score} 分`) : h("span", { class: "chip" }, "成績未公布"),
           ),
-          h("div", { class: "list" }, group.submissions.slice().reverse().map((submission) => attemptRow(courseId, group.examId, submission))),
+          h("div", { class: "list" }, group.submissions.toReversed().map((submission) => attemptRow(courseId, group.examId, submission))),
         );
       }),
     );
@@ -3385,12 +3388,12 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       if (!answered) state = "unanswered";
       else if (typeof graded[key] === "boolean") state = graded[key] ? "correct" : "wrong";
       else if (correct?.ids?.length) {
-        state = [...chosenIds].sort().join(",") === [...correct.ids].sort().join(",") ? "correct" : "wrong";
+        state = chosenIds.toSorted().join(",") === correct.ids.toSorted().join(",") ? "correct" : "wrong";
       }
 
       const type = EXAM_TYPES[question.type];
-      const options = [...(question.options || [])]
-        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+      const options = (question.options || [])
+        .toSorted((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
         .map((option, optionIndex) => {
           const id = String(option.id);
           return {
@@ -3724,7 +3727,7 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
   function examQuestions(subjects) {
     const list = [];
     const walk = (items, parentId) => {
-      for (const item of [...(items || [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))) {
+      for (const item of (items || []).toSorted((a, b) => (a.sort ?? 0) - (b.sort ?? 0))) {
         // A container (an analysis group) is not a question itself; its
         // sub-questions are the ones the student answers.
         if (item.sub_subjects?.length) {
@@ -4447,7 +4450,10 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
         chat.append(node);
         return node;
       };
+      const supportsFieldSizing =
+        typeof CSS !== "undefined" && Boolean(CSS.supports?.("field-sizing", "content"));
       const resizeInput = () => {
+        if (supportsFieldSizing) return;
         input.style.height = "auto";
         input.style.height = `${Math.min(120, Math.max(40, input.scrollHeight))}px`;
       };
@@ -4610,6 +4616,8 @@ html.modal-open body { padding-right: var(--scroll-lock, 0px); }
       input.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
+          // Skip Enter keystrokes confirming CJK/IME compositions (including Safari WebKit keyCode 229).
+          if (event.isComposing || event.keyCode === 229) return;
           follow.requestSubmit();
         }
       });

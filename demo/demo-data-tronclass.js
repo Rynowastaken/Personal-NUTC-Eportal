@@ -193,7 +193,7 @@ const QUIZ_REVIEW_QUESTIONS = [
 function buildAiResponse(questionObj, history) {
   const questionText = typeof questionObj === "string" ? questionObj : String(questionObj?.stem || "");
   if (Array.isArray(history) && history.length > 0) {
-    const lastUserMsg = [...history].reverse().find((h) => h.role === "user")?.content || "";
+    const lastUserMsg = history.findLast((h) => h.role === "user")?.content || "";
     return [
       `針對你的追問：「${lastUserMsg.slice(0, 80)}」`,
       "",
@@ -555,7 +555,7 @@ export function createTronclassMockHandler() {
 
     for (const q of exam.questions) {
       const expectedIds = (q.options || []).filter((o) => o.is_answer).map((o) => o.id).sort((a, b) => a - b);
-      const chosenIds = (chosenMap.get(q.id) || []).slice().sort((a, b) => a - b);
+      const chosenIds = (chosenMap.get(q.id) || []).toSorted((a, b) => a - b);
       const ok = expectedIds.length > 0 && expectedIds.join(",") === chosenIds.join(",");
       if (ok) score += Number(q.point) || 0;
       correctAnswers.push({ subject_id: q.id, answer_option_ids: expectedIds });

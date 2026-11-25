@@ -2280,9 +2280,24 @@ document.addEventListener("click", (event) => {
   customLinkTitle.focus({ preventScroll: true });
 });
 customLinksClose?.addEventListener("click", () => customLinksDialog.close());
-customLinksDialog?.addEventListener("click", (event) => {
-  if (event.target === customLinksDialog) customLinksDialog.close();
-});
+if (customLinksDialog && !("closedBy" in HTMLDialogElement.prototype)) {
+  const outside = (event) => {
+    const rect = customLinksDialog.getBoundingClientRect();
+    return (
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom
+    );
+  };
+  let pressedOutside = false;
+  customLinksDialog.addEventListener("pointerdown", (event) => {
+    pressedOutside = outside(event);
+  });
+  customLinksDialog.addEventListener("pointerup", (event) => {
+    if (pressedOutside && outside(event)) customLinksDialog.close();
+  });
+}
 customLinksDialog?.addEventListener("close", () => resetCustomLinkForm());
 customLinkCancelEdit?.addEventListener("click", () => {
   resetCustomLinkForm();

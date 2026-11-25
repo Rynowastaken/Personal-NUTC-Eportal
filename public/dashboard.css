@@ -177,6 +177,9 @@
   border-color: #f07178;
 }
 
+dialog:modal { overscroll-behavior: contain; }
+dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
+
 /*
  * URLs and button groups have large intrinsic widths. Constrain the
  * entire modal layout so zoomed/mobile viewports cannot scroll sideways.

@@ -159,12 +159,10 @@ import OpenCC from "opencc-js";
     lastFetchAt = Date.now();
     $("demoQuoteRefresh").disabled = true;
     $("demoQuoteStatus").textContent = "正在取得一言…";
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5500);
     try {
       // The only external API. Never sends user cookies or university data.
       const response = await fetch("https://v1.hitokoto.cn/?encode=json&max_length=100", {
-        method:"GET", mode:"cors", credentials:"omit", cache:"no-store", signal:controller.signal,
+        method:"GET", mode:"cors", credentials:"omit", cache:"no-store", signal:AbortSignal.timeout(5500),
       });
       if (!response.ok) throw new Error("Hitokoto unavailable");
       const data = await response.json();
@@ -178,7 +176,7 @@ import OpenCC from "opencc-js";
         sample:false,
       };
     } catch { quote = quote || sampleQuote; }
-    finally { clearTimeout(timeout); $("demoQuoteRefresh").disabled = false; }
+    finally { $("demoQuoteRefresh").disabled = false; }
     void renderQuote();
   }
 
@@ -304,7 +302,9 @@ import OpenCC from "opencc-js";
   });
 
   // Status/update/restart use timer-driven fake progress; no privileged routes.
-  $("demoServerButton").addEventListener("click", () => $("demoServerDialog").showModal());
+  if (!("commandForElement" in HTMLButtonElement.prototype)) {
+    $("demoServerButton").addEventListener("click", () => $("demoServerDialog").showModal());
+  }
   function simulate(steps) {
     const update = $("demoUpdateServer"), restart = $("demoRestartServer");
     if (update.disabled || restart.disabled) return;

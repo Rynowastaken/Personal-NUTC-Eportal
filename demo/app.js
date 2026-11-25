@@ -147,11 +147,25 @@
     }
   });
 
-  for (const dialog of document.querySelectorAll("dialog")) {
-    dialog.addEventListener("click", (event) => {
-      // Native backdrop click closes the dialog; clicks inside do not.
-      if (event.target === dialog) dialog.close();
-    });
+  if (!("closedBy" in HTMLDialogElement.prototype)) {
+    const outside = (event, dialog) => {
+      const r = dialog.getBoundingClientRect();
+      return (
+        event.clientX < r.left ||
+        event.clientX > r.right ||
+        event.clientY < r.top ||
+        event.clientY > r.bottom
+      );
+    };
+    for (const dialog of document.querySelectorAll('dialog[closedby="any"]')) {
+      let pressedOutside = false;
+      dialog.addEventListener("pointerdown", (event) => {
+        pressedOutside = outside(event, dialog);
+      });
+      dialog.addEventListener("pointerup", (event) => {
+        if (pressedOutside && outside(event, dialog)) dialog.close();
+      });
+    }
   }
 
   function renderShortcuts() {
