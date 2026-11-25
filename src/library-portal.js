@@ -2233,7 +2233,7 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
   return promise;
 }
 
-function prefetchCatalogCovers(items = []) {
+export function prefetchCatalogCovers(items = []) {
   if (!Array.isArray(items) || !items.length) return;
   const specs = [];
   const allIsbns = [];
@@ -2245,7 +2245,7 @@ function prefetchCatalogCovers(items = []) {
       : "";
     let isbn = normalizeIsbn(item.isbn);
 
-    if (!url && !isbn && typeof item.coverProxyUrl === "string" && item.coverProxyUrl) {
+    if (!url && typeof item.coverProxyUrl === "string" && item.coverProxyUrl) {
       try {
         const parsed = new URL(item.coverProxyUrl, "http://localhost");
         const proxyUrl = parsed.searchParams.get("url") || "";

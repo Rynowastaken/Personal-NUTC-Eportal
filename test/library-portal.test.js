@@ -8,6 +8,7 @@ import {
   getLibraryCatalogAvailability,
   handleLibraryRequest,
   isAllowedCoverUrl,
+  prefetchCatalogCovers,
   searchLibraryCatalog,
 } from "../src/library-portal.js";
 import { MODULES, moduleById, publicModules } from "../src/eportal.js";
@@ -715,4 +716,40 @@ test("library catalog supports separate list and icon cover-grid views", async (
   assert.match(css, /\.book-grid\s*\{/);
   assert.match(css, /aspect-ratio:\s*3 \/ 4/);
   assert.match(css, /grid-template-rows:\s*subgrid/);
+});
+
+test("prefetchCatalogCovers preserves proxy url from normalized items for exact cacheKey hits", async () => {
+  const realFetch = globalThis.fetch;
+  const fakeJpeg = Buffer.alloc(680, 0xef);
+  await clearLibrarySession();
+
+  try {
+    let fetchCount = 0;
+    const expectedUrl = "https://ntit.ent.sirsidynix.net/custom/cover.jpg";
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u === expectedUrl) {
+        fetchCount += 1;
+        return new Response(fakeJpeg, {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    prefetchCatalogCovers([
+      {
+        isbn: "9789864514489",
+        coverProxyUrl: `/api/library/cover?url=${encodeURIComponent(expectedUrl)}&isbn=9789864514489`,
+      },
+    ]);
+
+    const hit = await fetchLibraryCover({ url: expectedUrl, isbn: "9789864514489" });
+    assert.equal(hit.buffer.length, 680);
+    assert.equal(fetchCount, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
 });
