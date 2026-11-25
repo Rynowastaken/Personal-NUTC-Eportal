@@ -592,3 +592,23 @@ test("fetchBookEnrichment resolves descriptions and author bios across Sanmin, E
     globalThis.fetch = realFetch;
   }
 });
+
+test("library hub uses custom accessible glass listboxes instead of native selects", async () => {
+  const [js, css] = await Promise.all([
+    readFile(new URL("../public/library.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/library.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.doesNotMatch(js, /\bh\(\s*["']select["']/);
+  assert.doesNotMatch(js, /\bh\(\s*["']option["']/);
+  assert.match(js, /function createSelect\(/);
+  assert.match(js, /"aria-haspopup":\s*"listbox"/);
+  assert.match(js, /role:\s*"listbox"/);
+  assert.match(js, /role:\s*"option"/);
+  assert.match(js, /menu\.inert\s*=\s*!visible/);
+  assert.match(js, /"data-state":\s*"closed"/);
+
+  assert.match(css, /\.select-menu\s*\{/);
+  assert.match(css, /\.select-menu\[data-state="open"\]\s*\{/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});

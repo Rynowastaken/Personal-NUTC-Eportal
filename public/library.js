@@ -212,6 +212,7 @@
     left: '<path d="m15 18-6-6 6-6"/>',
     alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
     check: '<polyline points="20 6 9 17 4 12"/>',
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
     "eye-off": '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>',
@@ -572,6 +573,7 @@
   const menuRoot = { btn: null, panel: null };
   let activeModal = null;
   let lastFocused = null;
+  let activeSelect = null;
 
   function closeModal() {
     if (!activeModal) return;
@@ -586,6 +588,11 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (activeSelect) {
+        e.preventDefault();
+        activeSelect.close({ returnFocus: true });
+        return;
+      }
       if (activeModal) closeModal();
       if (menuRoot.panel && !menuRoot.panel.hidden) {
         menuRoot.panel.hidden = true;
@@ -606,6 +613,14 @@
     }
   });
 
+  document.addEventListener("pointerdown", (e) => {
+    if (!activeSelect) return;
+    if (activeSelect.wrap.contains(e.target)) return;
+    const label = e.target.closest?.("label[for]");
+    if (label && label.htmlFor === activeSelect.id) return;
+    activeSelect.close();
+  });
+
   const modalEl = h(
     "div",
     {
@@ -619,6 +634,230 @@
     },
     h("div", { class: "dialog wide", id: "libDialog", tabindex: "-1" }),
   );
+
+  /** Accessible, animated theme-glass listbox replacing native select popups. */
+  function createSelect({
+    id,
+    options,
+    value,
+    ariaLabel,
+    small = false,
+    disabled = false,
+    onChange,
+  }) {
+    const items = (options || []).map((entry) => {
+      if (Array.isArray(entry)) {
+        return { value: String(entry[0] ?? ""), label: String(entry[1] ?? entry[0] ?? "") };
+      }
+      if (entry && typeof entry === "object") {
+        const val = String(entry.value ?? "");
+        return { value: val, label: String(entry.label ?? val) };
+      }
+      const val = String(entry ?? "");
+      return { value: val, label: val };
+    });
+
+    const desired = value == null ? "" : String(value);
+    const initial = items.find((item) => item.value === desired) || items[0] || { value: "", label: "" };
+    let currentValue = initial.value;
+
+    const valueSpan = h("span", { class: "select-value" }, initial.label);
+    const trigger = h(
+      "button",
+      {
+        type: "button",
+        class: "select-trigger",
+        id: id || null,
+        "aria-haspopup": "listbox",
+        "aria-expanded": "false",
+        "aria-controls": id ? `${id}-options` : null,
+        "aria-label": ariaLabel || null,
+        disabled: disabled || null,
+        "data-value": currentValue,
+      },
+      valueSpan,
+      h("span", { class: "select-chevron", "aria-hidden": "true" }, icon("chevron-down")),
+    );
+
+    const optionButtons = items.map((item) =>
+      h(
+        "button",
+        {
+          type: "button",
+          class: "select-option",
+          role: "option",
+          tabindex: "-1",
+          "data-value": item.value,
+          "aria-selected": String(item.value === currentValue),
+        },
+        h("span", { class: "select-option-label" }, item.label),
+        h("span", { class: "select-check", "aria-hidden": "true" }, icon("check")),
+      ),
+    );
+
+    const menu = h(
+      "div",
+      {
+        class: "select-menu",
+        id: id ? `${id}-options` : null,
+        role: "listbox",
+        "aria-label": ariaLabel || null,
+        "data-state": "closed",
+        "aria-hidden": "true",
+        inert: true,
+      },
+      optionButtons,
+    );
+
+    const wrap = h(
+      "div",
+      {
+        class: `select-field${small ? " select-field--sm" : ""}`,
+        "data-open": "false",
+      },
+      trigger,
+      menu,
+    );
+
+    function setValue(next, { emit = true } = {}) {
+      const strNext = next == null ? "" : String(next);
+      const match = items.find((item) => item.value === strNext);
+      if (!match) return;
+      const changed = strNext !== currentValue;
+      currentValue = strNext;
+      trigger.dataset.value = currentValue;
+      valueSpan.textContent = match.label;
+      for (const btn of optionButtons) {
+        btn.setAttribute("aria-selected", String(btn.dataset.value === currentValue));
+      }
+      if (emit && changed) {
+        onChange?.(currentValue);
+      }
+    }
+
+    function positionMenu() {
+      delete menu.dataset.align;
+      delete menu.dataset.side;
+      const wrapRect = wrap.getBoundingClientRect();
+      const menuWidth = Math.max(wrapRect.width, menu.offsetWidth);
+      if (
+        wrapRect.left + menuWidth > window.innerWidth - 12 &&
+        wrapRect.right - menuWidth >= 12
+      ) {
+        menu.dataset.align = "end";
+      }
+      const neededHeight = Math.min(menu.scrollHeight, 296) + 12;
+      const spaceBelow = window.innerHeight - wrapRect.bottom;
+      const spaceAbove = wrapRect.top;
+      if (spaceBelow < neededHeight && spaceAbove > spaceBelow) {
+        menu.dataset.side = "top";
+      }
+    }
+
+    const controller = {
+      id,
+      wrap,
+      close: (opts) => setOpen(false, opts),
+    };
+
+    function setOpen(open, { focusSelected = false, returnFocus = false } = {}) {
+      const visible = Boolean(open && !trigger.disabled);
+      if (visible) {
+        if (activeSelect && activeSelect !== controller) activeSelect.close();
+        if (menuRoot.panel && !menuRoot.panel.hidden) {
+          menuRoot.panel.hidden = true;
+          menuRoot.btn?.setAttribute("aria-expanded", "false");
+        }
+        positionMenu();
+        activeSelect = controller;
+      } else if (activeSelect === controller) {
+        activeSelect = null;
+      }
+      wrap.dataset.open = visible ? "true" : "false";
+      menu.dataset.state = visible ? "open" : "closed";
+      menu.inert = !visible;
+      menu.setAttribute("aria-hidden", String(!visible));
+      trigger.setAttribute("aria-expanded", String(visible));
+      if (visible && focusSelected) {
+        const selectedBtn =
+          optionButtons.find((btn) => btn.dataset.value === currentValue) || optionButtons[0];
+        selectedBtn?.focus({ preventScroll: true });
+        selectedBtn?.scrollIntoView?.({ block: "nearest" });
+      } else if (!visible && returnFocus) {
+        trigger.focus({ preventScroll: true });
+      }
+    }
+
+    function moveFocus(key, startIdx) {
+      if (!optionButtons.length) return;
+      let idx = startIdx;
+      if (key === "Home") idx = 0;
+      else if (key === "End") idx = optionButtons.length - 1;
+      else if (key === "ArrowDown") idx = (startIdx + 1) % optionButtons.length;
+      else if (key === "ArrowUp") idx = (startIdx - 1 + optionButtons.length) % optionButtons.length;
+      setOpen(true);
+      const target = optionButtons[idx];
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView?.({ block: "nearest" });
+    }
+
+    trigger.addEventListener("click", () => {
+      const wasOpen = trigger.getAttribute("aria-expanded") === "true";
+      setOpen(!wasOpen, { focusSelected: !wasOpen });
+    });
+
+    trigger.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && trigger.getAttribute("aria-expanded") === "true") {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false, { returnFocus: true });
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const selectedIdx = Math.max(
+        0,
+        optionButtons.findIndex((btn) => btn.dataset.value === currentValue),
+      );
+      moveFocus(e.key, selectedIdx);
+    });
+
+    optionButtons.forEach((btn, idx) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setValue(btn.dataset.value);
+        setOpen(false, { returnFocus: true });
+      });
+      btn.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(false, { returnFocus: true });
+        } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+          e.preventDefault();
+          moveFocus(e.key, idx);
+        } else if (e.key === "Tab") {
+          setOpen(false);
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setValue(btn.dataset.value);
+          setOpen(false, { returnFocus: true });
+        }
+      });
+    });
+
+    Object.defineProperty(wrap, "value", {
+      get() {
+        return currentValue;
+      },
+      set(next) {
+        setValue(next, { emit: false });
+      },
+    });
+
+    return wrap;
+  }
 
   function renderBookModalHero(book, fallbackCoverUrl, onPickSubject) {
     const coverUrl = book.coverProxyUrl || fallbackCoverUrl || "";
@@ -1228,20 +1467,15 @@
       "aria-label": "搜尋館藏",
     });
 
-    const quickSelect = h(
-      "select",
-      {
-        id: "homeCatalogScope",
-        class: "select",
-        "aria-label": "館藏範圍",
-        onchange: (e) => {
-          state.catalogScope = e.target.value;
-        },
+    const quickSelect = createSelect({
+      id: "homeCatalogScope",
+      options: SCOPES,
+      value: state.catalogScope,
+      ariaLabel: "館藏範圍",
+      onChange: (val) => {
+        state.catalogScope = val;
       },
-      SCOPES.map(([val, label]) =>
-        h("option", { value: val, selected: state.catalogScope === val }, label),
-      ),
-    );
+    });
 
     const quickForm = h(
       "form",
@@ -1568,20 +1802,15 @@
       "aria-label": "館藏關鍵字",
     });
 
-    const fieldEl = h(
-      "select",
-      {
-        id: "catalogFieldSelect",
-        class: "select",
-        "aria-label": "搜尋欄位",
-        onchange: (e) => {
-          state.catalogField = e.target.value;
-        },
+    const fieldEl = createSelect({
+      id: "catalogFieldSelect",
+      options: FIELDS,
+      value: state.catalogField,
+      ariaLabel: "搜尋欄位",
+      onChange: (val) => {
+        state.catalogField = val;
       },
-      FIELDS.map(([val, label]) =>
-        h("option", { value: val, selected: state.catalogField === val }, label),
-      ),
-    );
+    });
 
     const submitSearch = (nextPage = 1, nextPreset = "") => {
       const q = inputEl.value.trim();
@@ -1804,21 +2033,17 @@
         ),
       );
     } else if (data && data.items) {
-      const sortEl = h(
-        "select",
-        {
-          id: "catalogSortSelect",
-          class: "select select--sm",
-          "aria-label": "排序方式",
-          onchange: (e) => {
-            state.catalogSort = e.target.value;
-            submitSearch(1, state.catalogPreset);
-          },
+      const sortEl = createSelect({
+        id: "catalogSortSelect",
+        options: SORTS,
+        value: state.catalogSort,
+        ariaLabel: "排序方式",
+        small: true,
+        onChange: (val) => {
+          state.catalogSort = val;
+          submitSearch(1, state.catalogPreset);
         },
-        SORTS.map(([val, label]) =>
-          h("option", { value: val, selected: state.catalogSort === val }, label),
-        ),
-      );
+      });
 
       const headingText = data.preset
         ? data.preset === "SMNEW"
@@ -2540,45 +2765,33 @@
     const currentRoom = draftVal("room", defaults.rooms[0]?.value || "1");
     const currentPeriod = draftVal("timePeriod", "2");
 
-    const roleSelect = h(
-      "select",
-      {
-        class: "select",
-        id: "carrelRole",
-        onchange: (e) => {
-          draft.role = e.target.value;
-        },
+    const roleSelect = createSelect({
+      id: "carrelRole",
+      options: ["學生", "研究生", "專任教師"],
+      value: currentRole,
+      ariaLabel: "身份別",
+      onChange: (val) => {
+        draft.role = val;
       },
-      ["學生", "研究生", "專任教師"].map((r) =>
-        h("option", { value: r, selected: currentRole === r }, r),
-      ),
-    );
-    const roomSelect = h(
-      "select",
-      {
-        class: "select",
-        id: "carrelRoom",
-        onchange: (e) => {
-          draft.room = e.target.value;
-        },
+    });
+    const roomSelect = createSelect({
+      id: "carrelRoom",
+      options: defaults.rooms,
+      value: currentRoom,
+      ariaLabel: "研究小間",
+      onChange: (val) => {
+        draft.room = val;
       },
-      defaults.rooms.map((r) =>
-        h("option", { value: r.value, selected: currentRoom === r.value }, r.label),
-      ),
-    );
-    const periodSelect = h(
-      "select",
-      {
-        class: "select",
-        id: "carrelPeriod",
-        onchange: (e) => {
-          draft.timePeriod = e.target.value;
-        },
+    });
+    const periodSelect = createSelect({
+      id: "carrelPeriod",
+      options: defaults.periods,
+      value: currentPeriod,
+      ariaLabel: "借用時段",
+      onChange: (val) => {
+        draft.timePeriod = val;
       },
-      defaults.periods.map((p) =>
-        h("option", { value: p.value, selected: currentPeriod === p.value }, p.label),
-      ),
-    );
+    });
     const dateStartInput = h("input", {
       class: "input num",
       id: "carrelStart",
@@ -3133,7 +3346,12 @@
     let activeInputState = null;
     if (!activeModal && document.activeElement && mainEl.contains(document.activeElement)) {
       const el = document.activeElement;
-      if ((el.tagName === "INPUT" || el.tagName === "SELECT") && el.id) {
+      if (
+        (el.tagName === "INPUT" ||
+          el.tagName === "SELECT" ||
+          el.classList?.contains("select-trigger")) &&
+        el.id
+      ) {
         activeInputState = {
           id: el.id,
           start: typeof el.selectionStart === "number" ? el.selectionStart : null,
@@ -3142,6 +3360,7 @@
       }
     }
 
+    activeSelect?.close({ returnFocus: false });
     headerSlot.replaceChildren(renderHeader(route.name));
     mainEl.replaceChildren(
       view,
