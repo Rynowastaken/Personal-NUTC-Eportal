@@ -92,6 +92,8 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: demo-dist
+      - name: Wait for Pages artifact metadata
+        run: sleep 10
       - name: Publish demo
         id: deployment
         uses: actions/deploy-pages@v4
