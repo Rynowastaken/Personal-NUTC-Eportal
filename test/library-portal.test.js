@@ -753,3 +753,91 @@ test("prefetchCatalogCovers preserves proxy url from normalized items for exact 
     await clearLibrarySession();
   }
 });
+
+test("searchLibraryCatalog validates pageSize and handleLibraryRequest forwards it", async () => {
+  for (const badSize of [0, 60, "abc"]) {
+    await assert.rejects(
+      () => searchLibraryCatalog({ pageSize: badSize }),
+      (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+    );
+  }
+
+  let capturedSearch = null;
+  const res = makeMockRes();
+  const handlers = {
+    sendJson(r, code, payload) {
+      r.statusCode = code;
+      r.body = JSON.stringify(payload);
+    },
+    sendError(r, code, message, errCode) {
+      r.statusCode = code;
+      r.body = JSON.stringify({ error: message, code: errCode });
+    },
+    readJsonBody: async () => ({}),
+  };
+  await handleLibraryRequest(
+    { method: "GET" },
+    res,
+    new URL("http://localhost/api/library/catalog/search?q=ai&pageSize=36&page=2"),
+    handlers,
+    {
+      searchCatalogFn: async (opts) => {
+        capturedSearch = opts;
+        return { items: [], totalResults: 0, totalPages: 1, page: 2, pageSize: 36 };
+      },
+    },
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(capturedSearch.pageSize, "36");
+  assert.equal(capturedSearch.page, "2");
+});
+
+test("getLibraryCatalogAvailability chunks 36 IDs into parallel 24 + 12 OPAC requests and rejects > 48", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+  const tooMany = Array.from({ length: 49 }, (_, i) => String(100000 + i)).join(",");
+  await assert.rejects(
+    () => getLibraryCatalogAvailability(tooMany),
+    (err) => err?.code === "LIBRARY_INVALID_PARAM" && err?.statusCode === 400,
+  );
+
+  const fetchedUrls = [];
+  globalThis.fetch = async (input) => {
+    const u = String(input);
+    fetchedUrls.push(u);
+    const matches = [...u.matchAll(/SD_ILS:(\d+)/g)].map((m) => m[1]);
+    return new Response(
+      JSON.stringify(
+        matches.map((id) => ({
+          titleId: id,
+          availableCount: "1",
+          copyCount: "2",
+          holdCount: "0",
+          holdable: true,
+        })),
+      ),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  try {
+    const ids36 = Array.from({ length: 36 }, (_, i) => String(200000 + i)).join(",");
+    const res = await getLibraryCatalogAvailability(ids36);
+    assert.equal(Object.keys(res.items).length, 36);
+    assert.equal(fetchedUrls.length, 2);
+    const batchSizes = fetchedUrls.map((u) => [...u.matchAll(/SD_ILS:(\d+)/g)].length);
+    assert.deepEqual(batchSizes, [24, 12]);
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("library UI exposes persisted catalogPageSize selector with 12/24/36/48 options", async () => {
+  const js = await read("../public/library.js");
+  assert.match(js, /id:\s*"catalogPageSizeSelect"/);
+  assert.match(js, /nutc\.library\.catalogPageSize/);
+  for (const n of ["12", "24", "36", "48"]) {
+    assert.match(js, new RegExp(`\\["${n}",\\s*"每頁 ${n} 筆"\\]`));
+  }
+});

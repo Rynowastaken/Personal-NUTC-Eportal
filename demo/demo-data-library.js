@@ -708,7 +708,8 @@ export function createLibraryMockHandler() {
       const preset = url.searchParams.get("preset") || "";
       const sort = url.searchParams.get("sort") || "RE";
       const tags = url.searchParams.getAll("tag").filter(Boolean);
-      const pageSize = 6;
+      const rawPageSize = Number.parseInt(url.searchParams.get("pageSize") || "24", 10);
+      const pageSize = [12, 24, 36, 48].includes(rawPageSize) ? rawPageSize : 24;
 
       let filtered = catalog.slice();
       if (preset) {
@@ -762,6 +763,7 @@ export function createLibraryMockHandler() {
           sort,
           tags,
           page,
+          pageSize,
           totalPages,
           totalResults,
           availabilityPending: false,

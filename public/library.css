@@ -419,6 +419,8 @@ button.row:first-child { border-top: 0; }
   grid-row: 4; align-self: end; display: flex; flex-wrap: wrap; align-items: center;
   gap: 5px; padding-top: 2px; min-width: 0;
 }
+.book-card-foot .book-end { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.book-card-foot .book-end:empty { display: none; }
 .book-card-foot .book-call { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 520px) {
   .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

@@ -38,6 +38,20 @@
     ["AT", "作者"],
   ];
 
+  const DEFAULT_CATALOG_PAGE_SIZE = 24;
+  const CATALOG_PAGE_SIZES = [
+    ["12", "每頁 12 筆"],
+    ["24", "每頁 24 筆"],
+    ["36", "每頁 36 筆"],
+    ["48", "每頁 48 筆"],
+  ];
+  const VALID_CATALOG_PAGE_SIZES = new Set([12, 24, 36, 48]);
+
+  function normalizeCatalogPageSize(val) {
+    const parsed = Number.parseInt(String(val ?? "").trim(), 10);
+    return VALID_CATALOG_PAGE_SIZES.has(parsed) ? parsed : DEFAULT_CATALOG_PAGE_SIZE;
+  }
+
   function formatNumber(val) {
     const n = Number(val);
     return Number.isFinite(n) ? n.toLocaleString("en-US") : String(val ?? "");
@@ -259,6 +273,7 @@
   }
 
   const CATALOG_VIEW_STORAGE_KEY = "nutc.library.catalogView";
+  const CATALOG_PAGE_SIZE_STORAGE_KEY = "nutc.library.catalogPageSize";
 
   function loadSavedCatalogView() {
     try {
@@ -271,6 +286,20 @@
   function saveCatalogView(mode) {
     try {
       localStorage.setItem(CATALOG_VIEW_STORAGE_KEY, mode);
+    } catch {}
+  }
+
+  function loadSavedCatalogPageSize() {
+    try {
+      return normalizeCatalogPageSize(localStorage.getItem(CATALOG_PAGE_SIZE_STORAGE_KEY));
+    } catch {
+      return DEFAULT_CATALOG_PAGE_SIZE;
+    }
+  }
+
+  function saveCatalogPageSize(size) {
+    try {
+      localStorage.setItem(CATALOG_PAGE_SIZE_STORAGE_KEY, String(normalizeCatalogPageSize(size)));
     } catch {}
   }
 
@@ -287,6 +316,7 @@
     catalogPreset: "",
     catalogSort: "RE",
     catalogView: loadSavedCatalogView(),
+    catalogPageSize: loadSavedCatalogPageSize(),
     catalogTags: [],
     catalogFacetGroup: "SUBJECT",
     catalogPage: 1,
@@ -350,6 +380,7 @@
     sort = "RE",
     tags = [],
     page = 1,
+    pageSize = state.catalogPageSize,
   } = {}) {
     const qs = new URLSearchParams({
       q: String(q || "").trim(),
@@ -358,6 +389,7 @@
       preset: preset || "",
       sort: sort || "RE",
       page: String(page || 1),
+      pageSize: String(normalizeCatalogPageSize(pageSize)),
     });
     const cleanTags = Array.isArray(tags) ? [...new Set(tags.filter(Boolean))] : [];
     for (const tag of cleanTags) {
@@ -417,6 +449,7 @@
       sort: data.sort || "RE",
       tags: Array.isArray(data.tags) ? data.tags : [],
       page: (data.page || 1) + 1,
+      pageSize: data.pageSize || state.catalogPageSize,
     };
     nextPagePrefetchTimer = setTimeout(() => {
       nextPagePrefetchTimer = null;
@@ -444,7 +477,7 @@
       if (reqId !== catalogRequestSeq) return;
       const availMap = reply?.items || {};
       const rowsById = new Map();
-      for (const el of mainEl.querySelectorAll(".book-row[data-book-id]")) {
+      for (const el of mainEl.querySelectorAll(".book-row[data-book-id], .book-card[data-book-id]")) {
         rowsById.set(el.getAttribute("data-book-id"), el);
       }
       for (const item of data.items) {
@@ -473,9 +506,11 @@
     sort = state.catalogSort,
     tags = state.catalogTags,
     page = state.catalogPage,
+    pageSize = state.catalogPageSize,
   } = {}) {
     const reqId = ++catalogRequestSeq;
     const cleanTags = Array.isArray(tags) ? [...new Set(tags.filter(Boolean))] : [];
+    const cleanPageSize = normalizeCatalogPageSize(pageSize);
     state.catalogQuery = q;
     state.catalogDraftQ = q;
     state.catalogField = field;
@@ -484,6 +519,7 @@
     state.catalogSort = sort || "RE";
     state.catalogTags = cleanTags;
     state.catalogPage = page;
+    state.catalogPageSize = cleanPageSize;
     state.catalogError = "";
 
     const qs = buildCatalogSearchParams({
@@ -494,6 +530,7 @@
       sort: state.catalogSort,
       tags: cleanTags,
       page,
+      pageSize: cleanPageSize,
     });
     const cacheKey = qs.toString();
     const cached = getClientCatalogCache(cacheKey);
@@ -1497,7 +1534,7 @@
       h(
         "footer",
         { class: "book-card-foot" },
-        endChildren,
+        h("div", { class: "book-end" }, endChildren),
         item.callNumber ? h("span", { class: "book-call" }, item.callNumber) : null,
       ),
     );
@@ -1833,7 +1870,8 @@
       sp.has("field") ||
       sp.has("sort") ||
       sp.has("tag") ||
-      sp.has("page");
+      sp.has("page") ||
+      sp.has("pageSize");
     if (!hasParams) return;
     const q = sp.get("q") || "";
     const scope = sp.get("scope") || "ALL";
@@ -1842,6 +1880,9 @@
     const sort = sp.get("sort") || "RE";
     const tags = sp.getAll("tag").filter(Boolean);
     const page = Number(sp.get("page")) || 1;
+    const pageSize = sp.has("pageSize")
+      ? normalizeCatalogPageSize(sp.get("pageSize"))
+      : state.catalogPageSize;
     const changed =
       !state.catalogData ||
       q !== state.catalogQuery ||
@@ -1850,9 +1891,10 @@
       preset !== state.catalogPreset ||
       sort !== state.catalogSort ||
       tags.join("||") !== state.catalogTags.join("||") ||
-      page !== state.catalogPage;
+      page !== state.catalogPage ||
+      pageSize !== state.catalogPageSize;
     if (changed && !state.catalogLoading) {
-      void runCatalogSearch({ q, field, scope, preset, sort, tags, page });
+      void runCatalogSearch({ q, field, scope, preset, sort, tags, page, pageSize });
     }
   }
 
@@ -1889,6 +1931,9 @@
         ...(state.catalogSort && state.catalogSort !== "RE"
           ? { sort: state.catalogSort }
           : {}),
+        ...(state.catalogPageSize !== DEFAULT_CATALOG_PAGE_SIZE
+          ? { pageSize: String(state.catalogPageSize) }
+          : {}),
         page: String(nextPage),
       });
       for (const tag of state.catalogTags) {
@@ -1906,6 +1951,7 @@
         sort: state.catalogSort,
         tags: state.catalogTags,
         page: nextPage,
+        pageSize: state.catalogPageSize,
       });
     };
 
@@ -2112,6 +2158,21 @@
         },
       });
 
+      const pageSizeEl = createSelect({
+        id: "catalogPageSizeSelect",
+        options: CATALOG_PAGE_SIZES,
+        value: String(state.catalogPageSize),
+        ariaLabel: "每頁顯示筆數",
+        small: true,
+        onChange: (val) => {
+          const nextSize = normalizeCatalogPageSize(val);
+          if (nextSize === state.catalogPageSize) return;
+          state.catalogPageSize = nextSize;
+          saveCatalogPageSize(nextSize);
+          submitSearch(1, state.catalogPreset);
+        },
+      });
+
       const headingText = data.preset
         ? data.preset === "SMNEW"
           ? "三民總館新進館藏"
@@ -2204,6 +2265,7 @@
             "div",
             { class: "section-controls" },
             viewToggle,
+            pageSizeEl,
             sortEl,
             h(
               "span",
@@ -3423,6 +3485,7 @@
           sort: "RE",
           tags: [],
           page: 1,
+          pageSize: state.catalogPageSize,
         });
       }, 500);
     }

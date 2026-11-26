@@ -89,6 +89,10 @@ const SCOPE_TO_QF = {
 };
 
 const VALID_SORTS = new Set(["RE", "PD", "PA", "TL", "AT"]);
+const VALID_CATALOG_PAGE_SIZES = new Set([12, 24, 36, 48]);
+const DEFAULT_CATALOG_PAGE_SIZE = 24;
+const AVAILABILITY_BATCH_SIZE = 24;
+const MAX_AVAILABILITY_IDS = 48;
 
 const VALID_TAG_QF =
   /^(SUBJECT|LANGUAGE|PUBDATE|ITYPE|LIBRARY|LOCATION|LOCAL_NOTE_590)\t[^\r\n\t]{1,40}\t[^\r\n\t]{1,180}\t[^\r\n\t]{1,180}$/;
@@ -814,7 +818,7 @@ function parseAvailabilityIds(rawIds = "") {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-  if (!rawList.length || rawList.length > 24) {
+  if (!rawList.length || rawList.length > MAX_AVAILABILITY_IDS) {
     throw libraryError(
       "Invalid catalog availability title ids.",
       "LIBRARY_INVALID_PARAM",
@@ -871,8 +875,10 @@ async function fetchAvailabilityMap(ids = []) {
   }
 
   if (toFetch.length > 0) {
-    const availUrl = buildOpacAvailabilityUrl(toFetch);
-    if (availUrl) {
+    for (let offset = 0; offset < toFetch.length; offset += AVAILABILITY_BATCH_SIZE) {
+      const batch = toFetch.slice(offset, offset + AVAILABILITY_BATCH_SIZE);
+      const availUrl = buildOpacAvailabilityUrl(batch);
+      if (!availUrl) continue;
       const idPromises = new Map();
       const batchPromise = (async () => {
         const { response } = await httpRequestWithCookies(availUrl, {
@@ -904,14 +910,14 @@ async function fetchAvailabilityMap(ids = []) {
       })()
         .catch(() => ({}))
         .finally(() => {
-          for (const id of toFetch) {
+          for (const id of batch) {
             if (availabilityInFlight.get(id) === idPromises.get(id)) {
               availabilityInFlight.delete(id);
             }
           }
         });
 
-      for (const id of toFetch) {
+      for (const id of batch) {
         const p = batchPromise.then((map) => map[id] || null);
         idPromises.set(id, p);
         availabilityInFlight.set(id, p);
@@ -933,7 +939,7 @@ async function fetchAvailabilityMap(ids = []) {
 }
 
 /**
- * Resolve copy availability counts for up to 24 OPAC title IDs via cache or `:loadavailability`.
+ * Resolve copy availability counts for up to 48 OPAC title IDs via cache or parallel `:loadavailability` batches.
  */
 export async function getLibraryCatalogAvailability(rawIds = "") {
   const ids = parseAvailabilityIds(rawIds);
@@ -1100,6 +1106,7 @@ function fetchCatalogPage({
       sort: parsed.sort,
       tags: parsed.tags,
       page: parsed.page,
+      pageSize: parsed.pageSize,
       totalResults: parsed.totalResults,
       totalPages: parsed.totalPages,
       facets,
@@ -1151,6 +1158,7 @@ export async function searchLibraryCatalog({
   sort = "RE",
   tags = [],
   page = 1,
+  pageSize = DEFAULT_CATALOG_PAGE_SIZE,
 } = {}) {
   const cleanQ = String(q || "").trim().slice(0, 160);
   const upperField = String(field || "ALL").trim().toUpperCase();
@@ -1158,6 +1166,16 @@ export async function searchLibraryCatalog({
   const upperPreset = String(preset || "").trim().toUpperCase();
   const upperSort = String(sort || "RE").trim().toUpperCase() || "RE";
   const pageNum = Math.max(1, Math.min(100_000, Number.parseInt(page, 10) || 1));
+
+  let cleanPageSize = DEFAULT_CATALOG_PAGE_SIZE;
+  if (pageSize !== undefined && pageSize !== null && String(pageSize).trim() !== "") {
+    const rawSize = String(pageSize).trim();
+    const parsedSize = /^\d+$/.test(rawSize) ? Number.parseInt(rawSize, 10) : Number.NaN;
+    if (!VALID_CATALOG_PAGE_SIZES.has(parsedSize)) {
+      throw libraryError("Unsupported catalog page size.", "LIBRARY_INVALID_PARAM", 400);
+    }
+    cleanPageSize = parsedSize;
+  }
 
   if (!Object.hasOwn(FIELD_TO_RT, upperField)) {
     throw libraryError("Unsupported catalog search field.", "LIBRARY_INVALID_PARAM", 400);
@@ -1191,7 +1209,7 @@ export async function searchLibraryCatalog({
   await loadCatalogCacheFromDisk();
 
   const filterKey = `${upperPreset}|${upperScope}|${upperField}|${upperSort}|${cleanTags.join("||")}|${cleanQ}`;
-  const cacheKey = `${filterKey}|p${pageNum}`;
+  const cacheKey = `${filterKey}|s${cleanPageSize}|p${pageNum}`;
 
   const url = new URL(`${OPAC_BASE}/search/results`);
   const qfList = [];
@@ -1215,8 +1233,11 @@ export async function searchLibraryCatalog({
   if (upperSort !== "RE") {
     url.searchParams.set("st", upperSort);
   }
+  if (cleanPageSize !== 12) {
+    url.searchParams.set("ps", String(cleanPageSize));
+  }
   if (pageNum > 1) {
-    url.searchParams.set("rw", String((pageNum - 1) * 12));
+    url.searchParams.set("rw", String((pageNum - 1) * cleanPageSize));
   }
 
   const searchMeta = {
@@ -1227,8 +1248,9 @@ export async function searchLibraryCatalog({
     sort: upperSort,
     tags: cleanTags,
     page: pageNum,
+    pageSize: cleanPageSize,
   };
-  const cachedFacets = pageNum > 1 ? getCachedMap(facetCache, filterKey) : null;
+  const cachedFacets = getCachedMap(facetCache, filterKey);
 
   const entry = catalogCache.get(cacheKey);
   const now = Date.now();
@@ -1264,7 +1286,7 @@ export async function searchLibraryCatalog({
 export async function warmLibraryCatalog() {
   try {
     await loadCatalogCacheFromDisk();
-    const defaultKey = "|ALL|ALL|RE||p1";
+    const defaultKey = `|ALL|ALL|RE||s${DEFAULT_CATALOG_PAGE_SIZE}|p1`;
     const entry = catalogCache.get(defaultKey);
     if (!entry || Date.now() >= entry.freshUntil) {
       await searchLibraryCatalog({
@@ -1275,6 +1297,7 @@ export async function warmLibraryCatalog() {
         sort: "RE",
         tags: [],
         page: 1,
+        pageSize: DEFAULT_CATALOG_PAGE_SIZE,
       });
     } else {
       prefetchCatalogCovers(entry.value?.items);
@@ -2903,6 +2926,9 @@ export async function handleLibraryRequest(
           sort: url.searchParams.get("sort") || "RE",
           tags: url.searchParams.getAll("tag"),
           page: url.searchParams.get("page") || "1",
+          ...(url.searchParams.has("pageSize")
+            ? { pageSize: url.searchParams.get("pageSize") }
+            : {}),
         }),
       );
     } catch (error) {

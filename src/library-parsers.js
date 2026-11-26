@@ -492,7 +492,16 @@ export function parseOpacFacets(html = "") {
  */
 export function parseOpacSearchResults(
   html = "",
-  { query = "", field = "ALL", scope = "ALL", preset = "", sort = "RE", tags = [], page = 1 } = {},
+  {
+    query = "",
+    field = "ALL",
+    scope = "ALL",
+    preset = "",
+    sort = "RE",
+    tags = [],
+    page = 1,
+    pageSize = 12,
+  } = {},
 ) {
   const source = String(html || "");
   const totalRaw = firstMatch(
@@ -598,9 +607,9 @@ export function parseOpacSearchResults(
     });
   }
 
-  const pageSize = 12;
+  const cleanPageSize = Math.max(1, Number.parseInt(pageSize, 10) || 12);
   const effectiveTotal = Math.max(totalResults, items.length);
-  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize));
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / cleanPageSize));
 
   return {
     query,
@@ -610,6 +619,7 @@ export function parseOpacSearchResults(
     sort,
     tags: Array.isArray(tags) ? tags : [],
     page: Math.max(1, Number(page) || 1),
+    pageSize: cleanPageSize,
     totalResults: effectiveTotal,
     totalPages,
     availabilityUrl,

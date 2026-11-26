@@ -455,3 +455,18 @@ test("htmlToCleanParagraphs, stripBookstorePromo, and parseSanminProductDetail f
     source: "三民書局",
   });
 });
+
+test("parseOpacSearchResults supports custom pageSize and preserves default 12", () => {
+  const html = `<div class="resultsToolbar_num_results">25 個結果</div>`;
+  const defaultParsed = parseOpacSearchResults(html, { query: "test", page: 1 });
+  assert.equal(defaultParsed.pageSize, 12);
+  assert.equal(defaultParsed.totalPages, 3);
+
+  const page24 = parseOpacSearchResults(html, { query: "test", page: 1, pageSize: 24 });
+  assert.equal(page24.pageSize, 24);
+  assert.equal(page24.totalPages, 2);
+
+  const page36 = parseOpacSearchResults(html, { query: "test", page: 1, pageSize: 36 });
+  assert.equal(page36.pageSize, 36);
+  assert.equal(page36.totalPages, 1);
+});
