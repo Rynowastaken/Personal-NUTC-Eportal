@@ -586,7 +586,17 @@ async function captureOpacCookiesViaPlaywright(opacSsoUrl) {
       userAgent: USER_AGENT,
     });
     const page = await ctx.newPage();
-    await page.goto(opacSsoUrl, { waitUntil: "networkidle", timeout: 25_000 }).catch(() => {});
+    await page.goto(opacSsoUrl, { waitUntil: "domcontentloaded", timeout: 25_000 }).catch(() => {});
+    // `decryptuid2.jsp` submits a hidden form via inline JS after load; wait for SirsiDynix post-login landing before opening account.
+    await page
+      .waitForURL(
+        (u) =>
+          u.hostname.includes("sirsidynix.net") &&
+          !u.pathname.includes("patronlogin"),
+        { timeout: 20_000 },
+      )
+      .catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     await page.goto(`${OPAC_BASE}/search/account?`, {
       waitUntil: "networkidle",
       timeout: 25_000,
