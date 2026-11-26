@@ -2816,8 +2816,9 @@ export async function loginOpacPatron({ username = "", password = "" } = {}) {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Prototype-Version": "1.7",
       "X-Requested-With": "XMLHttpRequest",
-      Accept: "application/json, text/javascript, */*; q=0.01",
+      Accept: "text/javascript, text/html, application/xml, text/xml, */*",
       Origin: OPAC_ORIGIN,
       Referer: `${OPAC_BASE}/search/mylists?`,
     },

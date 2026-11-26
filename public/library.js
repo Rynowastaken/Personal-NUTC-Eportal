@@ -1688,7 +1688,7 @@
 
   function renderOpacLoginCard({
     heading = "登入館藏查詢系統 (OPAC)",
-    noticeText = "目前學校圖書館暫停 ePortal 自動登入，請輸入館藏查詢帳號與密碼（帳號為學號／身分證字號，預設密碼為身分證後四碼）。",
+    noticeText = "目前學校圖書館暫停 ePortal 自動登入。因外部網站無法共用瀏覽器內的官方館藏登入狀態，請於此輸入館藏帳號（身分證字號）與密碼（預設為身分證後四碼）。",
     onSuccess = null,
   } = {}) {
     return h(
@@ -1755,13 +1755,13 @@
         h(
           "div",
           { class: "field" },
-          h("label", { for: "opacLoginUser" }, "帳號"),
+          h("label", { for: "opacLoginUser" }, "借閱證號碼（身分證字號）"),
           h("input", {
             id: "opacLoginUser",
             class: "input",
             type: "text",
             autocomplete: "username",
-            placeholder: "學號或身分證字號",
+            placeholder: "身分證字號",
             value: state.opacLoginUserDraft,
             disabled: state.opacLoginBusy,
             oninput: (e) => {
@@ -2430,7 +2430,7 @@
         return renderOpacLoginCard({
           heading: "登入館藏查詢系統 (OPAC)",
           noticeText:
-            "目前學校圖書館暫停 ePortal 自動登入，請輸入館藏查詢帳號與密碼（帳號為學號／身分證字號，預設密碼為身分證後四碼）以存取我的清單。",
+            "目前學校圖書館暫停 ePortal 自動登入。因網站無法共用瀏覽器內的官方館藏登入狀態，請輸入身分證字號與 OPAC 密碼（預設身分證後四碼）以存取我的清單。",
           onSuccess: async () => {
             await Promise.all([
               loadFavorites({ force: true }),
@@ -3431,7 +3431,7 @@
       panelContent = renderOpacLoginCard({
         heading: "登入館藏查詢系統 (OPAC)",
         noticeText:
-          "目前學校圖書館暫停 ePortal 自動登入，請輸入館藏查詢帳號與密碼（帳號為學號／身分證字號，預設密碼為身分證後四碼）以檢視借閱帳戶與線上續借。",
+          "目前學校圖書館暫停 ePortal 自動登入。因網站無法共用瀏覽器內的官方館藏登入狀態，請輸入身分證字號與 OPAC 密碼（預設身分證後四碼）以檢視借閱帳戶與線上續借。",
         onSuccess: async () => {
           await Promise.all([
             loadOverview({ force: true }),
