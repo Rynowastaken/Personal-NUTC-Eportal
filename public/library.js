@@ -334,6 +334,10 @@
     listCreateDraft: "",
     listActionBusy: false,
     confirmDeleteListId: "",
+    opacLoginBusy: false,
+    opacLoginError: "",
+    opacLoginUserDraft: "",
+    opacLoginPassDraft: "",
 
     catalogQuery: "",
     catalogDraftQ: "",
@@ -1682,7 +1686,138 @@
     );
   }
 
+  function renderOpacLoginCard({
+    heading = "登入館藏查詢系統 (OPAC)",
+    noticeText = "目前學校圖書館暫停 ePortal 自動登入，請輸入館藏查詢帳號與密碼（帳號為學號／身分證字號，預設密碼為身分證後四碼）。",
+    onSuccess = null,
+  } = {}) {
+    return h(
+      "div",
+      { class: "opac-login-card" },
+      h(
+        "div",
+        { class: "opac-login-head" },
+        icon("lock"),
+        h("h1", null, heading),
+        h("p", null, noticeText),
+      ),
+      state.opacLoginError
+        ? h(
+            "div",
+            { class: "notice danger", role: "alert" },
+            icon("alert"),
+            h("span", null, state.opacLoginError),
+          )
+        : null,
+      h(
+        "form",
+        {
+          id: "opacLoginForm",
+          class: "opac-login-form",
+          onsubmit: async (e) => {
+            e.preventDefault();
+            if (state.opacLoginBusy) return;
+            const username = state.opacLoginUserDraft.trim();
+            const password = state.opacLoginPassDraft;
+            if (!username || !password) {
+              state.opacLoginError = "請輸入館藏查詢帳號與密碼。";
+              render();
+              return;
+            }
+            state.opacLoginBusy = true;
+            state.opacLoginError = "";
+            render();
+            try {
+              await apiJson("/api/library/opac/login", {
+                method: "POST",
+                body: JSON.stringify({ username, password }),
+              });
+              state.opacLoginPassDraft = "";
+              state.favoritesError = "";
+              state.favoritesErrorObj = null;
+              if (typeof onSuccess === "function") {
+                await onSuccess();
+              } else {
+                await Promise.all([
+                  loadFavorites({ force: true }),
+                  loadOverview({ force: true }),
+                ]);
+              }
+            } catch (err) {
+              state.opacLoginError =
+                err?.message || "館藏查詢系統登入失敗，請再試一次。";
+            } finally {
+              state.opacLoginBusy = false;
+              render();
+            }
+          },
+        },
+        h(
+          "div",
+          { class: "field" },
+          h("label", { for: "opacLoginUser" }, "帳號"),
+          h("input", {
+            id: "opacLoginUser",
+            class: "input",
+            type: "text",
+            autocomplete: "username",
+            placeholder: "學號或身分證字號",
+            value: state.opacLoginUserDraft,
+            disabled: state.opacLoginBusy,
+            oninput: (e) => {
+              state.opacLoginUserDraft = e.target.value;
+            },
+          }),
+        ),
+        h(
+          "div",
+          { class: "field" },
+          h("label", { for: "opacLoginPass" }, "密碼"),
+          h("input", {
+            id: "opacLoginPass",
+            class: "input",
+            type: "password",
+            autocomplete: "current-password",
+            placeholder: "OPAC 密碼（預設身分證後四碼）",
+            value: state.opacLoginPassDraft,
+            disabled: state.opacLoginBusy,
+            oninput: (e) => {
+              state.opacLoginPassDraft = e.target.value;
+            },
+          }),
+        ),
+        h(
+          "div",
+          { class: "actions" },
+          h(
+            "button",
+            {
+              class: "btn primary",
+              type: "submit",
+              disabled: state.opacLoginBusy,
+            },
+            state.opacLoginBusy ? "登入中…" : "登入館藏系統",
+          ),
+          h(
+            "a",
+            {
+              class: "btn",
+              href: "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC",
+              target: "_blank",
+              rel: "noopener",
+            },
+            icon("external"),
+            "在官方館藏登入",
+          ),
+        ),
+      ),
+    );
+  }
+
   function renderAuthOrFatalError(error) {
+    if (error?.code === "LIBRARY_OPAC_LOGIN_REQUIRED") {
+      return renderOpacLoginCard();
+    }
     const loginRequired =
       error?.status === 401 || error?.code === "EPORTAL_LOGIN_REQUIRED";
     return h(
@@ -2059,9 +2194,25 @@
       data?.sectionErrors?.opac
         ? h(
             "div",
-            { class: "notice danger" },
-            icon("alert"),
-            h("span", null, data.sectionErrors.opac),
+            {
+              class:
+                data?.sectionErrors?.opacCode === "LIBRARY_OPAC_LOGIN_REQUIRED"
+                  ? "notice"
+                  : "notice danger",
+            },
+            icon(
+              data?.sectionErrors?.opacCode === "LIBRARY_OPAC_LOGIN_REQUIRED"
+                ? "lock"
+                : "alert",
+            ),
+            h("span", { style: "flex:1" }, data.sectionErrors.opac),
+            data?.sectionErrors?.opacCode === "LIBRARY_OPAC_LOGIN_REQUIRED"
+              ? h(
+                  "a",
+                  { class: "btn small primary", href: routeUrl("loans") },
+                  "前往館藏登入",
+                )
+              : null,
           )
         : h(
             "div",
@@ -2271,10 +2422,23 @@
   function renderFavoritesView() {
     if (
       state.favoritesErrorObj &&
-      !state.favoritesLoaded &&
       (state.favoritesErrorObj.status === 401 ||
+        state.favoritesErrorObj.code === "LIBRARY_OPAC_LOGIN_REQUIRED" ||
         state.favoritesErrorObj.code === "EPORTAL_LOGIN_REQUIRED")
     ) {
+      if (state.favoritesErrorObj.code === "LIBRARY_OPAC_LOGIN_REQUIRED") {
+        return renderOpacLoginCard({
+          heading: "登入館藏查詢系統 (OPAC)",
+          noticeText:
+            "目前學校圖書館暫停 ePortal 自動登入，請輸入館藏查詢帳號與密碼（帳號為學號／身分證字號，預設密碼為身分證後四碼）以存取我的清單。",
+          onSuccess: async () => {
+            await Promise.all([
+              loadFavorites({ force: true }),
+              loadOverview({ force: true }),
+            ]);
+          },
+        });
+      }
       return renderAuthOrFatalError(state.favoritesErrorObj);
     }
 
@@ -3263,7 +3427,19 @@
     );
 
     let panelContent;
-    if (data?.sectionErrors?.opac) {
+    if (data?.sectionErrors?.opacCode === "LIBRARY_OPAC_LOGIN_REQUIRED") {
+      panelContent = renderOpacLoginCard({
+        heading: "登入館藏查詢系統 (OPAC)",
+        noticeText:
+          "目前學校圖書館暫停 ePortal 自動登入，請輸入館藏查詢帳號與密碼（帳號為學號／身分證字號，預設密碼為身分證後四碼）以檢視借閱帳戶與線上續借。",
+        onSuccess: async () => {
+          await Promise.all([
+            loadOverview({ force: true }),
+            loadFavorites({ force: true }),
+          ]);
+        },
+      });
+    } else if (data?.sectionErrors?.opac) {
       panelContent = h(
         "div",
         { class: "notice danger", style: "margin-top:16px" },

@@ -791,6 +791,10 @@ export function createLibraryMockHandler() {
   return async (method, url, body) => {
     const p = url.pathname;
 
+    if (p === "/api/library/opac/login" && method === "POST") {
+      return { status: 200, body: { ok: true } };
+    }
+
     if (p === "/api/library/opac/mylists" && method === "GET") {
       return { status: 200, body: buildDemoMyListsResponse(url.searchParams.get("listId") || "") };
     }

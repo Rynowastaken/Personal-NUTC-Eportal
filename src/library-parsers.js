@@ -1120,8 +1120,13 @@ export function parseOpacAccount(html = "") {
     ),
   );
 
+  const loginRequired =
+    !/checkoutsTab|holdsTab|您的狀態|借閱\s*總計/i.test(source) &&
+    /id=(["'])loginPageForm\1/i.test(source);
+
   return {
-    status: status || "OK",
+    loginRequired,
+    status: status || (loginRequired ? "UNAUTHENTICATED" : "OK"),
     checkoutsCount: Math.max(checkoutsSummaryCount, checkouts.length),
     holdsCount: Math.max(holdsSummaryCount, holds.length),
     finesTotal,
@@ -1708,5 +1713,59 @@ export function parseOpacMyLists(html = "", { fallbackListId = "0" } = {}) {
       createListForm,
       deleteListsForm,
     },
+  };
+}
+
+/**
+ * Extract `#loginPageForm` Tapestry tokens and field names for direct OPAC patron login.
+ */
+export function parseOpacLoginForm(html = "") {
+  const source = String(html || "");
+  const formHtml = firstMatch(
+    source,
+    /<form\b[^>]*id=(["'])loginPageForm\1[\s\S]*?<\/form>/i,
+    0,
+  );
+  if (!formHtml) return null;
+  const meta = parseFormTagMeta(formHtml);
+  if (!meta?.actionPath || !meta?.formData) return null;
+
+  const callbackField =
+    firstMatch(
+      formHtml,
+      /<input\b[^>]*class=(["'])[^"']*\bcallback\b[^"']*\1[^>]*name=(["'])([^"']*)\2/i,
+      3,
+    ) || "textfield";
+  const openTabField =
+    firstMatch(
+      formHtml,
+      /<input\b[^>]*class=(["'])[^"']*\bopenTab\b[^"']*\1[^>]*name=(["'])([^"']*)\2/i,
+      3,
+    ) || "textfield_0";
+  const hiddenVal =
+    decodeHtmlEntities(
+      firstMatch(
+        formHtml,
+        /<input\b[^>]*name=(["'])hidden\1[^>]*value=(["'])([^"']*)\2/i,
+        3,
+      ) ||
+        firstMatch(
+          formHtml,
+          /<input\b[^>]*value=(["'])([^"']*)\1[^>]*name=(["'])hidden\3/i,
+          2,
+        ),
+    ) || "SYMWS";
+  const zoneId =
+    firstMatch(
+      source,
+      /"linkId"\s*:\s*"loginPageForm"[^}]*?"zoneId"\s*:\s*"([^"]+)"/i,
+    ) || "loginFormZone";
+
+  return {
+    ...meta,
+    callbackField,
+    openTabField,
+    hiddenVal,
+    zoneId,
   };
 }

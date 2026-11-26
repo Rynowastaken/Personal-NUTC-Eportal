@@ -22,6 +22,7 @@ import {
   parseOpacItemDetail,
   parseOpacLookupTitleInfoUrl,
   parseOpacAccount,
+  parseOpacLoginForm,
   parseOpacMyLists,
   parseCarrelForm,
   parseCarrelCalendar,
@@ -618,4 +619,37 @@ test("parseOpacMyLists extracts saved/temp lists, items with positional bitmask 
   assert.equal(parsed.forms.myListForm.formData, "FD_ITEMS");
   assert.equal(parsed.forms.createListForm.formData, "FD_CREATE");
   assert.equal(parsed.forms.deleteListsForm.formData, "FD_LISTS");
+});
+
+test("parseOpacAccount flags loginRequired and parseOpacLoginForm extracts #loginPageForm fields", () => {
+  const loginHtml = `
+    <div id="loginFormZone" class="loginForm t-zone">
+      <form id="loginPageForm" method="post" action="/client/zh_TW/NUTC/search/mylists.template.patronloginform.loginpageform/true?">
+        <input type="hidden" name="t:formdata" value="FD_OPAC_LOGIN" />
+        <input id="textfield" name="textfield" type="text" value="" />
+        <input id="textfield_0" name="textfield_0" type="text" value="" />
+        <input id="hidden" name="hidden" type="hidden" value="SYMWS" />
+        <input id="j_username" name="j_username" type="text" />
+        <input id="j_password" name="j_password" type="password" />
+        <input id="submit_0" name="submit_0" type="submit" value="登入" />
+      </form>
+    </div>
+  `;
+
+  const unauthAcct = parseOpacAccount(loginHtml);
+  assert.equal(unauthAcct.loginRequired, true);
+  assert.equal(unauthAcct.status, "UNAUTHENTICATED");
+
+  const form = parseOpacLoginForm(loginHtml);
+  assert.equal(
+    form.actionPath,
+    "/client/zh_TW/NUTC/search/mylists.template.patronloginform.loginpageform/true?",
+  );
+  assert.equal(form.formData, "FD_OPAC_LOGIN");
+  assert.equal(form.callbackField, "textfield");
+  assert.equal(form.openTabField, "textfield_0");
+  assert.equal(form.hiddenVal, "SYMWS");
+  assert.equal(form.zoneId, "loginFormZone");
+  assert.equal(form.submitName, "submit_0");
+  assert.equal(form.submitClientId, "submit_0");
 });

@@ -675,6 +675,13 @@ button.row:first-child { border-top: 0; }
 .error h1 { font-size: 22px; margin: 10px 0 6px; }
 .error p { margin: 0 0 18px; color: var(--muted); }
 .error .actions { justify-content: center; margin-top: 0; }
+.opac-login-card { max-width: 460px; margin: 32px auto; padding: 24px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); display: grid; gap: 14px; }
+.opac-login-card .opac-login-head { display: grid; gap: 6px; text-align: center; justify-items: center; }
+.opac-login-card .opac-login-head .i { width: 28px; height: 28px; color: var(--primary); }
+.opac-login-card .opac-login-head h1,
+.opac-login-card .opac-login-head h2 { margin: 4px 0 0; font-size: 20px; }
+.opac-login-card .opac-login-head p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.opac-login-form { display: grid; gap: 12px; text-align: left; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
 .notice { display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1.5; }
 .notice .i { width: 16px; height: 16px; margin-top: 2px; color: var(--honey); flex: none; }

@@ -19,6 +19,7 @@ import {
   parseLibraryPortalLinks,
   parseOpacAccount,
   parseOpacItemDetail,
+  parseOpacLoginForm,
   parseOpacLookupTitleInfoUrl,
   parseOpacMyLists,
   parseOpacSearchResults,
@@ -574,6 +575,9 @@ function needsLibraryRelogin(finalUrl, html = "") {
 }
 
 async function captureOpacCookiesViaPlaywright(opacSsoUrl) {
+  if (!opacSsoUrl || /maintain\.html/i.test(opacSsoUrl)) {
+    return { ok: false, html: "" };
+  }
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
@@ -595,21 +599,23 @@ async function captureOpacCookiesViaPlaywright(opacSsoUrl) {
         c.domain &&
         (c.domain.includes("sirsidynix.net") || c.domain.includes("nutc.edu.tw")),
     );
-    const now = Date.now();
-    jar = jar.filter((c) => !c.domain.includes("sirsidynix.net"));
-    for (const c of filtered) {
-      const domain = c.domain.replace(/^\./, "").toLowerCase();
-      jar.push({
-        name: c.name,
-        value: c.value,
-        domain,
-        hostOnly: !c.domain.startsWith("."),
-        path: c.path || "/",
-        expires: Number.isFinite(c.expires) && c.expires > 0 ? c.expires * 1000 : null,
-      });
-    }
     const acctHtml = await page.content().catch(() => "");
-    return { ok: /您的狀態|借閱\s*總計|checkoutsTab/i.test(acctHtml), html: acctHtml };
+    const acctOk = /您的狀態|借閱\s*總計|checkoutsTab/i.test(acctHtml);
+    if (acctOk || !hasHostCookies("ntit.ent.sirsidynix.net")) {
+      jar = jar.filter((c) => !c.domain.includes("sirsidynix.net"));
+      for (const c of filtered) {
+        const domain = c.domain.replace(/^\./, "").toLowerCase();
+        jar.push({
+          name: c.name,
+          value: c.value,
+          domain,
+          hostOnly: !c.domain.startsWith("."),
+          path: c.path || "/",
+          expires: Number.isFinite(c.expires) && c.expires > 0 ? c.expires * 1000 : null,
+        });
+      }
+    }
+    return { ok: acctOk, html: acctHtml };
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
@@ -653,15 +659,22 @@ async function establishLibrarySession({ needOpac = false } = {}) {
     }
   }
 
-  if (needOpac && parsedLinks.opac) {
+  if (needOpac && parsedLinks.opac && !/maintain\.html/i.test(parsedLinks.opac)) {
     await captureOpacCookiesViaPlaywright(parsedLinks.opac);
   }
 
   await persistLibrarySessionToDisk().catch(() => {});
 }
 
-async function ensureLibrarySession({ needOpac = false, forceRefresh = false } = {}) {
+async function ensureLibrarySession({
+  needOpac = false,
+  forceRefresh = false,
+  opacOnly = false,
+} = {}) {
   await loadLibrarySessionFromDisk();
+  if (opacOnly && !forceRefresh && hasHostCookies("ntit.ent.sirsidynix.net")) {
+    return;
+  }
   const hasLib = hasHostCookies("library.nutc.edu.tw");
   const hasOpac = !needOpac || hasHostCookies("ntit.ent.sirsidynix.net");
 
@@ -681,9 +694,15 @@ async function ensureLibrarySession({ needOpac = false, forceRefresh = false } =
 
 async function fetchAuthenticatedLibraryPage(
   url,
-  { method = "GET", headers = {}, body = undefined, needOpac = false } = {},
+  {
+    method = "GET",
+    headers = {},
+    body = undefined,
+    needOpac = false,
+    opacOnly = false,
+  } = {},
 ) {
-  await ensureLibrarySession({ needOpac });
+  await ensureLibrarySession({ needOpac, opacOnly });
   let first = await httpRequestWithCookies(url, {
     method,
     headers,
@@ -2500,6 +2519,11 @@ export async function getLibraryOverview({ force = false } = {}) {
     };
     if (opacResult.status === "fulfilled") {
       account = parseOpacAccount(opacResult.value.html);
+      if (account.loginRequired) {
+        sectionErrors.opacCode = "LIBRARY_OPAC_LOGIN_REQUIRED";
+        sectionErrors.opac =
+          "尚未登入館藏查詢系統 (OPAC)。目前學校圖書館暫停 ePortal 自動登入，請直接輸入 OPAC 帳號與密碼。";
+      }
     } else {
       sectionErrors.opac =
         opacResult.reason?.message || "無法載入館藏個人借閱帳戶。";
@@ -2594,6 +2618,13 @@ export async function renewOpacCheckouts(itemIds = []) {
     { needOpac: true },
   );
   const parsed = parseOpacAccount(html);
+  if (parsed.loginRequired) {
+    throw libraryError(
+      "請先登入館藏查詢系統 (OPAC) 以進行續借。",
+      "LIBRARY_OPAC_LOGIN_REQUIRED",
+      401,
+    );
+  }
   const targetLoans = parsed.checkouts.filter(
     (c) => cleanIds.includes(c.id) && c.renewable && c.renewFieldName,
   );
@@ -2710,6 +2741,7 @@ async function fetchAuthenticatedOpacMyLists(listId = "") {
 
   let { html } = await fetchAuthenticatedLibraryPage(targetUrl, {
     needOpac: true,
+    opacOnly: true,
   });
   let parsed = parseOpacMyLists(html, { fallbackListId: cleanId || "0" });
 
@@ -2723,14 +2755,142 @@ async function fetchAuthenticatedOpacMyLists(listId = "") {
     parsed = parseOpacMyLists(html, { fallbackListId: cleanId || "0" });
     if (parsed.loginRequired) {
       throw libraryError(
-        "OPAC 個人清單工作階段需要重新登入 Server ePortal。",
-        "EPORTAL_LOGIN_REQUIRED",
+        "尚未登入館藏查詢系統 (OPAC)。目前學校圖書館暫停 ePortal 自動登入，請直接登入 OPAC。",
+        "LIBRARY_OPAC_LOGIN_REQUIRED",
         401,
       );
     }
   }
 
   return parsed;
+}
+
+/**
+ * Sign in directly to NUTC's SirsiDynix Enterprise OPAC using patron credentials
+ * (`j_username` + `j_password`). Stores only the resulting session cookies in `jar`.
+ */
+export async function loginOpacPatron({ username = "", password = "" } = {}) {
+  const cleanUser = String(username || "").trim();
+  const cleanPass = String(password || "");
+  if (!cleanUser || !cleanPass) {
+    throw libraryError("請輸入館藏查詢帳號與密碼。", "LIBRARY_INVALID_PARAM", 400);
+  }
+
+  await loadLibrarySessionFromDisk();
+  const initialRes = await httpRequestWithCookies(`${OPAC_BASE}/search/mylists?`, {
+    maxRedirects: 8,
+    timeoutMs: 18_000,
+  });
+  const initialHtml = await initialRes.response.text();
+  if (!parseOpacMyLists(initialHtml, { fallbackListId: "0" }).loginRequired) {
+    invalidateLibraryDataCaches();
+    await persistLibrarySessionToDisk().catch(() => {});
+    return { ok: true, alreadySignedIn: true };
+  }
+
+  const form = parseOpacLoginForm(initialHtml);
+  if (!form?.actionPath || !form?.formData) {
+    throw libraryError(
+      "無法讀取官方館藏登入表單，請稍後再試。",
+      "LIBRARY_OPAC_UNAVAILABLE",
+      502,
+    );
+  }
+
+  const actionUrl = new URL(form.actionPath, OPAC_ORIGIN).toString();
+  const formParams = new URLSearchParams({
+    "t:formdata": form.formData,
+    "t:submit": JSON.stringify([
+      form.submitClientId || form.submitName || "submit_0",
+      form.submitName || "submit_0",
+    ]),
+    [form.callbackField || "textfield"]: "",
+    [form.openTabField || "textfield_0"]: "",
+    hidden: form.hiddenVal || "SYMWS",
+    j_username: cleanUser,
+    j_password: cleanPass,
+    "t:zoneid": form.zoneId || "loginFormZone",
+  });
+
+  const postRes = await httpRequestWithCookies(actionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+      Accept: "application/json, text/javascript, */*; q=0.01",
+      Origin: OPAC_ORIGIN,
+      Referer: `${OPAC_BASE}/search/mylists?`,
+    },
+    body: formParams.toString(),
+    maxRedirects: 8,
+    timeoutMs: 18_000,
+  });
+  const postText = await postRes.response.text();
+
+  let parsedJson = null;
+  try {
+    parsedJson = JSON.parse(postText);
+  } catch {
+    parsedJson = null;
+  }
+
+  const evalSources = [
+    ...(Array.isArray(parsedJson?.inits)
+      ? parsedJson.inits.flatMap((entry) =>
+          typeof entry === "string"
+            ? [entry]
+            : Array.isArray(entry?.evalScript)
+              ? entry.evalScript
+              : [],
+        )
+      : []),
+    postText,
+  ];
+  for (const src of evalSources) {
+    const loginErrorMatch = String(src || "").match(
+      /PatronLogin\.showLoginError\(\s*true\s*,\s*(['"])((?:\\.|(?!\1).)*)\1\s*\)/,
+    );
+    if (loginErrorMatch) {
+      const rawMsg = loginErrorMatch[2]
+        .replace(/\\\\/g, "\\")
+        .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+          String.fromCharCode(parseInt(hex, 16)),
+        )
+        .replace(/\\'/g, "'")
+        .replace(/\\"/g, '"');
+      throw libraryError(
+        rawMsg || "館藏查詢系統帳號或密碼錯誤，請再試一次。",
+        "LIBRARY_OPAC_AUTH_FAILED",
+        401,
+      );
+    }
+  }
+  if (parsedJson?.redirectURL) {
+    const redirectUrl = new URL(parsedJson.redirectURL, OPAC_ORIGIN);
+    if (redirectUrl.origin === OPAC_ORIGIN) {
+      await httpRequestWithCookies(redirectUrl.toString(), {
+        maxRedirects: 8,
+        timeoutMs: 18_000,
+      }).catch(() => {});
+    }
+  }
+
+  const verifyRes = await httpRequestWithCookies(`${OPAC_BASE}/search/mylists?`, {
+    maxRedirects: 8,
+    timeoutMs: 18_000,
+  });
+  const verifyHtml = await verifyRes.response.text();
+  if (parseOpacMyLists(verifyHtml, { fallbackListId: "0" }).loginRequired) {
+    throw libraryError(
+      "館藏查詢系統登入失敗，請確認帳號與密碼是否正確。",
+      "LIBRARY_OPAC_AUTH_FAILED",
+      401,
+    );
+  }
+
+  invalidateLibraryDataCaches();
+  await persistLibrarySessionToDisk().catch(() => {});
+  return { ok: true };
 }
 
 /**
@@ -2764,7 +2924,7 @@ export async function addOpacMyListItem({
   const cleanId = normalizeOpacTitleId(titleId);
   const cleanListId = normalizeOpacListId(listId || "0") || "0";
 
-  await ensureLibrarySession({ needOpac: true });
+  await ensureLibrarySession({ needOpac: true, opacOnly: true });
   const encodedEnt = `ent:$002f$002fSD_ILS$002f0$002fSD_ILS:${cleanId}`;
   const dParam = encodeURIComponent(`ent://SD_ILS/0/SD_ILS:${cleanId}~~0`).replace(
     /~/g,
@@ -2798,8 +2958,8 @@ export async function addOpacMyListItem({
 
   if (reply?.login) {
     throw libraryError(
-      "請重新登入 Server ePortal 以新增至我的清單。",
-      "EPORTAL_LOGIN_REQUIRED",
+      "請先登入館藏查詢系統 (OPAC) 以新增至我的清單。",
+      "LIBRARY_OPAC_LOGIN_REQUIRED",
       401,
     );
   }
@@ -3407,7 +3567,31 @@ export async function handleLibraryRequest(
     opacMyListTransferFn = transferOpacMyListItems,
     opacMyListCreateFn = createOrSaveOpacMyList,
     opacMyListDeleteFn = deleteOpacMyList,
+    opacLoginFn = loginOpacPatron,
   } = deps;
+
+  if (req.method === "POST" && url.pathname === "/api/library/opac/login") {
+    try {
+      const body = await readJsonBody(req);
+      sendJson(
+        res,
+        200,
+        await opacLoginFn({
+          username: body?.username || "",
+          password: body?.password || "",
+        }),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to sign in to OPAC.",
+        "LIBRARY_OPAC_AUTH_FAILED",
+      );
+    }
+    return true;
+  }
 
   if (req.method === "GET" && url.pathname === "/api/library/opac/mylists") {
     try {

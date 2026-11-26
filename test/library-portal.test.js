@@ -7,8 +7,10 @@ import {
   fetchLibraryCover,
   getLibraryCatalogAvailability,
   getLibraryCatalogItem,
+  getOpacMyLists,
   handleLibraryRequest,
   isAllowedCoverUrl,
+  loginOpacPatron,
   prefetchCatalogCovers,
   searchLibraryCatalog,
 } from "../src/library-portal.js";
@@ -1163,4 +1165,133 @@ test("handleLibraryRequest dispatches OPAC My Lists proxy routes", async () => {
     ["transfer", { titleIds: ["858267"], fromListId: "42", destListId: "0", mode: "COPY" }],
     ["deleteList", { listId: "42" }],
   ]);
+});
+
+test("loginOpacPatron handles showLoginError and persists OPAC session cookie on success", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+  let signedIn = false;
+
+  const unauthHtml = `
+    <a id="listLoginLink" href="#">登入</a>
+    <div id="loginFormZone" class="loginForm t-zone">
+      <form id="loginPageForm" method="post" action="/client/zh_TW/NUTC/search/mylists.template.patronloginform.loginpageform/true?">
+        <input type="hidden" name="t:formdata" value="FD_LOGIN" />
+        <input id="textfield" name="textfield" type="text" />
+        <input id="textfield_0" name="textfield_0" type="text" />
+        <input id="hidden" name="hidden" type="hidden" value="SYMWS" />
+        <input id="j_username" name="j_username" type="text" />
+        <input id="j_password" name="j_password" type="password" />
+        <input id="submit_0" name="submit_0" type="submit" value="登入" />
+      </form>
+    </div>
+  `;
+  const authHtml = `
+    <ul id="myLists_lists">
+      <li id="lists_li:0" class="selected">
+        <a class="myListLink" href="/client/zh_TW/NUTC/search/mylists/0?">臨時清單 (0)</a>
+      </li>
+    </ul>
+    <div id="myListTitle"><span class="myListName">臨時清單</span></div>
+  `;
+
+  globalThis.fetch = async (input, init = {}) => {
+    const u = String(input);
+    const cookieHdr = init?.headers?.Cookie || "";
+    if (u.includes("mylists.template.patronloginform.loginpageform")) {
+      const bodyStr = String(init.body || "");
+      const params = new URLSearchParams(bodyStr);
+      assert.equal(params.get("t:formdata"), "FD_LOGIN");
+      assert.equal(params.get("hidden"), "SYMWS");
+      if (params.get("j_password") !== "goodpass") {
+        return new Response(
+          JSON.stringify({
+            inits: [
+              "PatronLogin.showLoginError(true, '\\u767B\\u5165\\u5931\\u6557\\u3002\\u518D\\u8A66\\u4E00\\u6B21\\u3002');",
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      signedIn = true;
+      return new Response(
+        JSON.stringify({ zones: {} }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "JSESSIONID=OPAC_SESSION_OK; Path=/; HttpOnly",
+          },
+        },
+      );
+    }
+    if (u.includes("/search/mylists")) {
+      const hasSession = signedIn && cookieHdr.includes("JSESSIONID=OPAC_SESSION_OK");
+      return new Response(hasSession ? authHtml : unauthHtml, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+    return new Response("", { status: 404 });
+  };
+
+  try {
+    await assert.rejects(
+      () => loginOpacPatron({ username: "S1411501046", password: "wrong" }),
+      (err) =>
+        err?.code === "LIBRARY_OPAC_AUTH_FAILED" &&
+        err?.statusCode === 401 &&
+        err?.message === "登入失敗。再試一次。",
+    );
+
+    const ok = await loginOpacPatron({
+      username: "S1411501046",
+      password: "goodpass",
+    });
+    assert.deepEqual(ok, { ok: true });
+
+    const lists = await getOpacMyLists({ force: true });
+    assert.equal(lists.activeListName, "臨時清單");
+    assert.equal(lists.lists.length, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("handleLibraryRequest dispatches POST /api/library/opac/login and UI exposes #opacLoginForm", async () => {
+  const [js, handlers] = await Promise.all([
+    read("../public/library.js"),
+    Promise.resolve({
+      sendJson(r, code, payload) {
+        r.statusCode = code;
+        r.body = JSON.stringify(payload);
+      },
+      sendError(r, code, message, errCode) {
+        r.statusCode = code;
+        r.body = JSON.stringify({ error: message, code: errCode });
+      },
+      readJsonBody: async (req) => req._body || {},
+    }),
+  ]);
+  assert.match(js, /id:\s*"opacLoginForm"/);
+  assert.match(js, /LIBRARY_OPAC_LOGIN_REQUIRED/);
+
+  let received = null;
+  const r = makeMockRes();
+  const handled = await handleLibraryRequest(
+    { method: "POST", _body: { username: "S123", password: "456" } },
+    r,
+    new URL("http://localhost/api/library/opac/login"),
+    handlers,
+    {
+      opacLoginFn: async (creds) => {
+        received = creds;
+        return { ok: true };
+      },
+    },
+  );
+  assert.equal(handled, true);
+  assert.equal(r.statusCode, 200);
+  assert.deepEqual(received, { username: "S123", password: "456" });
 });
