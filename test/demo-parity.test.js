@@ -95,7 +95,7 @@ test("demo build bundles OpenCC locally and publishes build outputs only", () =>
   assert.doesNotMatch(workflow, /path: \.\/?$/m);
 });
 
-test("settings dialogs use expandable frosted cards, dual-tone orbs, and styled switches", async () => {
+test("settings dialogs use expandable frosted cards, dual-tone swatches, and styled switches", async () => {
   const [portalHtml, portalApp, portalCss] = await Promise.all([
     read("public/index.html"),
     read("public/app.js"),
@@ -111,8 +111,9 @@ test("settings dialogs use expandable frosted cards, dual-tone orbs, and styled 
     assert.ok(doc.includes(`id="${summaryNameId}"`), `Missing summary badge ${summaryNameId}`);
     assert.match(doc, /role="switch"/);
   }
-  assert.match(portalApp, /data-scheme-orb|dataset\.schemeOrb/);
-  assert.match(features, /data-scheme-orb|dataset\.schemeOrb/);
+  assert.match(portalHtml, /rounded-\[8px\]/);
+  assert.match(portalApp, /data-scheme-swatch|dataset\.schemeSwatch/);
+  assert.match(features, /data-scheme-swatch|dataset\.schemeSwatch/);
   assert.match(portalCss, /\.settings-card::details-content/);
   assert.match(portalCss, /\.settings-range::-webkit-slider-thumb/);
   assert.match(portalCss, /\.settings-range::-moz-range-thumb/);

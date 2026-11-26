@@ -98,6 +98,9 @@ const themeDialogClose = document.querySelector("#themeDialogClose");
 const settingsCards = Array.from(themeDialog.querySelectorAll("details.settings-card"));
 const settingsCardTheme = document.querySelector("#settingsCardTheme");
 const settingsCardFeatures = document.querySelector("#settingsCardFeatures");
+const settingsIconTheme = document.querySelector("#settingsIconTheme");
+const settingsIconBackground = document.querySelector("#settingsIconBackground");
+const settingsIconFeatures = document.querySelector("#settingsIconFeatures");
 const settingsSummaryThemeDot = document.querySelector("#settingsSummaryThemeDot");
 const settingsSummaryThemeName = document.querySelector("#settingsSummaryThemeName");
 const settingsSummaryBackground = document.querySelector("#settingsSummaryBackground");
@@ -555,7 +558,12 @@ function syncSettingsSummaries() {
     }
     if (settingsSummaryThemeDot && palette.length >= 2) {
       settingsSummaryThemeDot.style.background =
-        `linear-gradient(135deg, ${palette[0]} 50%, ${palette[1]} 50%)`;
+        `linear-gradient(180deg, ${palette[0]} 50%, ${palette[1]} 50%)`;
+    }
+    if (palette.length >= 3) {
+      settingsIconTheme?.style.setProperty("--card-chip-accent", legibleAccent(palette[0]));
+      settingsIconBackground?.style.setProperty("--card-chip-accent", legibleAccent(palette[1] || palette[0]));
+      settingsIconFeatures?.style.setProperty("--card-chip-accent", legibleAccent(palette[2] || palette[0]));
     }
     if (settingsSummaryBackground) {
       settingsSummaryBackground.textContent =
@@ -570,15 +578,15 @@ function syncSettingsSummaries() {
 }
 
 function syncSchemeButtonSwatches(button) {
-  const orb = button.querySelector("[data-scheme-orb]");
-  if (!orb || !stagedThemeSettings) return;
+  const swatch = button.querySelector("[data-scheme-swatch]");
+  if (!swatch || !stagedThemeSettings) return;
   const schemePalette = window.NutcTheme.previewSettings({
     ...stagedThemeSettings,
     colorScheme: button.dataset.themeScheme,
   });
   const primaryColor = schemePalette[0] || "";
   const secondaryColor = schemePalette[1] || schemePalette[2] || primaryColor;
-  orb.style.background = `linear-gradient(135deg, ${primaryColor} 50%, ${secondaryColor} 50%)`;
+  swatch.style.background = `linear-gradient(180deg, ${primaryColor} 50%, ${secondaryColor} 50%)`;
 }
 
 function renderThemePreview({ animate = false } = {}) {
@@ -650,17 +658,18 @@ function renderThemeSchemes() {
     button.type = "button";
     button.role = "radio";
     button.dataset.themeScheme = scheme.id;
-    button.className = "theme-scheme-pill";
+    button.className = "theme-scheme-tile";
 
-    const orb = document.createElement("span");
-    orb.className = "theme-scheme-orb";
-    orb.dataset.schemeOrb = scheme.id;
-    orb.setAttribute("aria-hidden", "true");
+    const swatch = document.createElement("span");
+    swatch.className = "theme-scheme-swatch";
+    swatch.dataset.schemeSwatch = scheme.id;
+    swatch.setAttribute("aria-hidden", "true");
 
     const label = document.createElement("span");
+    label.className = "truncate";
     label.textContent = scheme.name;
 
-    button.append(orb, label);
+    button.append(swatch, label);
     button.addEventListener("click", () => {
       stagedThemeSettings.colorScheme = scheme.id;
       renderThemePreview({ animate: true });

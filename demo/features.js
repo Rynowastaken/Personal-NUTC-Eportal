@@ -64,6 +64,12 @@ import OpenCC from "opencc-js";
     input.style.setProperty("--attr-max", input.max || "100");
     input.style.setProperty("--control-value", input.value || "0");
   }
+  function legibleAccent(color) {
+    const hslMatch = /^hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)$/i.exec(color || "");
+    if (!hslMatch) return color;
+    const lightness = Number(hslMatch[3]);
+    return lightness < 68 ? `hsl(${hslMatch[1]} ${hslMatch[2]}% 68%)` : color;
+  }
   function schemePalette(scheme, colorfulness, themeBrightness) {
     const baseSat = scheme[0] === "monochrome" ? 0
       : scheme[0] === "neutral" ? 22
@@ -98,18 +104,24 @@ import OpenCC from "opencc-js";
     for (const item of $("demoColorSchemeOptions").children) {
       item.setAttribute("aria-checked", String(item.dataset.scheme === state.scheme));
       const itemScheme = schemes.find(entry => entry[0] === item.dataset.scheme);
-      const orb = item.querySelector("[data-scheme-orb]");
-      if (itemScheme && orb) {
+      const swatch = item.querySelector("[data-scheme-swatch]");
+      if (itemScheme && swatch) {
         const { colors } = schemePalette(itemScheme, state.colorfulness, state.themeBrightness);
-        orb.style.background = "linear-gradient(135deg, " + colors[0] + " 50%, " + (colors[1] || colors[0]) + " 50%)";
+        swatch.style.background = "linear-gradient(180deg, " + colors[0] + " 50%, " + (colors[1] || colors[0]) + " 50%)";
       }
     }
     const summaryDot = $("demoSummaryThemeDot");
     const summaryName = $("demoSummaryThemeName");
     if (summaryName) summaryName.textContent = scheme[1];
     if (summaryDot) {
-      summaryDot.style.background = "linear-gradient(135deg, " + generated.colors[0] + " 50%, " + (generated.colors[1] || generated.colors[0]) + " 50%)";
+      summaryDot.style.background = "linear-gradient(180deg, " + generated.colors[0] + " 50%, " + (generated.colors[1] || generated.colors[0]) + " 50%)";
     }
+    const themeIcon = $("demoIconTheme");
+    const bgIcon = $("demoIconBackground");
+    const featuresIcon = $("demoIconFeatures");
+    if (themeIcon) themeIcon.style.setProperty("--card-chip-accent", legibleAccent(generated.colors[0]));
+    if (bgIcon) bgIcon.style.setProperty("--card-chip-accent", legibleAccent(generated.colors[1] || generated.colors[0]));
+    if (featuresIcon) featuresIcon.style.setProperty("--card-chip-accent", legibleAccent(generated.colors[2] || generated.colors[0]));
     const preview = $("demoColorPreview");
     preview.replaceChildren();
     for (const color of generated.colors) {
@@ -266,14 +278,14 @@ import OpenCC from "opencc-js";
     button.type = "button"; button.className = "scheme-chip";
     button.dataset.scheme = id;
     button.setAttribute("role","radio");
-    const orb = document.createElement("span");
-    orb.className = "scheme-orb";
-    orb.dataset.schemeOrb = id;
-    orb.setAttribute("aria-hidden", "true");
+    const swatch = document.createElement("span");
+    swatch.className = "scheme-swatch";
+    swatch.dataset.schemeSwatch = id;
+    swatch.setAttribute("aria-hidden", "true");
     const label = document.createElement("span");
     label.className = "scheme-chip-label";
     label.textContent = name;
-    button.append(orb, label);
+    button.append(swatch, label);
     button.addEventListener("click", () => { state.scheme = id; renderAppearance(); persist(); });
     $("demoColorSchemeOptions").append(button);
   }

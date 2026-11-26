@@ -183,10 +183,7 @@
   <dialog id="settingsDialog" class="modal modal-settings" closedby="any" aria-labelledby="settingsTitle">
     <div class="settings-modal-header">
       <div class="modal-head">
-        <div class="settings-title-wrap">
-          <span class="settings-header-badge" aria-hidden="true"><svg class="icon"><use href="#i-settings"></use></svg></span>
-          <div class="modal-heading"><h2 id="settingsTitle">網站設定</h2></div>
-        </div>
+        <div class="modal-heading"><h2 id="settingsTitle">網站設定</h2></div>
         <button class="close-button" type="button" data-close="settingsDialog" aria-label="關閉"><svg class="icon"><use href="#i-close"></use></svg></button>
       </div>
     </div>
@@ -195,19 +192,19 @@
       <details id="demoCardTheme" class="settings-card" open>
         <summary class="settings-card-trigger">
           <span class="settings-card-lead">
-            <span class="settings-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-palette"></use></svg></span>
+            <span id="demoIconTheme" class="settings-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-palette"></use></svg></span>
             <span class="settings-card-title">色彩主題</span>
           </span>
           <span class="settings-card-meta">
             <span class="settings-card-summary">
-              <span id="demoSummaryThemeDot" class="scheme-orb scheme-orb-sm" aria-hidden="true"></span>
+              <span id="demoSummaryThemeDot" class="scheme-swatch scheme-swatch-sm" aria-hidden="true"></span>
               <span id="demoSummaryThemeName">Tonal Spot</span>
             </span>
             <svg class="settings-card-chevron icon" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
           </span>
         </summary>
         <div class="settings-card-body">
-          <div id="demoColorSchemeOptions" class="color-scheme-pills" role="radiogroup" aria-label="色彩主題"></div>
+          <div id="demoColorSchemeOptions" class="color-scheme-grid" role="radiogroup" aria-label="色彩主題"></div>
           <div id="demoColorPreview" class="color-preview" aria-label="主題配色預覽"></div>
           <div class="settings-slider-grid settings-group">
             <label class="settings-slider-field" for="demoColorfulness">
@@ -225,7 +222,7 @@
       <details id="demoCardBackground" class="settings-card">
         <summary class="settings-card-trigger">
           <span class="settings-card-lead">
-            <span class="settings-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-image"></use></svg></span>
+            <span id="demoIconBackground" class="settings-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-image"></use></svg></span>
             <span class="settings-card-title">背景圖片</span>
           </span>
           <span class="settings-card-meta">
@@ -265,7 +262,7 @@
       <details id="demoCardFeatures" class="settings-card">
         <summary class="settings-card-trigger">
           <span class="settings-card-lead">
-            <span class="settings-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-sparkles"></use></svg></span>
+            <span id="demoIconFeatures" class="settings-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-sparkles"></use></svg></span>
             <span class="settings-card-title">課表與語錄</span>
           </span>
           <span class="settings-card-meta">
@@ -318,7 +315,7 @@
       <p id="demoFeatureStatus" class="form-error" role="status" aria-live="polite"></p>
       <div class="settings-footer-actions">
         <button type="button" class="ghost-button" id="resetAppearance">恢復預設</button>
-        <button type="button" class="primary-button settings-apply-pill" data-close="settingsDialog">完成</button>
+        <button type="button" class="primary-button" data-close="settingsDialog">完成</button>
       </div>
     </div>
   </dialog>

@@ -582,7 +582,7 @@ dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
   height: 24px;
   width: 24px;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 4px;
   background: var(--primary-soft);
   color: var(--primary);
 }
@@ -615,12 +615,10 @@ dialog::backdrop {
 }
 
 .settings-sheet {
-  background: rgba(20, 16, 25, .78);
-  backdrop-filter: blur(26px) saturate(185%);
-  -webkit-backdrop-filter: blur(26px) saturate(185%);
-  box-shadow:
-    0 24px 64px rgba(0, 0, 0, .52),
-    inset 0 1px 0 rgba(255, 255, 255, .10);
+  background: rgba(14, 12, 16, .88);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .46);
 }
 
 .settings-scroll-body {
@@ -629,19 +627,20 @@ dialog::backdrop {
 }
 
 .settings-card {
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,.09);
-  background: rgba(255,255,255,.045);
-  transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease;
+  border-radius: var(--tile-radius, 6px);
+  border: 1px solid var(--glass-edge, rgba(255,255,255,.12));
+  background: var(--glass, rgba(18,15,22,.46));
+  box-shadow: none;
+  transition: background-color .16s ease, border-color .16s ease;
 }
 .settings-card:hover {
-  border-color: rgba(255,255,255,.14);
-  background: rgba(255,255,255,.068);
+  border-color: rgba(255,255,255,.24);
+  background: color-mix(in srgb, var(--foreground) 5%, var(--glass, rgba(18,15,22,.46)));
 }
 .settings-card[open] {
-  border-color: color-mix(in srgb, var(--primary) 36%, rgba(255,255,255,.12));
-  background: rgba(255,255,255,.072);
-  box-shadow: 0 8px 24px rgba(0,0,0,.22);
+  border-color: var(--primary-ring);
+  background: color-mix(in srgb, var(--primary) 6%, var(--glass, rgba(18,15,22,.46)));
+  box-shadow: none;
 }
 
 .settings-card-trigger {
@@ -655,7 +654,7 @@ dialog::backdrop {
   padding: 10px 14px;
   cursor: pointer;
   user-select: none;
-  border-radius: 8px;
+  border-radius: var(--tile-radius, 6px);
 }
 .settings-card-trigger::-webkit-details-marker {
   display: none;
@@ -668,22 +667,29 @@ dialog::backdrop {
 .settings-card-icon {
   display: grid;
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border-radius: 6px;
-  background: rgba(255,255,255,.07);
-  color: var(--muted);
-  transition: background-color .16s ease, color .16s ease, box-shadow .16s ease;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--card-chip-accent, rgba(255,255,255,.45)) 30%, transparent);
+  background: color-mix(in srgb, var(--card-chip-accent, rgba(255,255,255,.35)) 16%, transparent);
+  color: var(--card-chip-accent, var(--muted));
+  box-shadow: none;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
 }
-.settings-card[open] .settings-card-icon {
-  background: var(--primary-soft);
-  color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary-ring);
+.settings-card-icon--neutral {
+  border-color: rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color: var(--muted);
+}
+.settings-card[open] .settings-card-icon--neutral {
+  border-color: rgba(255,255,255,.24);
+  color: var(--foreground);
 }
 .settings-card-title {
-  font-size: .875rem;
-  font-weight: 600;
+  font-size: .9375rem;
+  font-weight: 400;
+  letter-spacing: -.015em;
   color: var(--foreground);
 }
 .settings-card-summary {
@@ -691,7 +697,7 @@ dialog::backdrop {
   align-items: center;
   gap: 6px;
   font-size: .75rem;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--muted);
 }
 .settings-card-chevron {
@@ -728,40 +734,57 @@ dialog::backdrop {
   border-top: 1px solid rgba(255,255,255,.08);
 }
 
-.theme-scheme-pill {
-  display: inline-flex;
+.theme-scheme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (max-width: 440px) {
+  .theme-scheme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.theme-scheme-tile {
+  display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.03);
   color: var(--muted);
   font-size: .75rem;
-  font-weight: 600;
+  font-weight: 500;
+  text-align: left;
   cursor: pointer;
   transition: background-color .15s ease, border-color .15s ease, color .15s ease;
 }
-.theme-scheme-pill:hover {
+.theme-scheme-tile:hover {
+  border-color: rgba(255,255,255,.22);
   background: rgba(255,255,255,.07);
   color: var(--foreground);
 }
-.theme-scheme-pill[aria-checked="true"] {
+.theme-scheme-tile[aria-checked="true"] {
   border-color: var(--primary-ring);
   background: var(--primary-soft);
   color: var(--foreground);
 }
-.theme-scheme-pill:focus-visible {
+.theme-scheme-tile:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-.theme-scheme-orb {
-  width: 14px;
+.theme-scheme-swatch {
+  width: 10px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: 2px;
+  border: 1px solid rgba(255,255,255,.22);
   flex: none;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.28);
+}
+.theme-scheme-swatch--sm {
+  width: 10px;
+  height: 10px;
 }
 
 .settings-row {
@@ -773,10 +796,10 @@ dialog::backdrop {
 }
 
 .settings-range {
-  --slider-track-size: 5px;
-  --slider-thumb-size: 15px;
-  --slider-track-radius: 999px;
-  --slider-thumb-radius: 50%;
+  --slider-track-size: 4px;
+  --slider-thumb-size: 14px;
+  --slider-track-radius: 2px;
+  --slider-thumb-radius: 3px;
   --slider-track-color: rgba(255,255,255,.16);
   --slider-fill-color: var(--primary);
   --slider-thumb-color: var(--primary);
@@ -787,7 +810,7 @@ dialog::backdrop {
   appearance: none;
   -webkit-appearance: none;
   inline-size: 100%;
-  block-size: 26px;
+  block-size: 24px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -810,14 +833,10 @@ dialog::backdrop {
   inline-size: var(--slider-thumb-size);
   block-size: var(--slider-thumb-size);
   margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
-  border: 2px solid rgba(14,12,16,.92);
+  border: 2px solid #141018;
   border-radius: var(--slider-thumb-radius);
   background: var(--slider-thumb-color);
-  box-shadow: 0 2px 6px rgba(0,0,0,.45);
-  transition: transform .14s ease;
-}
-.settings-range:hover::-webkit-slider-thumb {
-  transform: scale(1.1);
+  box-shadow: none;
 }
 .settings-range::-moz-range-track {
   block-size: var(--slider-track-size);
@@ -833,15 +852,15 @@ dialog::backdrop {
 .settings-range::-moz-range-thumb {
   inline-size: var(--slider-thumb-size);
   block-size: var(--slider-thumb-size);
-  border: 2px solid rgba(14,12,16,.92);
+  border: 2px solid #141018;
   border-radius: var(--slider-thumb-radius);
   background: var(--slider-thumb-color);
-  box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  box-shadow: none;
 }
 .settings-range:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 .settings-switch {
@@ -849,26 +868,26 @@ dialog::backdrop {
   -webkit-appearance: none;
   position: relative;
   flex: none;
-  width: 40px;
-  height: 22px;
+  width: 38px;
+  height: 20px;
   margin: 0;
-  border-radius: 999px;
+  border-radius: 4px;
   border: 1px solid rgba(255,255,255,.16);
-  background: rgba(255,255,255,.14);
+  background: rgba(255,255,255,.10);
   cursor: pointer;
-  transition: background-color .18s ease, border-color .18s ease, opacity .16s ease;
+  transition: background-color .16s ease, border-color .16s ease, opacity .16s ease;
 }
 .settings-switch::after {
   content: "";
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
   background: var(--foreground);
-  box-shadow: 0 1px 3px rgba(0,0,0,.38);
-  transition: transform .18s cubic-bezier(.22,1,.36,1), background-color .18s ease;
+  box-shadow: none;
+  transition: transform .16s cubic-bezier(.22,1,.36,1), background-color .16s ease;
 }
 .settings-switch:checked {
   background: var(--primary);
@@ -876,7 +895,7 @@ dialog::backdrop {
 }
 .settings-switch:checked::after {
   transform: translateX(18px);
-  background: var(--control-text, #141018);
+  background: var(--control-text, #17121b);
 }
 .settings-switch:disabled {
   opacity: .42;
@@ -884,7 +903,7 @@ dialog::backdrop {
 }
 .settings-switch:focus-visible {
   outline: 2px solid var(--primary);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 .settings-glass-button {
@@ -894,19 +913,19 @@ dialog::backdrop {
   gap: 8px;
   min-height: 38px;
   padding: 7px 14px;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(255,255,255,.08);
+  border-radius: 5px;
+  border: 1px solid var(--glass-edge, rgba(255,255,255,.12));
+  background: var(--glass, rgba(18,15,22,.46));
   color: var(--foreground);
   font-size: .8125rem;
-  font-weight: 600;
+  font-weight: 500;
+  box-shadow: none;
   cursor: pointer;
-  transition: transform .15s ease, background-color .16s ease, border-color .16s ease;
+  transition: background-color .16s ease, border-color .16s ease;
 }
 .settings-glass-button:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: rgba(255,255,255,.24);
-  background: rgba(255,255,255,.13);
+  background: color-mix(in srgb, var(--foreground) 10%, var(--glass, rgba(18,15,22,.46)));
 }
 .settings-glass-button:focus-visible {
   outline: 2px solid var(--primary);
@@ -924,25 +943,25 @@ dialog::backdrop {
   gap: 8px;
   min-height: 38px;
   padding: 7px 14px;
-  border-radius: 6px;
-  border: 1px solid rgba(244,160,165,.28);
-  background: rgba(244,160,165,.09);
-  color: #f6b8bc;
+  border-radius: 5px;
+  border: 1px solid rgba(240,113,120,.32);
+  background: rgba(240,113,120,.10);
+  color: var(--danger-text, #f4a0a5);
   font-size: .8125rem;
-  font-weight: 600;
+  font-weight: 500;
+  box-shadow: none;
   cursor: pointer;
-  transition: transform .15s ease, background-color .16s ease, border-color .16s ease;
+  transition: background-color .16s ease, border-color .16s ease;
 }
 .settings-danger-button.hidden {
   display: none;
 }
 .settings-danger-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: rgba(244,160,165,.45);
-  background: rgba(244,160,165,.18);
+  border-color: rgba(240,113,120,.52);
+  background: rgba(240,113,120,.18);
 }
 .settings-danger-button:focus-visible {
-  outline: 2px solid #f4a0a5;
+  outline: 2px solid var(--danger, #f07178);
   outline-offset: 2px;
 }
 
@@ -953,7 +972,7 @@ dialog::backdrop {
   gap: 6px;
   min-height: 38px;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: 5px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
@@ -977,8 +996,7 @@ dialog::backdrop {
   .settings-card, .settings-card-icon, .settings-card-chevron,
   .settings-card::details-content,
   .settings-switch, .settings-switch::after,
-  .theme-scheme-pill, .settings-glass-button, .settings-danger-button,
-  .settings-range::-webkit-slider-thumb {
+  .theme-scheme-tile, .settings-glass-button, .settings-danger-button {
     transition: none;
     transform: none;
   }
