@@ -653,3 +653,15 @@ test("parseOpacAccount flags loginRequired and parseOpacLoginForm extracts #logi
   assert.equal(form.submitName, "submit_0");
   assert.equal(form.submitClientId, "submit_0");
 });
+
+test("parseLibraryPortalLinks ignores commented-out maintain.html and resolves decryptuid2.jsp", () => {
+  const html = `
+    <!-- <a href="maintain.html">館藏查詢、圖書預約、個人借閱查詢</a> -->
+    <a href="http://lib1.nutc.edu.tw:8080/ntit/decryptuid2.jsp?user_id=586159">館藏查詢、圖書預約、個人借閱查詢</a>
+  `;
+  const links = parseLibraryPortalLinks(html, "https://library.nutc.edu.tw/sso/default2.aspx");
+  assert.equal(
+    links.opac,
+    "http://lib1.nutc.edu.tw:8080/ntit/decryptuid2.jsp?user_id=586159",
+  );
+});

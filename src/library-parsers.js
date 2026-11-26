@@ -279,14 +279,20 @@ export function parseLibraryPortalLinks(
   baseUrl = `${LIBRARY_ORIGIN}/sso/default2.aspx`,
 ) {
   const out = {};
+  const uncommentedHtml = String(html || "").replace(/<!--[\s\S]*?-->/g, "");
   const anchors = [
-    ...String(html || "").matchAll(
+    ...uncommentedHtml.matchAll(
       /<a\b[^>]*href=(["'])([^"']*)\1[^>]*>([\s\S]*?)<\/a>/gi,
     ),
   ];
 
   const matchers = [
-    ["opac", (t, u) => t.includes("館藏查詢、圖書預約") || u.includes("decryptuid")],
+    [
+      "opac",
+      (t, u) =>
+        u.includes("decryptuid") ||
+        (t.includes("館藏查詢、圖書預約") && !/maintain\.html/i.test(u)),
+    ],
     ["carrel", (t, u) => t.includes("預約研究小間") || /url=OrderRoom2\.aspx/i.test(u)],
     ["carrelCancel", (t, u) => t.includes("研究小間預約紀錄") || /url=CancelRoom2\.aspx/i.test(u)],
     ["groupDiscuss", (t, u) => t.includes("預約團體討論室") || /url=OrderRoom1\.aspx/i.test(u)],

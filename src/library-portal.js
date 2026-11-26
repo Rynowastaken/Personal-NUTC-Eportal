@@ -610,7 +610,9 @@ async function captureOpacCookiesViaPlaywright(opacSsoUrl) {
         (c.domain.includes("sirsidynix.net") || c.domain.includes("nutc.edu.tw")),
     );
     const acctHtml = await page.content().catch(() => "");
-    const acctOk = /您的狀態|借閱\s*總計|checkoutsTab/i.test(acctHtml);
+    const acctOk =
+      !parseOpacAccount(acctHtml).loginRequired &&
+      /您的狀態|借閱\s*總計|checkoutsTab|登出/i.test(acctHtml);
     if (acctOk || !hasHostCookies("ntit.ent.sirsidynix.net")) {
       jar = jar.filter((c) => !c.domain.includes("sirsidynix.net"));
       for (const c of filtered) {
@@ -655,7 +657,11 @@ async function establishLibrarySession({ needOpac = false } = {}) {
   }
 
   const parsedLinks = parseLibraryPortalLinks(landingHtml, landingUrl.toString());
-  sessionLinks = { ...sessionLinks, ...parsedLinks };
+  const nextLinks = { ...sessionLinks, ...parsedLinks };
+  if (!parsedLinks.opac && /maintain\.html/i.test(nextLinks.opac || "")) {
+    delete nextLinks.opac;
+  }
+  sessionLinks = nextLinks;
 
   // Activate OrderRoom session if available
   if (parsedLinks.carrel) {
@@ -687,8 +693,15 @@ async function ensureLibrarySession({
   }
   const hasLib = hasHostCookies("library.nutc.edu.tw");
   const hasOpac = !needOpac || hasHostCookies("ntit.ent.sirsidynix.net");
+  const staleMaintain = /maintain\.html/i.test(sessionLinks.opac || "");
 
-  if (!forceRefresh && hasLib && hasOpac && Object.keys(sessionLinks).length > 0) {
+  if (
+    !forceRefresh &&
+    !staleMaintain &&
+    hasLib &&
+    hasOpac &&
+    Object.keys(sessionLinks).length > 0
+  ) {
     return;
   }
 
@@ -2529,6 +2542,19 @@ export async function getLibraryOverview({ force = false } = {}) {
     };
     if (opacResult.status === "fulfilled") {
       account = parseOpacAccount(opacResult.value.html);
+      if (account.loginRequired && !/maintain\.html/i.test(sessionLinks.opac || "")) {
+        await ensureLibrarySession({ needOpac: true, forceRefresh: true }).catch(() => {});
+        if (!/maintain\.html/i.test(sessionLinks.opac || "")) {
+          const retryOpac = await httpRequestWithCookies(`${OPAC_BASE}/search/account?`, {
+            maxRedirects: 8,
+            timeoutMs: 18_000,
+          }).catch(() => null);
+          if (retryOpac) {
+            const retryHtml = await retryOpac.response.text().catch(() => "");
+            account = parseOpacAccount(retryHtml);
+          }
+        }
+      }
       if (account.loginRequired) {
         sectionErrors.opacCode = "LIBRARY_OPAC_LOGIN_REQUIRED";
         sectionErrors.opac =
