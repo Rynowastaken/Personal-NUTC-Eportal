@@ -508,8 +508,30 @@ button.row:first-child { border-top: 0; }
   border-radius: var(--radius-sm); border: 1px solid var(--edge); background: var(--sunken);
 }
 .book-card > img { display: block; object-fit: cover; }
-.book-card > .book-card-empty { display: grid; place-items: center; color: var(--faint); }
-.book-card > .book-card-empty .i { width: 28px; height: 28px; opacity: .7; }
+.book-card > .book-card-empty {
+  display: flex; flex-direction: column; padding: 10px; color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 45%, var(--sunken)); overflow: hidden;
+}
+.book-jacket-frame {
+  display: flex; flex-direction: column; flex: 1; justify-content: space-between; gap: 8px;
+  padding: 10px; border: 1px solid rgba(255,255,255,.07); border-radius: 3px;
+  min-width: 0; overflow: hidden;
+}
+.book-jacket-top { display: flex; align-items: center; justify-content: space-between; color: var(--faint); }
+.book-jacket-top .i { width: 15px; height: 15px; opacity: .65; }
+.book-jacket-body { display: grid; gap: 5px; margin: auto 0; min-width: 0; }
+.book-jacket-title {
+  font-size: 13.5px; font-weight: 600; line-height: 1.4; color: var(--soft);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.book-jacket-author {
+  font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.book-jacket-meta {
+  font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .book-card-title {
   grid-row: 2; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

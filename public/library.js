@@ -2246,11 +2246,30 @@
     ].filter(Boolean);
   }
 
+  function renderBookCoverPlaceholder(item, fallbackClass = "") {
+    if (!fallbackClass) return icon("book");
+    const jacketMeta = item.callNumber || item.isbn || "";
+    return h(
+      "div",
+      { class: fallbackClass, "aria-hidden": "true" },
+      h(
+        "div",
+        { class: "book-jacket-frame" },
+        h("div", { class: "book-jacket-top" }, icon("book")),
+        h(
+          "div",
+          { class: "book-jacket-body" },
+          h("div", { class: "book-jacket-title" }, item.title || "館藏書目"),
+          item.author ? h("div", { class: "book-jacket-author" }, item.author) : null,
+        ),
+        jacketMeta ? h("div", { class: "book-jacket-meta" }, jacketMeta) : null,
+      ),
+    );
+  }
+
   function buildCatalogCoverNode(item, index = 0, { fallbackClass = "" } = {}) {
     if (!item.coverProxyUrl) {
-      return fallbackClass
-        ? h("div", { class: fallbackClass, "aria-hidden": "true" }, icon("book"))
-        : icon("book");
+      return renderBookCoverPlaceholder(item, fallbackClass);
     }
     return h("img", {
       src: item.coverProxyUrl,
@@ -2261,7 +2280,7 @@
       onerror: (e) => {
         const img = e.currentTarget;
         if (fallbackClass) {
-          img.replaceWith(h("div", { class: fallbackClass, "aria-hidden": "true" }, icon("book")));
+          img.replaceWith(renderBookCoverPlaceholder(item, fallbackClass));
           return;
         }
         const box = img.parentElement;

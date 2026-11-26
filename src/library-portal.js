@@ -76,6 +76,8 @@ export const COVER_ALLOWED_HOSTS = new Set([
   "covers.openlibrary.org",
   "cover.openbd.jp",
   "static.findbook.com.tw",
+  "www.kinokuniya.co.jp",
+  "ndlsearch.ndl.go.jp",
 ]);
 
 const GOOGLE_PLACEHOLDER_HASHES = new Set([
@@ -180,13 +182,39 @@ function isAllowedCoverRedirectHost(hostname) {
   );
 }
 
-function toCoverProxyUrl(rawUrl, rawIsbn = "") {
+function cleanTitleForCoverSearch(rawTitle = "") {
+  return String(rawTitle || "")
+    .replace(/\[(?:電子資源|錄影資料|視聽資料|微縮資料)\]/g, " ")
+    .replace(/\s+\/[\s\S]*$/, "")
+    .replace(/\s+=\s+[\s\S]*$/, "")
+    .replace(/[：:]\s*[\s\S]{12,}$/, "")
+    .replace(/[%#&?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
+}
+
+function cleanAuthorForCoverSearch(rawAuthor = "") {
+  return String(rawAuthor || "")
+    .replace(/\b\d{4}\s*-\s*(?:\d{4})?\b/g, " ")
+    .replace(/\s*(?:著|作者|編著|主編|編譯|譯|繪|導演|作)\s*$/g, "")
+    .replace(/[;；/].*$/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 30);
+}
+
+function toCoverProxyUrl(rawUrl, rawIsbn = "", rawTitle = "", rawAuthor = "") {
   const safeUrl = isAllowedCoverUrl(rawUrl) ? String(rawUrl).trim() : "";
   const isbn = normalizeIsbn(rawIsbn);
-  if (!safeUrl && !isbn) return "";
+  const title = cleanTitleForCoverSearch(rawTitle);
+  const author = cleanAuthorForCoverSearch(rawAuthor);
+  if (!safeUrl && !isbn && !title) return "";
   const qs = new URLSearchParams();
   if (safeUrl) qs.set("url", safeUrl);
   if (isbn) qs.set("isbn", isbn);
+  if (title) qs.set("title", title);
+  if (author) qs.set("author", author);
   return `/api/library/cover?${qs.toString()}`;
 }
 
@@ -208,6 +236,7 @@ const availabilityCache = new Map();
 const availabilityInFlight = new Map();
 const googleCoverUrlCache = new Map();
 const googleCoverInFlight = new Map();
+const titleCoverUrlCache = new Map();
 const coverImageCache = new Map();
 let coverImageCacheBytes = 0;
 const coverInFlight = new Map();
@@ -477,6 +506,7 @@ export async function clearLibrarySession() {
   facetCache.clear();
   availabilityCache.clear();
   googleCoverUrlCache.clear();
+  titleCoverUrlCache.clear();
   coverImageCache.clear();
   coverImageCacheBytes = 0;
   coverHostCookies.clear();
@@ -763,7 +793,12 @@ async function fetchAuthenticatedLibraryPage(
 // Public fast HTTP catalog & databases endpoints
 
 function normalizeCatalogItemForPublic(item) {
-  const coverProxyUrl = toCoverProxyUrl(item.rawCoverUrl, item.isbn);
+  const coverProxyUrl = toCoverProxyUrl(
+    item.rawCoverUrl,
+    item.isbn,
+    item.title,
+    item.author,
+  );
   const { rawCoverUrl, ...rest } = item;
   return { ...rest, coverProxyUrl };
 }
@@ -1902,7 +1937,12 @@ export async function getLibraryCatalogItem(detailPath) {
     physicalDesc,
     availability,
     holdings,
-    coverProxyUrl: toCoverProxyUrl(detail.rawCoverUrl, detail.isbn),
+    coverProxyUrl: toCoverProxyUrl(
+      detail.rawCoverUrl,
+      detail.isbn,
+      detail.title,
+      detail.author,
+    ),
   };
   delete publicDetail.rawCoverUrl;
 
@@ -2189,6 +2229,9 @@ async function tryFetchCoverImageOnce(rawUrl, timeoutMs, signal) {
     const step = await withCoverHostSlot(host, async () => {
       if (signal?.aborted) return { kind: "miss" };
       const headers = { "User-Agent": USER_AGENT, Accept: "image/*" };
+      if (host === "ndlsearch.ndl.go.jp") {
+        headers.Referer = "https://ndlsearch.ndl.go.jp/";
+      }
       const cookie = coverCookieHeader(host);
       if (cookie) headers.Cookie = cookie;
 
@@ -2293,9 +2336,121 @@ async function tryFetchCoverImage(rawUrl, { timeoutMs, retries, signal } = {}) {
   return result;
 }
 
+function isbn13ToIsbn10(rawIsbn = "") {
+  const clean = normalizeIsbn(rawIsbn);
+  if (clean.length === 10) return clean;
+  if (clean.length !== 13 || !clean.startsWith("978")) return "";
+  const body = clean.slice(3, 12);
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum += Number(body[i]) * (10 - i);
+  }
+  const rem = 11 - (sum % 11);
+  const check = rem === 10 ? "X" : rem === 11 ? "0" : String(rem);
+  return `${body}${check}`;
+}
+
+function normalizeTitleTokensForMatch(raw = "") {
+  return String(raw || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function titlesRoughlyMatch(queryTitle, candidateTitle) {
+  const qNorm = normalizeTitleTokensForMatch(queryTitle);
+  const cNorm = normalizeTitleTokensForMatch(candidateTitle);
+  if (!qNorm || !cNorm) return false;
+  if (cNorm.includes(qNorm)) return true;
+  if (cNorm.length >= 2 && qNorm.includes(cNorm)) return true;
+  const primaryPart = String(queryTitle || "").split(/[.・‧:：\s]+/)[0];
+  const coreQ = normalizeTitleTokensForMatch(primaryPart);
+  if (coreQ.length >= 2 && (cNorm.includes(coreQ) || (cNorm.length >= 2 && coreQ.includes(cNorm)))) {
+    return true;
+  }
+  return false;
+}
+
+async function lookupTitleFallbackUrls(cleanTitle, cleanAuthor, signal) {
+  if (!cleanTitle || signal?.aborted) return [];
+  const cacheKey = `${cleanTitle}|${cleanAuthor}`;
+  const cached = getCachedMap(titleCoverUrlCache, cacheKey);
+  if (cached !== null) return cached;
+
+  const found = [];
+  const qu = [cleanTitle, cleanAuthor].filter(Boolean).join(" ").trim();
+  const sanminSearchTask = withCoverHostSlot("www.sanmin.com.tw", async () => {
+    if (signal?.aborted) return "";
+    try {
+      const res = await fetch(
+        `https://www.sanmin.com.tw/search/index/?ct=K&qu=${encodeURIComponent(qu)}`,
+        {
+          headers: {
+            "User-Agent": USER_AGENT,
+            Accept: "text/html,application/xhtml+xml",
+          },
+          signal: buildCoverRequestSignal(4_000, signal),
+        },
+      );
+      if (!res.ok) return "";
+      const html = await res.text();
+      const imgRegex = /<img\b[^>]*>/gi;
+      for (const [tag] of html.matchAll(imgRegex)) {
+        const src =
+          tag.match(/src=(["'])(https:\/\/cdnec\.sanmin\.com\.tw\/product_images\/[^"']+)\1/i)?.[2] ||
+          "";
+        if (!src) continue;
+        const alt = decodeHtmlEntities(
+          tag.match(/alt=(["'])([^"']*)\1/i)?.[2] || "",
+        );
+        if (titlesRoughlyMatch(cleanTitle, alt)) return src;
+      }
+      return "";
+    } catch {
+      return "";
+    }
+  });
+
+  const openLibrarySearchTask = (async () => {
+    if (signal?.aborted) return "";
+    try {
+      const params = new URLSearchParams({
+        title: cleanTitle,
+        limit: "3",
+        fields: "title,cover_i",
+      });
+      if (cleanAuthor) params.set("author", cleanAuthor);
+      const res = await fetch(`https://openlibrary.org/search.json?${params}`, {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: buildCoverRequestSignal(4_000, signal),
+      });
+      if (!res.ok) return "";
+      const json = await res.json().catch(() => null);
+      for (const doc of Array.isArray(json?.docs) ? json.docs : []) {
+        if (doc?.cover_i && titlesRoughlyMatch(cleanTitle, doc.title || "")) {
+          return `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg?default=false`;
+        }
+      }
+      return "";
+    } catch {
+      return "";
+    }
+  })();
+
+  const [sanminHit, olHit] = await Promise.all([
+    sanminSearchTask.catch(() => ""),
+    openLibrarySearchTask.catch(() => ""),
+  ]);
+  if (sanminHit) found.push(sanminHit);
+  if (olHit) found.push(olHit);
+
+  setCachedMap(titleCoverUrlCache, cacheKey, found, COVER_MISS_TTL_MS, 500);
+  return found;
+}
+
 /**
  * Proxy vetted HTTPS book cover images and automatically fall back by ISBN across
- * Sanmin, Google Books, OpenBD, and Open Library while keeping `/library` CSP strict.
+ * Sanmin, Google Books, OpenBD, Kinokuniya, NDL Search, Open Library, and matched title
+ * lookups while keeping `/library` CSP strict.
  */
 export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
   const opts =
@@ -2304,6 +2459,8 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
       : { url: rawUrlOrOpts, isbn: maybeIsbn };
   const rawUrl = String(opts.url || "").trim();
   const rawIsbn = String(opts.isbn || "").trim();
+  const cleanTitle = cleanTitleForCoverSearch(opts.title || "");
+  const cleanAuthor = cleanAuthorForCoverSearch(opts.author || "");
 
   if (rawUrl && !isAllowedCoverUrl(rawUrl)) {
     throw libraryError("Unsupported cover image host.", "LIBRARY_COVER_DISALLOWED", 400);
@@ -2312,11 +2469,11 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
   if (rawIsbn && !isbn) {
     throw libraryError("Invalid ISBN for cover lookup.", "LIBRARY_INVALID_PARAM", 400);
   }
-  if (!rawUrl && !isbn) {
+  if (!rawUrl && !isbn && !cleanTitle) {
     throw libraryError("Unsupported cover image host.", "LIBRARY_COVER_DISALLOWED", 400);
   }
 
-  const cacheKey = `${rawUrl}|${isbn}`;
+  const cacheKey = rawUrl || isbn ? `${rawUrl}|${isbn}` : `title|${cleanTitle}|${cleanAuthor}`;
   const cached = getCoverImageCache(cacheKey);
   if (cached) {
     if (cached.hit) {
@@ -2363,6 +2520,26 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
           ? tryCandidateUrl(`https://cover.openbd.jp/${isbn}.jpg`, signal)
           : null;
       }
+      if (provider === "kinokuniya") {
+        const isbn10 = isbn13ToIsbn10(isbn);
+        if (!isbn10 || !isbn.startsWith("9784")) return null;
+        const prefix = isbn10.slice(0, 5);
+        return (
+          (await tryCandidateUrl(
+            `https://www.kinokuniya.co.jp/images/goods/ar2/web/imgdata2/large/${prefix}/${isbn10}.jpg`,
+            signal,
+          )) ||
+          (await tryCandidateUrl(
+            `https://www.kinokuniya.co.jp/images/goods/ar2/web/imgdata2/${prefix}/${isbn10}.jpg`,
+            signal,
+          ))
+        );
+      }
+      if (provider === "ndl") {
+        return isbn.startsWith("9784")
+          ? tryCandidateUrl(`https://ndlsearch.ndl.go.jp/thumbnail/${isbn}.jpg`, signal)
+          : null;
+      }
       if (provider === "gbooks") {
         const url = await lookupGoogleBooksCover(isbn);
         return url ? tryCandidateUrl(url, signal) : null;
@@ -2382,7 +2559,7 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
       if (/^978(957|986|626|7)/.test(isbn)) {
         order = ["sanmin", "gbooks", "openlibrary"];
       } else if (/^9784/.test(isbn)) {
-        order = ["openbd", "gbooks", "sanmin", "openlibrary"];
+        order = ["openbd", "kinokuniya", "ndl", "gbooks", "openlibrary", "sanmin"];
       } else {
         order = isbn.startsWith("978")
           ? ["gbooks", "openlibrary", "sanmin"]
@@ -2412,6 +2589,26 @@ export async function fetchLibraryCover(rawUrlOrOpts = "", maybeIsbn = "") {
         } finally {
           controller.abort();
         }
+      }
+    }
+
+    if (!resolved && cleanTitle) {
+      const controller = new AbortController();
+      try {
+        const titleUrls = await lookupTitleFallbackUrls(
+          cleanTitle,
+          cleanAuthor,
+          controller.signal,
+        );
+        for (const cand of titleUrls) {
+          const hit = await tryCandidateUrl(cand, controller.signal);
+          if (hit) {
+            resolved = hit;
+            break;
+          }
+        }
+      } finally {
+        controller.abort();
       }
     }
 
@@ -2456,29 +2653,38 @@ export function prefetchCatalogCovers(items = []) {
       ? String(item.rawCoverUrl).trim()
       : "";
     let isbn = normalizeIsbn(item.isbn);
+    let title = cleanTitleForCoverSearch(item.title || "");
+    let author = cleanAuthorForCoverSearch(item.author || "");
 
-    if (!url && typeof item.coverProxyUrl === "string" && item.coverProxyUrl) {
+    if (typeof item.coverProxyUrl === "string" && item.coverProxyUrl) {
       try {
         const parsed = new URL(item.coverProxyUrl, "http://localhost");
         const proxyUrl = parsed.searchParams.get("url") || "";
         const proxyIsbn = parsed.searchParams.get("isbn") || "";
-        if (isAllowedCoverUrl(proxyUrl)) url = proxyUrl.trim();
+        const proxyTitle = parsed.searchParams.get("title") || "";
+        const proxyAuthor = parsed.searchParams.get("author") || "";
+        if (!url && isAllowedCoverUrl(proxyUrl)) url = proxyUrl.trim();
         if (!isbn) isbn = normalizeIsbn(proxyIsbn);
+        if (!title && proxyTitle) title = cleanTitleForCoverSearch(proxyTitle);
+        if (!author && proxyAuthor) author = cleanAuthorForCoverSearch(proxyAuthor);
       } catch {}
     }
 
     if (isbn) allIsbns.push(isbn);
-    if (url || isbn) specs.push({ url, isbn });
+    if (url || isbn || title) specs.push({ url, isbn, title, author });
   }
 
   if (allIsbns.length > 0) {
     void warmGoogleBooksCovers(allIsbns).catch(() => {});
   }
 
-  for (const { url, isbn } of specs) {
-    const cacheKey = `${url}|${isbn}`;
+  for (const spec of specs) {
+    const cacheKey =
+      spec.url || spec.isbn
+        ? `${spec.url}|${spec.isbn}`
+        : `title|${spec.title}|${spec.author}`;
     if (getCoverImageCache(cacheKey) || coverInFlight.has(cacheKey)) continue;
-    void fetchLibraryCover({ url, isbn }).catch(() => {});
+    void fetchLibraryCover(spec).catch(() => {});
   }
 }
 
@@ -4074,9 +4280,13 @@ export async function handleLibraryRequest(
 
   if (req.method === "GET" && url.pathname === "/api/library/cover") {
     try {
+      const cleanTitle = url.searchParams.get("title") || "";
+      const cleanAuthor = url.searchParams.get("author") || "";
       const cover = await coverFn({
         url: url.searchParams.get("url") || "",
         isbn: url.searchParams.get("isbn") || "",
+        ...(cleanTitle ? { title: cleanTitle } : {}),
+        ...(cleanAuthor ? { author: cleanAuthor } : {}),
       });
       const etag =
         cover.etag ||

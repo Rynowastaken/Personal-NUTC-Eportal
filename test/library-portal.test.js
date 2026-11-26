@@ -1310,3 +1310,66 @@ test("library workspace preloading wires server warmup and client snapshot/list/
   assert.match(js, /function prefetchBookDetail\(/);
   assert.match(js, /function prefetchRouteData\(/);
 });
+
+test("fetchLibraryCover resolves Japanese ISBNs via Kinokuniya/NDL and title-matches Sanmin fallback", async () => {
+  const realFetch = globalThis.fetch;
+  const fakeJpeg = Buffer.alloc(720, 0xcd);
+  await clearLibrarySession();
+
+  try {
+    // 1. Japanese 9784... ISBN hits Kinokuniya CDN using deterministic ISBN-10 conversion (9784062632577 -> 4062632578)
+    const seenUrls = [];
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      seenUrls.push(u);
+      if (u === "https://www.kinokuniya.co.jp/images/goods/ar2/web/imgdata2/large/40626/4062632578.jpg") {
+        return new Response(fakeJpeg, {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const kinoHit = await fetchLibraryCover({ url: "", isbn: "9784062632577" });
+    assert.equal(kinoHit.buffer.length, 720);
+    assert.equal(
+      seenUrls.includes("https://www.kinokuniya.co.jp/images/goods/ar2/web/imgdata2/large/40626/4062632578.jpg"),
+      true,
+    );
+
+    // 2. When ISBN misses all CDNs, title fallback picks matched Sanmin cover while skipping mismatched titles
+    await clearLibrarySession();
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.startsWith("https://www.sanmin.com.tw/search/index/?ct=K")) {
+        return new Response(
+          `
+            <img alt="無關的書名" src="https://cdnec.sanmin.com.tw/product_images/999/999000001.jpg" />
+            <img alt="&#20154;&#38291;&#22833;&#26684;&#65306;&#22826;&#23472;&#27835;" src="https://cdnec.sanmin.com.tw/product_images/986/986384501.jpg" />
+          `,
+          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+        );
+      }
+      if (u === "https://cdnec.sanmin.com.tw/product_images/986/986384501.jpg") {
+        return new Response(fakeJpeg, {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      if (u === "https://cdnec.sanmin.com.tw/product_images/999/999000001.jpg") {
+        throw new Error("Should not fetch mismatched Sanmin cover");
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const titleHit = await fetchLibraryCover({
+      url: "",
+      isbn: "9784041099100",
+      title: "人間失格.桜桃",
+      author: "太宰治",
+    });
+    assert.equal(titleHit.buffer.length, 720);
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
