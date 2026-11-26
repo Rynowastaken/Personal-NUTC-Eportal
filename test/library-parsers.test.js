@@ -22,6 +22,7 @@ import {
   parseOpacItemDetail,
   parseOpacLookupTitleInfoUrl,
   parseOpacAccount,
+  parseOpacMyLists,
   parseCarrelForm,
   parseCarrelCalendar,
   parseCarrelReservations,
@@ -209,6 +210,19 @@ test("parseOpacFacets extracts SUBJECT, LANGUAGE, PUBDATE (newest first), ITYPE,
   assert.equal(parsed.sort, "PD");
   assert.deepEqual(parsed.tags, ["LANGUAGE\t語言\tCHI\t中文"]);
   assert.equal(parsed.facets.length, 5);
+
+  const multiQfHtml = `
+    <form id="facetFormSUBJECT">
+      <div class="facetTitle">主題</div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=SUBJECT%09%E4%B8%BB%E9%A1%8C%09%E5%B0%8F%E8%AA%AA%09%E5%B0%8F%E8%AA%AA&amp;qf=SUBJECT%09%E4%B8%BB%E9%A1%8C%09%E6%97%A5%E6%9C%AC%E6%96%87%E5%AD%B8%09%E6%97%A5%E6%9C%AC%E6%96%87%E5%AD%B8">日本文學</a></span><div class="navigatorCount">(1674)</div>
+      <span class="navigatorName"><a href="/client/zh_TW/NUTC/search/results.displaypanel.limitcolumn.navigatorclick?qf=SUBJECT%09%E4%B8%BB%E9%A1%8C%09%E5%B0%8F%E8%AA%AA%09%E5%B0%8F%E8%AA%AA&amp;qf=SUBJECT%09%E4%B8%BB%E9%A1%8C%09%E7%BE%8E%E5%9C%8B%E6%96%87%E5%AD%B8%09%E7%BE%8E%E5%9C%8B%E6%96%87%E5%AD%B8">美國文學</a></span><div class="navigatorCount">(1125)</div>
+    </form>
+  `;
+  const multiFacets = parseOpacFacets(multiQfHtml, ["SUBJECT\t主題\t小說\t小說"]);
+  assert.deepEqual(multiFacets[0].items, [
+    { qf: "SUBJECT\t主題\t日本文學\t日本文學", label: "日本文學", count: 1674 },
+    { qf: "SUBJECT\t主題\t美國文學\t美國文學", label: "美國文學", count: 1125 },
+  ]);
 });
 
 test("parseOpacItemDetail parses bibliographic metadata and holdings table rows", () => {
@@ -537,4 +551,71 @@ test("cleanAuthorText, cleanBookDescription, and parseOpacItemDetail clean MARC 
   );
   assert.equal(noteOnlyDetail.summary, "");
   assert.deepEqual(noteOnlyDetail.notes, ["版權頁誤植"]);
+});
+
+test("parseOpacMyLists extracts saved/temp lists, items with positional bitmask indices, and Tapestry forms", () => {
+  const html = `
+    <div id="lists">
+      <div id="lists_main">
+        <form id="listsForm" action="/client/zh_TW/NUTC/search/mylists.lists.listsform?">
+          <input name="t:formdata" value="FD_LISTS" type="hidden" />
+          <input id="lists_action" name="lists_action" type="text" />
+          <input id="lists_activeList" name="lists_activeList" type="text" />
+          <input id="lists_submit" name="lists_submit" type="submit" value="submit" />
+          <ul id="lists_list">
+            <li id="lists_li:0"><a class="myListLink" href="/client/zh_TW/NUTC/search/mylists/0?">臨時清單 (0)</a></li>
+            <li id="lists_li:42" class="activeList">
+              <input type="checkbox" name="deleteCheckbox42" value="on" />
+              <a class="myListLink" href="/client/zh_TW/NUTC/search/mylists/42?">專題書單 (1)</a>
+            </li>
+          </ul>
+        </form>
+        <div id="lists_createDialog">
+          <form id="createListForm" action="/client/zh_TW/NUTC/search/mylists.lists.createlistform?">
+            <input name="t:formdata" value="FD_CREATE" type="hidden" />
+            <input id="lists_createName" name="lists_createName" type="text" />
+            <input type="submit" name="createSubmit" value="保存" />
+          </form>
+        </div>
+      </div>
+      <div id="newListZone"></div>
+    </div>
+    <div id="myListTitle">
+      <span class="myListName">專題書單</span>
+      <span class="myListItemCount">1 個清單館藏</span>
+    </div>
+    <div class="listWrapper">
+      <div id="myListItemsZone">
+        <ul id="listdetails_list">
+          <li class="myListItem" id="listdetails_li:ent://SD_ILS/0/SD_ILS:858267">
+            <input type="checkbox" class="results_chkbox myList bulkActionCheckbox" value="ent://SD_ILS/0/SD_ILS:858267" />
+            <input class="isbnValue" value="9786267226278" type="hidden" />
+            <div class="displayDetailLink"><a id="detailLink0" href="#">賜給名偵探甜美的死亡</a></div>
+            <div class="displayElementText AUTHOR">方丈貴惠, 1984- 著</div>
+          </li>
+        </ul>
+      </div>
+      <form id="myListForm" action="/client/zh_TW/NUTC/search/mylists.listdetails.mylistform/42?">
+        <input value="FD_ITEMS" name="t:formdata" type="hidden" />
+        <select id="listdetails_destList" name="listdetails_destList">
+          <option value="0">臨時清單</option>
+          <option value="42">專題書單</option>
+        </select>
+        <input id="listdetails_submit" name="listdetails_submit" type="submit" value="submit" />
+      </form>
+    </div>
+  `;
+  const parsed = parseOpacMyLists(html);
+  assert.equal(parsed.loginRequired, false);
+  assert.equal(parsed.activeListId, "42");
+  assert.equal(parsed.activeListName, "專題書單");
+  assert.equal(parsed.lists.length, 2);
+  assert.equal(parsed.lists[1].deleteInputName, "deleteCheckbox42");
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0].id, "858267");
+  assert.equal(parsed.items[0].author, "方丈貴惠 著");
+  assert.equal(parsed.items[0].isbn, "9786267226278");
+  assert.equal(parsed.forms.myListForm.formData, "FD_ITEMS");
+  assert.equal(parsed.forms.createListForm.formData, "FD_CREATE");
+  assert.equal(parsed.forms.deleteListsForm.formData, "FD_LISTS");
 });

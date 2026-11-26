@@ -20,6 +20,7 @@ import {
   parseOpacAccount,
   parseOpacItemDetail,
   parseOpacLookupTitleInfoUrl,
+  parseOpacMyLists,
   parseOpacSearchResults,
   parseSanminProductDetail,
   sanminCoverUrlFromIsbn,
@@ -219,6 +220,7 @@ let catalogDiskLoaded = false;
 let catalogDiskLoadPromise = null;
 let catalogPersistTimer = null;
 const itemDetailCache = new Map();
+const myListsCache = new Map();
 const databasesCache = new Map();
 const calendarCache = new Map();
 
@@ -250,12 +252,17 @@ function setCatalogCacheEntry(key, value, freshUntil, staleUntil) {
   }
 }
 
+const CATALOG_CACHE_SCHEMA_VERSION = 2;
+
 async function loadCatalogCacheFromDisk() {
   if (catalogDiskLoaded) return;
   if (catalogDiskLoadPromise) return catalogDiskLoadPromise;
   catalogDiskLoadPromise = (async () => {
     try {
       const parsed = JSON.parse(await fs.readFile(CATALOG_CACHE_FILE, "utf8"));
+      if (parsed?.version !== CATALOG_CACHE_SCHEMA_VERSION) {
+        return;
+      }
       const now = Date.now();
       const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
       for (const entry of entries) {
@@ -306,7 +313,11 @@ function schedulePersistCatalogCache() {
         const temp = `${CATALOG_CACHE_FILE}.${process.pid}.${Date.now()}.tmp`;
         await fs.writeFile(
           temp,
-          JSON.stringify({ savedAt: new Date().toISOString(), entries }),
+          JSON.stringify({
+            version: CATALOG_CACHE_SCHEMA_VERSION,
+            savedAt: new Date().toISOString(),
+            entries,
+          }),
           { mode: 0o600 },
         );
         await fs.rename(temp, CATALOG_CACHE_FILE);
@@ -447,6 +458,7 @@ function invalidateLibraryDataCaches() {
   overviewCache = null;
   overviewInFlight = null;
   downloadsCache = null;
+  myListsCache.clear();
   calendarCache.clear();
 }
 
@@ -471,6 +483,7 @@ export async function clearLibrarySession() {
   coverHostStates.clear();
   bookEnrichmentCache.clear();
   itemDetailCache.clear();
+  myListsCache.clear();
   databasesCache.clear();
   calendarCache.clear();
   await fs.rm(SESSION_FILE, { force: true }).catch(() => {});
@@ -2626,6 +2639,400 @@ export async function renewOpacCheckouts(itemIds = []) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Authenticated OPAC My Lists (`我的清單` / `/search/mylists`)
+
+const MYLISTS_TTL_MS = 2 * 60_000;
+
+function normalizeOpacListId(raw = "") {
+  const clean = String(raw ?? "").trim();
+  if (!clean) return "";
+  if (!/^\d{1,12}$/.test(clean)) {
+    throw libraryError("Invalid OPAC list ID.", "LIBRARY_INVALID_PARAM", 400);
+  }
+  return clean;
+}
+
+function normalizeOpacTitleId(raw = "") {
+  const clean = String(raw ?? "").trim();
+  if (!/^\d{1,12}$/.test(clean)) {
+    throw libraryError("Invalid catalog item ID.", "LIBRARY_INVALID_PARAM", 400);
+  }
+  return clean;
+}
+
+function toPublicMyListsPayload(parsed) {
+  const mappedItems = mergeCachedAvailabilityIntoItems(
+    (parsed.items || []).map((item) =>
+      normalizeCatalogItemForPublic({
+        ...item,
+        rawCoverUrl: "",
+        availableCount: null,
+        totalCount: null,
+        holdsCount: null,
+        holdable: false,
+      }),
+    ),
+  );
+  if (mappedItems.length) {
+    prefetchCatalogCovers(mappedItems);
+  }
+  const availabilityPending = mappedItems.some(
+    (item) => item.availableCount == null,
+  );
+  return {
+    ok: true,
+    activeListId: parsed.activeListId,
+    activeListName: parsed.activeListName,
+    canSaveTemp:
+      Boolean(parsed.forms?.saveTempListForm) &&
+      parsed.activeListId === "0" &&
+      mappedItems.length > 0,
+    canCreateList: Boolean(parsed.forms?.createListForm),
+    lists: (parsed.lists || []).map((l) => ({
+      id: l.id,
+      name: l.name,
+      isTemp: Boolean(l.isTemp),
+      active: Boolean(l.active),
+      count: l.count,
+      canDelete: !l.isTemp && Boolean(l.deleteInputName),
+    })),
+    availabilityPending,
+    items: mappedItems,
+  };
+}
+
+async function fetchAuthenticatedOpacMyLists(listId = "") {
+  const cleanId = listId ? normalizeOpacListId(listId) : "";
+  const targetUrl = cleanId
+    ? `${OPAC_BASE}/search/mylists/${encodeURIComponent(cleanId)}?`
+    : `${OPAC_BASE}/search/mylists?`;
+
+  let { html } = await fetchAuthenticatedLibraryPage(targetUrl, {
+    needOpac: true,
+  });
+  let parsed = parseOpacMyLists(html, { fallbackListId: cleanId || "0" });
+
+  if (parsed.loginRequired) {
+    await ensureLibrarySession({ needOpac: true, forceRefresh: true });
+    const retry = await httpRequestWithCookies(targetUrl, {
+      maxRedirects: 8,
+      timeoutMs: 18_000,
+    });
+    html = await retry.response.text();
+    parsed = parseOpacMyLists(html, { fallbackListId: cleanId || "0" });
+    if (parsed.loginRequired) {
+      throw libraryError(
+        "OPAC 個人清單工作階段需要重新登入 Server ePortal。",
+        "EPORTAL_LOGIN_REQUIRED",
+        401,
+      );
+    }
+  }
+
+  return parsed;
+}
+
+/**
+ * Fetch the patron's OPAC My Lists (`我的清單`) and the items in the active/selected list.
+ */
+export async function getOpacMyLists({ listId = "", force = false } = {}) {
+  const cleanId = listId ? normalizeOpacListId(listId) : "";
+  const cacheKey = cleanId || "default";
+  if (!force) {
+    const cached = getCachedMap(myListsCache, cacheKey);
+    if (cached) return cached;
+  }
+
+  const parsed = await fetchAuthenticatedOpacMyLists(cleanId);
+  const payload = toPublicMyListsPayload(parsed);
+  setCachedMap(myListsCache, cacheKey, payload, MYLISTS_TTL_MS, 20);
+  if (parsed.activeListId && parsed.activeListId !== cacheKey) {
+    setCachedMap(myListsCache, parsed.activeListId, payload, MYLISTS_TTL_MS, 20);
+  }
+  return payload;
+}
+
+/**
+ * Add a catalog title to a patron's OPAC list (`臨時清單` or saved list ID).
+ */
+export async function addOpacMyListItem({
+  titleId,
+  listId = "0",
+  makeDefault = false,
+} = {}) {
+  const cleanId = normalizeOpacTitleId(titleId);
+  const cleanListId = normalizeOpacListId(listId || "0") || "0";
+
+  await ensureLibrarySession({ needOpac: true });
+  const encodedEnt = `ent:$002f$002fSD_ILS$002f0$002fSD_ILS:${cleanId}`;
+  const dParam = encodeURIComponent(`ent://SD_ILS/0/SD_ILS:${cleanId}~~0`).replace(
+    /~/g,
+    "%7E",
+  );
+  const addUrl = `${OPAC_BASE}/search/detailnonmodal.detail.addtolists:addtolist/${encodeURIComponent(cleanListId)}/${makeDefault ? "true" : "false"}/${encodedEnt}/Detail/$N?d=${dParam}`;
+
+  let { response } = await httpRequestWithCookies(addUrl, {
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      Accept: "application/json, text/javascript, */*; q=0.01",
+      Referer: `${OPAC_BASE}/search/detailnonmodal/${encodedEnt}/one`,
+    },
+    timeoutMs: 12_000,
+  });
+
+  let reply = await response.json().catch(() => null);
+  if (!reply || reply?.login) {
+    await ensureLibrarySession({ needOpac: true, forceRefresh: true });
+    const retry = await httpRequestWithCookies(addUrl, {
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        Accept: "application/json, text/javascript, */*; q=0.01",
+        Referer: `${OPAC_BASE}/search/detailnonmodal/${encodedEnt}/one`,
+      },
+      timeoutMs: 12_000,
+    });
+    response = retry.response;
+    reply = await response.json().catch(() => null);
+  }
+
+  if (reply?.login) {
+    throw libraryError(
+      "請重新登入 Server ePortal 以新增至我的清單。",
+      "EPORTAL_LOGIN_REQUIRED",
+      401,
+    );
+  }
+  if (!response.ok || reply?.error) {
+    throw libraryError("無法將館藏加入 OPAC 清單。", "LIBRARY_OPAC_UNAVAILABLE", 502);
+  }
+  if (Array.isArray(reply?.failed) && reply.failed.length && !(reply?.added?.length)) {
+    throw libraryError(
+      String(reply.failed[0] || "無法加入 OPAC 清單。"),
+      "LIBRARY_MYLISTS_FAILED",
+      400,
+    );
+  }
+
+  myListsCache.clear();
+  const updated = await getOpacMyLists({ listId: cleanListId, force: true });
+  return {
+    ...updated,
+    added: Array.isArray(reply?.added) ? reply.added : [],
+  };
+}
+
+async function submitMyListFormMutation({
+  listId = "0",
+  titleIds = [],
+  action,
+  destListId = "",
+}) {
+  const cleanListId = normalizeOpacListId(listId || "0") || "0";
+  const cleanIds = Array.isArray(titleIds)
+    ? titleIds.map(normalizeOpacTitleId)
+    : [normalizeOpacTitleId(titleIds)];
+  if (!cleanIds.length) {
+    throw libraryError("請選擇至少一筆清單館藏。", "LIBRARY_INVALID_PARAM", 400);
+  }
+
+  const parsed = await fetchAuthenticatedOpacMyLists(cleanListId);
+  const idSet = new Set(cleanIds);
+  const hasMatch = parsed.items.some((item) => idSet.has(item.id));
+  if (!hasMatch) {
+    return { ...toPublicMyListsPayload(parsed), changed: false };
+  }
+
+  const form = parsed.forms?.myListForm;
+  if (!form?.actionPath || !form?.formData) {
+    throw libraryError(
+      "無法取得 OPAC 清單操作表單。",
+      "LIBRARY_OPAC_UNAVAILABLE",
+      502,
+    );
+  }
+
+  const rawContext = parsed.items
+    .map((item) => (idSet.has(item.id) ? "1" : "0"))
+    .join("");
+  const submitId = form.submitName || form.submitClientId || "listdetails_submit";
+  const postUrl = new URL(form.actionPath, OPAC_ORIGIN).toString();
+  const body = new URLSearchParams({
+    "t:formdata": form.formData,
+    "t:submit": JSON.stringify([submitId, submitId]),
+    listdetails_action: action,
+    listdetails_rawContext: rawContext,
+    listdetails_destListId: destListId || parsed.activeListId || cleanListId,
+    listdetails_sortType: "",
+    listdetails_saveSort: "",
+    "t:zoneid": form.zoneId || "myListItemsZone",
+  });
+
+  const { response } = await httpRequestWithCookies(postUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: `${OPAC_BASE}/search/mylists/${encodeURIComponent(cleanListId)}?`,
+    },
+    body: body.toString(),
+    timeoutMs: 15_000,
+  });
+  const replyText = await response.text();
+  if (!response.ok || /<title>系統錯誤<\/title>/i.test(replyText)) {
+    throw libraryError("OPAC 清單更新失敗。", "LIBRARY_MYLISTS_FAILED", 502);
+  }
+
+  myListsCache.clear();
+  const updated = await getOpacMyLists({ listId: cleanListId, force: true });
+  return { ...updated, changed: true };
+}
+
+/**
+ * Remove one or more titles from an OPAC My List via Tapestry `DELETE` submission.
+ */
+export async function removeOpacMyListItems({ titleIds = [], listId = "0" } = {}) {
+  return submitMyListFormMutation({
+    listId,
+    titleIds,
+    action: "DELETE",
+  });
+}
+
+/**
+ * Move or copy one or more titles from one OPAC My List to another.
+ */
+export async function transferOpacMyListItems({
+  titleIds = [],
+  fromListId = "0",
+  destListId,
+  mode = "COPY",
+} = {}) {
+  const cleanDestId = normalizeOpacListId(destListId);
+  if (!cleanDestId) {
+    throw libraryError("請選擇目標清單。", "LIBRARY_INVALID_PARAM", 400);
+  }
+  return submitMyListFormMutation({
+    listId: fromListId || "0",
+    titleIds,
+    action: String(mode || "").toUpperCase() === "MOVE" ? "MOVE" : "COPY",
+    destListId: cleanDestId,
+  });
+}
+
+/**
+ * Create a new saved OPAC list or save the current temporary list (`臨時清單`) under a name.
+ */
+export async function createOrSaveOpacMyList({ name = "", fromTemp = false } = {}) {
+  const cleanName = String(name || "").trim().slice(0, 120);
+  if (!cleanName) {
+    throw libraryError("請輸入清單名稱。", "LIBRARY_INVALID_PARAM", 400);
+  }
+
+  const parsed = await fetchAuthenticatedOpacMyLists(fromTemp ? "0" : "");
+  const form = fromTemp
+    ? parsed.forms?.saveTempListForm || parsed.forms?.createListForm
+    : parsed.forms?.createListForm || parsed.forms?.saveTempListForm;
+  if (!form?.actionPath || !form?.formData) {
+    throw libraryError(
+      "無法建立已保存的 OPAC 清單（請確認已登入 OPAC）。",
+      "LIBRARY_MYLISTS_UNAVAILABLE",
+      400,
+    );
+  }
+
+  const body = new URLSearchParams({
+    "t:formdata": form.formData,
+    [form.nameField]: cleanName,
+  });
+  if (form.submitName) {
+    body.set(form.submitName, form.submitValue || "保存");
+  }
+  if (form.zoneId) {
+    body.set("t:zoneid", form.zoneId);
+  }
+  const submitId = form.submitClientId || form.submitName;
+  if (submitId) {
+    body.set("t:submit", JSON.stringify([submitId, submitId]));
+  }
+
+  const postUrl = new URL(form.actionPath, OPAC_ORIGIN).toString();
+  const { response } = await httpRequestWithCookies(postUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: `${OPAC_BASE}/search/mylists?`,
+    },
+    body: body.toString(),
+    timeoutMs: 15_000,
+  });
+  const replyText = await response.text();
+  if (!response.ok || /<title>系統錯誤<\/title>/i.test(replyText)) {
+    throw libraryError("建立 OPAC 清單失敗。", "LIBRARY_MYLISTS_FAILED", 502);
+  }
+
+  myListsCache.clear();
+  const latest = await fetchAuthenticatedOpacMyLists("");
+  const created = latest.lists.find((l) => l.name === cleanName && !l.isTemp);
+  if (created && !created.active) {
+    return getOpacMyLists({ listId: created.id, force: true });
+  }
+  const payload = toPublicMyListsPayload(latest);
+  setCachedMap(myListsCache, latest.activeListId || "default", payload, MYLISTS_TTL_MS, 20);
+  return payload;
+}
+
+/**
+ * Delete a saved OPAC list by ID (`臨時清單` ID `0` cannot be deleted).
+ */
+export async function deleteOpacMyList({ listId = "" } = {}) {
+  const cleanId = normalizeOpacListId(listId);
+  if (!cleanId || cleanId === "0") {
+    throw libraryError("臨時清單無法刪除。", "LIBRARY_INVALID_PARAM", 400);
+  }
+
+  const parsed = await fetchAuthenticatedOpacMyLists(cleanId);
+  const target = parsed.lists.find((l) => l.id === cleanId);
+  const form = parsed.forms?.deleteListsForm;
+  if (!target || !form?.actionPath || !form?.formData) {
+    throw libraryError("找不到可刪除的 OPAC 清單。", "LIBRARY_MYLISTS_UNAVAILABLE", 404);
+  }
+
+  const body = new URLSearchParams({
+    "t:formdata": form.formData,
+    [form.actionField || "lists_action"]: "DELETE",
+    [form.activeListField || "lists_activeList"]: cleanId,
+  });
+  if (target.deleteInputName) {
+    body.set(target.deleteInputName, target.deleteInputValue || "on");
+  }
+  if (form.zoneId) {
+    body.set("t:zoneid", form.zoneId);
+  }
+  const submitId = form.submitClientId || form.submitName || "lists_submit";
+  body.set("t:submit", JSON.stringify([submitId, submitId]));
+
+  const postUrl = new URL(form.actionPath, OPAC_ORIGIN).toString();
+  const { response } = await httpRequestWithCookies(postUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: `${OPAC_BASE}/search/mylists?`,
+    },
+    body: body.toString(),
+    timeoutMs: 15_000,
+  });
+  const replyText = await response.text();
+  if (!response.ok || /<title>系統錯誤<\/title>/i.test(replyText)) {
+    throw libraryError("刪除 OPAC 清單失敗。", "LIBRARY_MYLISTS_FAILED", 502);
+  }
+
+  myListsCache.clear();
+  return getOpacMyLists({ force: true });
+}
+
 /**
  * Fetch monthly Study Carrel availability from `RoomCAL2.aspx`.
  */
@@ -2994,7 +3401,156 @@ export async function handleLibraryRequest(
     favoritesListFn = null,
     favoritesAddFn = null,
     favoritesRemoveFn = null,
+    opacMyListsFn = getOpacMyLists,
+    opacMyListAddFn = addOpacMyListItem,
+    opacMyListRemoveFn = removeOpacMyListItems,
+    opacMyListTransferFn = transferOpacMyListItems,
+    opacMyListCreateFn = createOrSaveOpacMyList,
+    opacMyListDeleteFn = deleteOpacMyList,
   } = deps;
+
+  if (req.method === "GET" && url.pathname === "/api/library/opac/mylists") {
+    try {
+      const force = /^(1|true|yes)$/i.test(
+        String(url.searchParams.get("refresh") || ""),
+      );
+      sendJson(
+        res,
+        200,
+        await opacMyListsFn({
+          listId: url.searchParams.get("listId") || "",
+          force,
+        }),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to load OPAC My Lists.",
+        "LIBRARY_MYLISTS_UNAVAILABLE",
+      );
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/library/opac/mylists/lists") {
+    try {
+      const body = await readJsonBody(req);
+      sendJson(
+        res,
+        200,
+        await opacMyListCreateFn({
+          name: body?.name || "",
+          fromTemp: Boolean(body?.fromTemp),
+        }),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to create OPAC list.",
+        "LIBRARY_MYLISTS_FAILED",
+      );
+    }
+    return true;
+  }
+
+  const opacListDeleteMatch =
+    req.method === "DELETE" &&
+    url.pathname.match(/^\/api\/library\/opac\/mylists\/lists\/([^/]+)$/);
+  if (opacListDeleteMatch) {
+    try {
+      const listId = decodeURIComponent(opacListDeleteMatch[1]);
+      sendJson(res, 200, await opacMyListDeleteFn({ listId }));
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to delete OPAC list.",
+        "LIBRARY_MYLISTS_FAILED",
+      );
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/library/opac/mylists/items") {
+    try {
+      const body = await readJsonBody(req);
+      sendJson(
+        res,
+        200,
+        await opacMyListAddFn({
+          titleId: body?.titleId || body?.id || "",
+          listId: body?.listId || "0",
+          makeDefault: Boolean(body?.makeDefault),
+        }),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to add item to OPAC list.",
+        "LIBRARY_MYLISTS_FAILED",
+      );
+    }
+    return true;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/library/opac/mylists/items/transfer"
+  ) {
+    try {
+      const body = await readJsonBody(req);
+      sendJson(
+        res,
+        200,
+        await opacMyListTransferFn({
+          titleIds: body?.titleIds || (body?.titleId ? [body.titleId] : []),
+          fromListId: body?.fromListId || "0",
+          destListId: body?.destListId || "",
+          mode: body?.mode || "COPY",
+        }),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to transfer items between OPAC lists.",
+        "LIBRARY_MYLISTS_FAILED",
+      );
+    }
+    return true;
+  }
+
+  const opacItemDeleteMatch =
+    req.method === "DELETE" &&
+    url.pathname.match(/^\/api\/library\/opac\/mylists\/items\/([^/]+)$/);
+  if (opacItemDeleteMatch) {
+    try {
+      const titleId = decodeURIComponent(opacItemDeleteMatch[1]);
+      const listId = url.searchParams.get("listId") || "0";
+      sendJson(
+        res,
+        200,
+        await opacMyListRemoveFn({ titleIds: [titleId], listId }),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to remove item from OPAC list.",
+        "LIBRARY_MYLISTS_FAILED",
+      );
+    }
+    return true;
+  }
 
   if (req.method === "GET" && url.pathname === "/api/library/favorites") {
     try {

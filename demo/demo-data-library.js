@@ -668,6 +668,7 @@ export function createLibraryMockHandler() {
   });
 
   const DEMO_FAV_STORAGE_KEY = "nutc-library-demo-favorites-v1";
+  const DEMO_MYLISTS_STORAGE_KEY = "nutc-library-demo-mylists-v1";
   const toFavSnapshot = (b) => ({
     id: String(b.id),
     title: b.title || "",
@@ -693,6 +694,71 @@ export function createLibraryMockHandler() {
     try {
       globalThis.localStorage?.setItem(DEMO_FAV_STORAGE_KEY, JSON.stringify(next));
     } catch {}
+  };
+
+  let demoMyLists = (() => {
+    try {
+      const saved = JSON.parse(globalThis.localStorage?.getItem(DEMO_MYLISTS_STORAGE_KEY) || "null");
+      if (saved && Array.isArray(saved.lists)) return saved;
+    } catch {}
+    return {
+      nextSeq: 103,
+      activeListId: "101",
+      lists: [
+        { id: "101", name: "系統架構閱讀清單", isTemp: false, itemIds: [String(catalog[0]?.id || "1"), String(catalog[2]?.id || "3")].filter(Boolean) },
+        { id: "102", name: "推理與文學選書", isTemp: false, itemIds: catalog[1] ? [String(catalog[1].id)] : [] },
+        { id: "0", name: "臨時清單", isTemp: true, itemIds: [] },
+      ],
+    };
+  })();
+  const saveDemoMyLists = () => {
+    try {
+      globalThis.localStorage?.setItem(DEMO_MYLISTS_STORAGE_KEY, JSON.stringify(demoMyLists));
+    } catch {}
+  };
+  const buildDemoMyListsResponse = (requestedListId = "") => {
+    const cleanReq = String(requestedListId || "").trim();
+    const target =
+      demoMyLists.lists.find((l) => l.id === cleanReq) ||
+      demoMyLists.lists.find((l) => l.id === demoMyLists.activeListId) ||
+      demoMyLists.lists[0];
+    demoMyLists.activeListId = target.id;
+    const listItems = target.itemIds
+      .map((id) => byId.get(Number(id)))
+      .filter(Boolean)
+      .map((b) => ({
+        id: String(b.id),
+        title: b.title,
+        author: b.author,
+        publisherYear: b.publisherYear,
+        isbn: b.isbn,
+        callNumber: b.callNumber,
+        campus: b.campus,
+        availableCount: b.availableCount,
+        totalCount: b.totalCount,
+        holdsCount: b.holdsCount,
+        holdable: b.holdable,
+        detailPath: b.detailPath,
+        officialUrl: b.officialUrl,
+        coverProxyUrl: b.coverProxyUrl,
+      }));
+    return {
+      ok: true,
+      activeListId: target.id,
+      activeListName: target.name,
+      canSaveTemp: target.isTemp && listItems.length > 0,
+      canCreateList: true,
+      lists: demoMyLists.lists.map((l) => ({
+        id: l.id,
+        name: l.name,
+        isTemp: Boolean(l.isTemp),
+        active: l.id === target.id,
+        count: l.itemIds.length,
+        canDelete: !l.isTemp,
+      })),
+      availabilityPending: false,
+      items: listItems,
+    };
   };
 
   const buildCalendarMonth = (year, month) => {
@@ -724,6 +790,79 @@ export function createLibraryMockHandler() {
 
   return async (method, url, body) => {
     const p = url.pathname;
+
+    if (p === "/api/library/opac/mylists" && method === "GET") {
+      return { status: 200, body: buildDemoMyListsResponse(url.searchParams.get("listId") || "") };
+    }
+
+    if (p === "/api/library/opac/mylists/lists" && method === "POST") {
+      const name = String(body?.name || "").trim();
+      if (!name) return { status: 400, body: { error: "請輸入清單名稱。" } };
+      const newId = String(demoMyLists.nextSeq++);
+      const tempList = demoMyLists.lists.find((l) => l.isTemp);
+      const seedIds = body?.fromTemp && tempList ? [...tempList.itemIds] : [];
+      if (body?.fromTemp && tempList) tempList.itemIds = [];
+      demoMyLists.lists.splice(Math.max(0, demoMyLists.lists.length - 1), 0, {
+        id: newId,
+        name,
+        isTemp: false,
+        itemIds: seedIds,
+      });
+      demoMyLists.activeListId = newId;
+      saveDemoMyLists();
+      return { status: 200, body: buildDemoMyListsResponse(newId) };
+    }
+
+    const demoListDel = method === "DELETE" && p.match(/^\/api\/library\/opac\/mylists\/lists\/([^/]+)$/);
+    if (demoListDel) {
+      const id = decodeURIComponent(demoListDel[1]);
+      if (id === "0") return { status: 400, body: { error: "臨時清單無法刪除。" } };
+      demoMyLists.lists = demoMyLists.lists.filter((l) => l.id !== id);
+      if (demoMyLists.activeListId === id) {
+        demoMyLists.activeListId = demoMyLists.lists[0]?.id || "0";
+      }
+      saveDemoMyLists();
+      return { status: 200, body: buildDemoMyListsResponse(demoMyLists.activeListId) };
+    }
+
+    if (p === "/api/library/opac/mylists/items" && method === "POST") {
+      const titleId = String(body?.titleId || body?.id || "").trim();
+      const listId = String(body?.listId || demoMyLists.activeListId || "0").trim();
+      const target = demoMyLists.lists.find((l) => l.id === listId) || demoMyLists.lists[0];
+      if (!titleId || !byId.has(Number(titleId))) {
+        return { status: 404, body: { error: "找不到示範館藏條目。" } };
+      }
+      if (!target.itemIds.includes(titleId)) target.itemIds.unshift(titleId);
+      saveDemoMyLists();
+      return { status: 200, body: { ...buildDemoMyListsResponse(target.id), added: [byId.get(Number(titleId)).title] } };
+    }
+
+    if (p === "/api/library/opac/mylists/items/transfer" && method === "POST") {
+      const titleIds = Array.isArray(body?.titleIds) ? body.titleIds.map(String) : [];
+      const fromList = demoMyLists.lists.find((l) => l.id === String(body?.fromListId || "0"));
+      const destList = demoMyLists.lists.find((l) => l.id === String(body?.destListId || ""));
+      if (!fromList || !destList) return { status: 400, body: { error: "清單不存在。" } };
+      for (const tid of titleIds) {
+        if (!destList.itemIds.includes(tid)) destList.itemIds.unshift(tid);
+      }
+      if (String(body?.mode || "").toUpperCase() === "MOVE") {
+        fromList.itemIds = fromList.itemIds.filter((id) => !titleIds.includes(id));
+      }
+      saveDemoMyLists();
+      return { status: 200, body: buildDemoMyListsResponse(fromList.id) };
+    }
+
+    const demoItemDel = method === "DELETE" && p.match(/^\/api\/library\/opac\/mylists\/items\/([^/]+)$/);
+    if (demoItemDel) {
+      const titleId = decodeURIComponent(demoItemDel[1]);
+      const listId = url.searchParams.get("listId") || demoMyLists.activeListId || "0";
+      const target = demoMyLists.lists.find((l) => l.id === listId);
+      if (target) {
+        target.itemIds = target.itemIds.filter((id) => id !== titleId);
+        saveDemoMyLists();
+      }
+      return { status: 200, body: buildDemoMyListsResponse(listId) };
+    }
 
     if (p === "/api/library/overview") {
       return { status: 200, body: getOverview() };

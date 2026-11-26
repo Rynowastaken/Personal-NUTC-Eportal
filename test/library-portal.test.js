@@ -1051,3 +1051,116 @@ test("handleLibraryRequest manages persisted library favorites and UI exposes /l
   assert.match(css, /\.fav-btn\[aria-pressed="true"\]/);
   assert.match(css, /\.book-row-action::after/);
 });
+
+test("handleLibraryRequest dispatches OPAC My Lists proxy routes", async () => {
+  const handlers = makeHandlers();
+  const calls = [];
+  const samplePayload = {
+    ok: true,
+    activeListId: "42",
+    activeListName: "專題書單",
+    canSaveTemp: false,
+    canCreateList: true,
+    lists: [
+      { id: "42", name: "專題書單", isTemp: false, active: true, count: 1, canDelete: true },
+      { id: "0", name: "臨時清單", isTemp: true, active: false, count: 0, canDelete: false },
+    ],
+    items: [{ id: "858267", title: "賜給名偵探甜美的死亡" }],
+  };
+
+  const deps = {
+    opacMyListsFn: async (opts) => {
+      calls.push(["get", opts]);
+      return samplePayload;
+    },
+    opacMyListCreateFn: async (opts) => {
+      calls.push(["create", opts]);
+      return samplePayload;
+    },
+    opacMyListDeleteFn: async (opts) => {
+      calls.push(["deleteList", opts]);
+      return { ...samplePayload, activeListId: "0", items: [] };
+    },
+    opacMyListAddFn: async (opts) => {
+      calls.push(["addItem", opts]);
+      return samplePayload;
+    },
+    opacMyListRemoveFn: async (opts) => {
+      calls.push(["removeItem", opts]);
+      return { ...samplePayload, items: [] };
+    },
+    opacMyListTransferFn: async (opts) => {
+      calls.push(["transfer", opts]);
+      return samplePayload;
+    },
+  };
+
+  const r1 = makeMockRes();
+  await handleLibraryRequest(
+    { method: "GET" },
+    r1,
+    new URL("http://localhost/api/library/opac/mylists?listId=42&refresh=1"),
+    handlers,
+    deps,
+  );
+  assert.equal(r1.statusCode, 200);
+
+  const r2 = makeMockRes();
+  await handleLibraryRequest(
+    { method: "POST", _body: { name: "新清單", fromTemp: false } },
+    r2,
+    new URL("http://localhost/api/library/opac/mylists/lists"),
+    handlers,
+    deps,
+  );
+  assert.equal(r2.statusCode, 200);
+
+  const r3 = makeMockRes();
+  await handleLibraryRequest(
+    { method: "POST", _body: { titleId: "858267", listId: "42" } },
+    r3,
+    new URL("http://localhost/api/library/opac/mylists/items"),
+    handlers,
+    deps,
+  );
+  assert.equal(r3.statusCode, 200);
+
+  const r4 = makeMockRes();
+  await handleLibraryRequest(
+    { method: "DELETE" },
+    r4,
+    new URL("http://localhost/api/library/opac/mylists/items/858267?listId=42"),
+    handlers,
+    deps,
+  );
+  assert.equal(r4.statusCode, 200);
+
+  const r5 = makeMockRes();
+  await handleLibraryRequest(
+    { method: "POST", _body: { titleIds: ["858267"], fromListId: "42", destListId: "0", mode: "COPY" } },
+    r5,
+    new URL("http://localhost/api/library/opac/mylists/items/transfer"),
+    handlers,
+    deps,
+  );
+  assert.equal(r5.statusCode, 200);
+
+  const r6 = makeMockRes();
+  await handleLibraryRequest(
+    { method: "DELETE" },
+    r6,
+    new URL("http://localhost/api/library/opac/mylists/lists/42"),
+    handlers,
+    deps,
+  );
+  assert.equal(r6.statusCode, 200);
+
+  assert.deepEqual(calls, [
+    ["get", { listId: "42", force: true }],
+    ["create", { name: "新清單", fromTemp: false }],
+    ["addItem", { titleId: "858267", listId: "42", makeDefault: false }],
+    ["removeItem", { titleIds: ["858267"], listId: "42" }],
+    ["transfer", { titleIds: ["858267"], fromListId: "42", destListId: "0", mode: "COPY" }],
+    ["deleteList", { listId: "42" }],
+  ]);
+});

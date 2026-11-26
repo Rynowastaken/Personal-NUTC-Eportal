@@ -16,7 +16,7 @@
   const NAV = [
     ["home", "總覽"],
     ["catalog", "館藏"],
-    ["favorites", "收藏"],
+    ["favorites", "清單"],
     ["loans", "借閱"],
     ["rooms", "空間"],
     ["resources", "資源"],
@@ -264,6 +264,23 @@
 
   const CATALOG_VIEW_STORAGE_KEY = "nutc.library.catalogView";
   const CATALOG_PAGE_SIZE_STORAGE_KEY = "nutc.library.catalogPageSize";
+  const ACTIVE_MYLIST_STORAGE_KEY = "nutc.library.activeListId";
+
+  function loadSavedActiveListId() {
+    try {
+      const val = String(localStorage.getItem(ACTIVE_MYLIST_STORAGE_KEY) || "").trim();
+      return /^\d{1,12}$/.test(val) ? val : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function saveActiveListId(val) {
+    try {
+      const clean = String(val || "").trim();
+      if (clean) localStorage.setItem(ACTIVE_MYLIST_STORAGE_KEY, clean);
+    } catch {}
+  }
 
   function loadSavedCatalogView() {
     try {
@@ -299,13 +316,24 @@
     overviewLoading: false,
     privacyRevealed: false,
 
+    lists: [],
+    activeListId: loadSavedActiveListId(),
+    activeListName: "",
+    canSaveTemp: false,
+    canCreateList: false,
     favorites: [],
     favoritesLoaded: false,
     favoritesLoading: false,
     favoritesError: "",
+    favoritesErrorObj: null,
     favoritesQuery: "",
     favoriteIds: new Set(),
     favoritePendingIds: new Set(),
+    listCreateOpen: false,
+    listCreateFromTemp: false,
+    listCreateDraft: "",
+    listActionBusy: false,
+    confirmDeleteListId: "",
 
     catalogQuery: "",
     catalogDraftQ: "",
@@ -411,52 +439,91 @@
     state.favoriteIds = new Set(state.favorites.map((item) => String(item.id)));
   }
 
+  function syncAllFavoriteButtonsInDom() {
+    for (const btn of document.querySelectorAll(".fav-btn[data-fav-book-id]")) {
+      syncFavoriteButtonsInDom(btn.getAttribute("data-fav-book-id"));
+    }
+  }
+
+  function applyMyListsResponse(res) {
+    if (!res || typeof res !== "object") return;
+    if (Array.isArray(res.lists)) {
+      state.lists = res.lists;
+    }
+    if (res.activeListId != null) {
+      state.activeListId = String(res.activeListId);
+      saveActiveListId(state.activeListId);
+    }
+    if (res.activeListName != null) {
+      state.activeListName = String(res.activeListName);
+    }
+    state.canSaveTemp = Boolean(res.canSaveTemp);
+    state.canCreateList = Boolean(res.canCreateList);
+    syncFavoritesState(res.items);
+    state.favoritesLoaded = true;
+    state.favoritesError = "";
+    state.favoritesErrorObj = null;
+    syncAllFavoriteButtonsInDom();
+  }
+
   function syncFavoriteButtonsInDom(bookId) {
     const id = String(bookId || "").trim();
     if (!id) return;
     const isFav = state.favoriteIds.has(id);
     const busy = state.favoritePendingIds.has(id);
+    const targetName = state.activeListName || "清單";
     for (const btn of document.querySelectorAll(".fav-btn[data-fav-book-id]")) {
       if (btn.getAttribute("data-fav-book-id") !== id) continue;
       btn.setAttribute("aria-pressed", String(isFav));
       btn.disabled = busy;
-      const label = isFav ? "取消收藏" : "加入收藏";
+      const label = isFav ? `從「${targetName}」移除` : `加入「${targetName}」`;
       btn.setAttribute("aria-label", label);
       btn.setAttribute("title", label);
       const txt = btn.querySelector("[data-fav-label]");
-      if (txt) txt.textContent = isFav ? "已收藏" : "收藏";
+      if (txt) txt.textContent = isFav ? "已在清單" : "加入清單";
     }
   }
 
-  async function loadFavorites({ force = false } = {}) {
+  async function loadFavorites({ listId = state.activeListId, force = false } = {}) {
     if (state.favoritesLoading && !force) return;
     state.favoritesLoading = true;
     state.favoritesError = "";
+    state.favoritesErrorObj = null;
     try {
-      const res = await apiJson("/api/library/favorites");
-      syncFavoritesState(res?.items);
-      state.favoritesLoaded = true;
+      const qs = new URLSearchParams();
+      if (listId) qs.set("listId", String(listId));
+      if (force) qs.set("refresh", "1");
+      const queryStr = qs.toString();
+      const res = await apiJson(
+        `/api/library/opac/mylists${queryStr ? `?${queryStr}` : ""}`,
+      );
+      applyMyListsResponse(res);
     } catch (error) {
-      state.favoritesError = error?.message || "無法載入我的收藏。";
+      state.favoritesErrorObj = error;
+      state.favoritesError = error?.message || "無法載入 OPAC 我的清單。";
     } finally {
       state.favoritesLoading = false;
     }
   }
 
-  async function toggleFavorite(item, fallback = {}) {
+  async function toggleFavorite(item, fallback = {}, listIdOverride = "") {
     const payload = buildFavoritePayload(item, fallback);
     if (!payload.id || !payload.title || state.favoritePendingIds.has(payload.id)) return;
 
-    const wasFav = state.favoriteIds.has(payload.id);
+    const targetListId = String(listIdOverride || state.activeListId || "0");
+    const wasFav =
+      targetListId === String(state.activeListId || "0") &&
+      state.favoriteIds.has(payload.id);
     const prevFavorites = [...state.favorites];
     state.favoritePendingIds.add(payload.id);
     state.favoritesError = "";
+    state.favoritesErrorObj = null;
 
     if (wasFav) {
       syncFavoritesState(state.favorites.filter((fav) => String(fav.id) !== payload.id));
-    } else {
+    } else if (targetListId === String(state.activeListId || "0")) {
       syncFavoritesState([
-        { ...payload, savedAt: new Date().toISOString() },
+        payload,
         ...state.favorites.filter((fav) => String(fav.id) !== payload.id),
       ]);
     }
@@ -467,18 +534,27 @@
 
     try {
       const res = wasFav
-        ? await apiJson(`/api/library/favorites/${encodeURIComponent(payload.id)}`, {
-            method: "DELETE",
-          })
-        : await apiJson("/api/library/favorites", {
+        ? await apiJson(
+            `/api/library/opac/mylists/items/${encodeURIComponent(payload.id)}?listId=${encodeURIComponent(targetListId)}`,
+            { method: "DELETE" },
+          )
+        : await apiJson("/api/library/opac/mylists/items", {
             method: "POST",
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              titleId: payload.id,
+              listId: targetListId,
+            }),
           });
-      syncFavoritesState(res?.items);
-      state.favoritesLoaded = true;
+      applyMyListsResponse(res);
     } catch (error) {
       syncFavoritesState(prevFavorites);
-      state.favoritesError = error?.message || "更新收藏失敗。";
+      state.favoritesErrorObj = error;
+      state.favoritesError = error?.message || "更新 OPAC 清單失敗。";
+      if (error?.status === 401 || error?.code === "EPORTAL_LOGIN_REQUIRED") {
+        closeModal();
+        navigate(routeUrl("favorites"));
+        return;
+      }
     } finally {
       state.favoritePendingIds.delete(payload.id);
       syncFavoriteButtonsInDom(payload.id);
@@ -492,7 +568,8 @@
     if (!id) return null;
     const isFav = state.favoriteIds.has(id);
     const busy = state.favoritePendingIds.has(id);
-    const ariaText = isFav ? "取消收藏" : "加入收藏";
+    const targetName = state.activeListName || "清單";
+    const ariaText = isFav ? `從「${targetName}」移除` : `加入「${targetName}」`;
     return h(
       "button",
       {
@@ -509,7 +586,7 @@
         },
       },
       icon("heart"),
-      showLabel ? h("span", { "data-fav-label": "1" }, isFav ? "已收藏" : "收藏") : null,
+      showLabel ? h("span", { "data-fav-label": "1" }, isFav ? "已在清單" : "加入清單") : null,
     );
   }
 
@@ -1135,6 +1212,23 @@
     ].filter(([, val]) => Boolean(val));
 
     const subjects = Array.isArray(book.subjects) ? book.subjects.filter(Boolean) : [];
+    const listSelectEl =
+      state.lists.length > 1
+        ? createSelect({
+            id: "bookModalListSelect",
+            small: true,
+            options: state.lists.map((l) => [l.id, l.name]),
+            value: state.activeListId || state.lists[0]?.id || "0",
+            ariaLabel: "目標 OPAC 清單",
+            onChange: (nextListId) => {
+              state.activeListId = nextListId;
+              saveActiveListId(nextListId);
+              void loadFavorites({ listId: nextListId, force: true }).then(() => {
+                syncAllFavoriteButtonsInDom();
+              });
+            },
+          })
+        : null;
     const favBtn = renderFavoriteButton(book, {
       showLabel: true,
       className: "fav-btn fav-btn--modal",
@@ -1155,6 +1249,7 @@
           h(
             "div",
             { class: "book-modal-head-actions" },
+            listSelectEl,
             favBtn,
             h(
               "button",
@@ -1900,7 +1995,9 @@
             type: "button",
             onclick: () => navigate(routeUrl("favorites")),
           },
-          state.favorites.length ? `我的收藏 (${state.favorites.length})` : "我的收藏",
+          state.favorites.length
+            ? `${state.activeListName || "我的清單"} (${state.favorites.length})`
+            : "我的清單",
         ),
       ),
     );
@@ -2078,7 +2175,7 @@
             h(
               "h2",
               null,
-              "我的收藏",
+              state.activeListName || "我的清單",
               h("span", { class: "count" }, `(${state.favorites.length})`),
             ),
             h("a", { class: "meta", href: routeUrl("favorites") }, "查看全部"),
@@ -2120,9 +2217,67 @@
   }
 
   // ---------------------------------------------------------------------------
-  // View: Favorites (/library/favorites)
+  // View: OPAC My Lists (/library/favorites)
+
+  async function submitCreateOrSaveOpacList(e) {
+    e?.preventDefault?.();
+    const name = state.listCreateDraft.trim();
+    if (!name || state.listActionBusy) return;
+    state.listActionBusy = true;
+    state.favoritesError = "";
+    render();
+    try {
+      const res = await apiJson("/api/library/opac/mylists/lists", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          fromTemp: Boolean(state.listCreateFromTemp),
+        }),
+      });
+      state.listCreateOpen = false;
+      state.listCreateDraft = "";
+      state.listCreateFromTemp = false;
+      applyMyListsResponse(res);
+    } catch (error) {
+      state.favoritesErrorObj = error;
+      state.favoritesError = error?.message || "建立 OPAC 清單失敗。";
+    } finally {
+      state.listActionBusy = false;
+      render();
+    }
+  }
+
+  async function submitDeleteOpacList(listId) {
+    if (!listId || listId === "0" || state.listActionBusy) return;
+    state.listActionBusy = true;
+    state.favoritesError = "";
+    render();
+    try {
+      const res = await apiJson(
+        `/api/library/opac/mylists/lists/${encodeURIComponent(listId)}`,
+        { method: "DELETE" },
+      );
+      state.confirmDeleteListId = "";
+      applyMyListsResponse(res);
+    } catch (error) {
+      state.favoritesErrorObj = error;
+      state.favoritesError = error?.message || "刪除 OPAC 清單失敗。";
+    } finally {
+      state.listActionBusy = false;
+      render();
+    }
+  }
 
   function renderFavoritesView() {
+    if (
+      state.favoritesErrorObj &&
+      !state.favoritesLoaded &&
+      (state.favoritesErrorObj.status === 401 ||
+        state.favoritesErrorObj.code === "EPORTAL_LOGIN_REQUIRED")
+    ) {
+      return renderAuthOrFatalError(state.favoritesErrorObj);
+    }
+
     const query = state.favoritesQuery.trim().toLowerCase();
     const allItems = state.favorites;
     const filtered = query
@@ -2135,17 +2290,22 @@
         )
       : allItems;
 
+    const activeList =
+      state.lists.find((l) => l.id === state.activeListId) ||
+      state.lists.find((l) => l.active) ||
+      null;
+
     const filterInput = h("input", {
       id: "favoritesFilterInput",
       class: "input",
       type: "search",
-      placeholder: "搜尋已收藏書名、作者、ISBN 或索書號…",
+      placeholder: "搜尋清單內書名、作者、ISBN 或索書號…",
       value: state.favoritesQuery,
       oninput: (e) => {
         state.favoritesQuery = e.target.value;
         render();
       },
-      "aria-label": "篩選收藏書籍",
+      "aria-label": "篩選清單書籍",
     });
 
     const setView = (nextView) => {
@@ -2182,6 +2342,180 @@
       ),
     );
 
+    const listTabs = state.lists.length
+      ? h(
+          "div",
+          { class: "mylist-bar" },
+          h(
+            "div",
+            { class: "chips", role: "tablist", "aria-label": "OPAC 我的清單" },
+            state.lists.map((l) =>
+              h(
+                "button",
+                {
+                  class: "chip-btn",
+                  type: "button",
+                  role: "tab",
+                  disabled: state.favoritesLoading || state.listActionBusy,
+                  "aria-pressed": String(l.id === (activeList?.id || state.activeListId)),
+                  onclick: () => {
+                    if (l.id === state.activeListId) return;
+                    state.activeListId = l.id;
+                    state.confirmDeleteListId = "";
+                    saveActiveListId(l.id);
+                    void loadFavorites({ listId: l.id }).then(() => render());
+                    render();
+                  },
+                },
+                h("span", null, l.name),
+                l.count != null
+                  ? h("span", { class: "chip-count num" }, formatNumber(l.count))
+                  : null,
+              ),
+            ),
+          ),
+          h(
+            "div",
+            { class: "mylist-actions" },
+            state.canSaveTemp
+              ? h(
+                  "button",
+                  {
+                    class: "btn small",
+                    type: "button",
+                    disabled: state.listActionBusy,
+                    onclick: () => {
+                      state.listCreateOpen = true;
+                      state.listCreateFromTemp = true;
+                      state.listCreateDraft = "";
+                      render();
+                      requestAnimationFrame(() => document.getElementById("opacNewListNameInput")?.focus());
+                    },
+                  },
+                  "保存臨時清單",
+                )
+              : null,
+            state.canCreateList
+              ? h(
+                  "button",
+                  {
+                    class: "btn small",
+                    type: "button",
+                    disabled: state.listActionBusy,
+                    onclick: () => {
+                      state.listCreateOpen = !state.listCreateOpen || state.listCreateFromTemp;
+                      state.listCreateFromTemp = false;
+                      state.listCreateDraft = "";
+                      render();
+                      if (state.listCreateOpen) {
+                        requestAnimationFrame(() => document.getElementById("opacNewListNameInput")?.focus());
+                      }
+                    },
+                  },
+                  "新增清單",
+                )
+              : null,
+            activeList && activeList.canDelete
+              ? state.confirmDeleteListId === activeList.id
+                ? h(
+                    "div",
+                    { class: "mylist-confirm" },
+                    h(
+                      "button",
+                      {
+                        class: "btn small danger",
+                        type: "button",
+                        disabled: state.listActionBusy,
+                        onclick: () => void submitDeleteOpacList(activeList.id),
+                      },
+                      state.listActionBusy ? "刪除中…" : "確定刪除清單",
+                    ),
+                    h(
+                      "button",
+                      {
+                        class: "btn small ghost",
+                        type: "button",
+                        disabled: state.listActionBusy,
+                        onclick: () => {
+                          state.confirmDeleteListId = "";
+                          render();
+                        },
+                      },
+                      "取消",
+                    ),
+                  )
+                : h(
+                    "button",
+                    {
+                      class: "btn small ghost",
+                      type: "button",
+                      disabled: state.listActionBusy,
+                      onclick: () => {
+                        state.confirmDeleteListId = activeList.id;
+                        render();
+                      },
+                    },
+                    "刪除清單",
+                  )
+              : null,
+          ),
+        )
+      : null;
+
+    let createSubmitBtn = null;
+    if (state.listCreateOpen) {
+      createSubmitBtn = h(
+        "button",
+        {
+          class: "btn primary small",
+          type: "submit",
+          disabled: state.listActionBusy || !state.listCreateDraft.trim(),
+        },
+        state.listActionBusy ? "處理中…" : state.listCreateFromTemp ? "保存" : "建立",
+      );
+    }
+
+    const createListForm = state.listCreateOpen
+      ? h(
+          "form",
+          {
+            class: "mylist-create-bar",
+            onsubmit: submitCreateOrSaveOpacList,
+          },
+          h("input", {
+            id: "opacNewListNameInput",
+            class: "input",
+            type: "text",
+            maxlength: "120",
+            placeholder: state.listCreateFromTemp ? "另存清單名稱…" : "新清單名稱…",
+            value: state.listCreateDraft,
+            oninput: (e) => {
+              state.listCreateDraft = e.target.value;
+              if (createSubmitBtn) {
+                createSubmitBtn.disabled = state.listActionBusy || !e.target.value.trim();
+              }
+            },
+            "aria-label": "清單名稱",
+          }),
+          createSubmitBtn,
+          h(
+            "button",
+            {
+              class: "btn ghost small",
+              type: "button",
+              disabled: state.listActionBusy,
+              onclick: () => {
+                state.listCreateOpen = false;
+                state.listCreateDraft = "";
+                state.listCreateFromTemp = false;
+                render();
+              },
+            },
+            "取消",
+          ),
+        )
+      : null;
+
     let bodyNode;
     if (state.favoritesError) {
       bodyNode = h(
@@ -2194,7 +2528,7 @@
           {
             class: "btn small",
             type: "button",
-            onclick: () => void loadFavorites({ force: true }).then(() => render()),
+            onclick: () => void loadFavorites({ listId: state.activeListId, force: true }).then(() => render()),
           },
           icon("refresh"),
           "重試",
@@ -2204,7 +2538,7 @@
       bodyNode = h(
         "section",
         { class: "section" },
-        h("div", { class: "list" }, h("div", { class: "empty" }, icon("heart"), h("strong", null, "載入收藏中…"))),
+        h("div", { class: "list" }, h("div", { class: "empty" }, icon("heart"), h("strong", null, "載入清單中…"))),
       );
     } else {
       bodyNode = h(
@@ -2216,7 +2550,7 @@
           h(
             "h2",
             null,
-            "收藏書單",
+            state.activeListName || "清單書目",
             h("span", { class: "count" }, `(${filtered.length})`),
           ),
           h("div", { class: "section-controls" }, viewToggle),
@@ -2240,7 +2574,7 @@
                 "div",
                 { class: "empty" },
                 icon("heart"),
-                h("strong", null, allItems.length ? "找不到符合篩選的收藏" : "尚無收藏書籍"),
+                h("strong", null, allItems.length ? "找不到符合篩選的館藏" : "此清單目前沒有館藏"),
                 h(
                   "div",
                   { class: "actions", style: "justify-content:center" },
@@ -2272,7 +2606,29 @@
     return h(
       "div",
       null,
-      h("div", { class: "hero" }, h("h1", null, "我的收藏")),
+      state.favoritesLoading && state.favoritesLoaded ? h("div", { class: "loading" }) : null,
+      h(
+        "div",
+        { class: "hero" },
+        h("h1", null, "我的清單"),
+        h(
+          "div",
+          { class: "hero-side" },
+          h(
+            "a",
+            {
+              class: "btn small ghost",
+              href: "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/mylists?",
+              target: "_blank",
+              rel: "noopener",
+            },
+            icon("external"),
+            "在官方清單開啟",
+          ),
+        ),
+      ),
+      listTabs,
+      createListForm,
       allItems.length
         ? h(
             "form",
@@ -4116,8 +4472,8 @@
       }
     }
     if (route.name === "favorites") {
-      if (!state.favoritesLoaded && !state.favoritesLoading) {
-        void loadFavorites().then(() => render());
+      if (!state.favoritesLoaded && !state.favoritesLoading && !state.favoritesErrorObj) {
+        void loadFavorites({ listId: state.activeListId }).then(() => render());
       } else {
         const pendingFavs = state.favorites
           .filter(
@@ -4145,7 +4501,7 @@
     const titles = {
       home: "圖書館",
       catalog: "館藏查詢 · 圖書館",
-      favorites: "我的收藏 · 圖書館",
+      favorites: "我的清單 · 圖書館",
       loans: "借閱帳戶 · 圖書館",
       rooms: "空間預約 · 圖書館",
       resources: "電子資源 · 圖書館",

@@ -466,8 +466,13 @@ const FACET_GROUPS = [
  * Extract structured facet tag groups (`SUBJECT`, `LANGUAGE`, `PUBDATE`, `ITYPE`,
  * `LOCAL_NOTE_590`) and clickable `qf` query parameters from SirsiDynix OPAC HTML.
  */
-export function parseOpacFacets(html = "") {
+export function parseOpacFacets(html = "", activeTags = []) {
   const source = String(html || "");
+  const activeSet = new Set(
+    (Array.isArray(activeTags) ? activeTags : [])
+      .map((t) => String(t || "").trim())
+      .filter(Boolean),
+  );
   const byKey = new Map();
   const formRegex =
     /<form\b[^>]*id="facetForm(SUBJECT|LANGUAGE|PUBDATE|ITYPE|LOCAL_NOTE_590)"[^>]*>([\s\S]*?)<\/form>/gi;
@@ -482,8 +487,16 @@ export function parseOpacFacets(html = "") {
     for (const [, rawHref, rawLabel, rawCount] of body.matchAll(linkRegex)) {
       let qf = "";
       try {
+        const allQf = new URL(decodeHtmlEntities(rawHref), OPAC_ORIGIN).searchParams
+          .getAll("qf")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const groupPrefix = `${key}\t`;
         qf =
-          new URL(decodeHtmlEntities(rawHref), OPAC_ORIGIN).searchParams.get("qf") ||
+          allQf.filter((s) => s.startsWith(groupPrefix) && !activeSet.has(s)).at(-1) ||
+          allQf.filter((s) => !activeSet.has(s)).at(-1) ||
+          allQf.filter((s) => s.startsWith(groupPrefix)).at(-1) ||
+          allQf.at(-1) ||
           "";
       } catch {
         qf = "";
@@ -657,7 +670,7 @@ export function parseOpacSearchResults(
     totalResults: effectiveTotal,
     totalPages,
     availabilityUrl,
-    facets: parseOpacFacets(source),
+    facets: parseOpacFacets(source, Array.isArray(tags) ? tags : []),
     items,
   };
 }
@@ -1350,4 +1363,350 @@ export function parseCarrelReservations(html = "") {
   }
 
   return { hidden, reservations };
+}
+
+function parseFormTagMeta(formHtml = "") {
+  if (!formHtml) return null;
+  const actionRaw = firstMatch(formHtml, /<form\b[^>]*action=(["'])([^"']*)\1/i, 2);
+  const id = firstMatch(formHtml, /<form\b[^>]*id=(["'])([^"']*)\1/i, 2);
+  const formData =
+    firstMatch(
+      formHtml,
+      /<input\b[^>]*name=(["'])t:formdata\1[^>]*value=(["'])([^"']*)\2/i,
+      3,
+    ) ||
+    firstMatch(
+      formHtml,
+      /<input\b[^>]*value=(["'])([^"']*)\1[^>]*name=(["'])t:formdata\3/i,
+      2,
+    );
+  const submitMatch = formHtml.match(
+    /<input\b[^>]*type=(["'])submit\1[^>]*>/i,
+  );
+  const submitName = submitMatch
+    ? firstMatch(submitMatch[0], /\bname=(["'])([^"']*)\1/i, 2)
+    : "";
+  const submitValue = submitMatch
+    ? decodeHtmlEntities(firstMatch(submitMatch[0], /\bvalue=(["'])([^"']*)\1/i, 2))
+    : "";
+  const submitClientId = submitMatch
+    ? firstMatch(submitMatch[0], /\b(?:clientId|id)=(["'])([^"']*)\1/i, 2)
+    : "";
+
+  return {
+    id,
+    actionPath: decodeHtmlEntities(actionRaw),
+    formData: decodeHtmlEntities(formData),
+    submitName,
+    submitValue,
+    submitClientId,
+  };
+}
+
+/**
+ * Parse SirsiDynix Enterprise OPAC `/search/mylists` HTML into saved/temp lists,
+ * list items, and Tapestry form metadata for stateful mutations.
+ */
+export function parseOpacMyLists(html = "", { fallbackListId = "0" } = {}) {
+  const source = String(html || "");
+  const loginRequired = /id=(["'])listLoginLink\1/i.test(source);
+
+  const linkZones = new Map();
+  for (const [, block] of source.matchAll(/"linkZone"\s*:\s*\[([\s\S]*?)\]/gi)) {
+    for (const [, linkId, zoneId] of block.matchAll(
+      /"linkId"\s*:\s*"([^"]+)"[^}]*?"zoneId"\s*:\s*"([^"]+)"/gi,
+    )) {
+      linkZones.set(linkId, zoneId);
+    }
+  }
+
+  const listsMap = new Map();
+  const upsertList = (id, patch = {}) => {
+    const cleanId = String(id ?? "").trim();
+    if (!cleanId) return;
+    const prev = listsMap.get(cleanId) || {
+      id: cleanId,
+      name: cleanId === "0" ? "臨時清單" : `清單 ${cleanId}`,
+      isTemp: cleanId === "0",
+      active: false,
+      count: null,
+      href: `${OPAC_BASE}/search/mylists/${encodeURIComponent(cleanId)}`,
+      deleteInputName: "",
+      deleteInputValue: "",
+    };
+    const nextName =
+      patch.name && (!prev.name || prev.name.startsWith("清單 "))
+        ? patch.name
+        : patch.name || prev.name;
+    listsMap.set(cleanId, {
+      ...prev,
+      ...patch,
+      id: cleanId,
+      name: nextName,
+      isTemp: cleanId === "0",
+    });
+  };
+
+  const myListFormHtml =
+    firstMatch(source, /<form\b[^>]*id=(["'])myListForm\1[\s\S]*?<\/form>/i, 0) || "";
+  const myListForm = parseFormTagMeta(myListFormHtml);
+  if (myListForm && linkZones.has("myListForm")) {
+    myListForm.zoneId = linkZones.get("myListForm");
+  }
+
+  const formActionListId = firstMatch(
+    myListForm?.actionPath || "",
+    /mylistform\/([^/?#]+)/i,
+  );
+  let activeListId = formActionListId || String(fallbackListId || "0");
+
+  // Sidebar saved lists (`<ul id="lists_list">...</ul>`)
+  const sidebarListHtml =
+    firstMatch(source, /<ul\b[^>]*id=(["'])lists_list\1[^>]*>([\s\S]*?)<\/ul>/i, 2) || "";
+  for (const [, attrs, inner] of sidebarListHtml.matchAll(
+    /<li\b([^>]*)>([\s\S]*?)<\/li>/gi,
+  )) {
+    const idAttr = firstMatch(attrs, /\bid=(["'])([^"']*)\1/i, 2);
+    const listIdFromLi = idAttr.includes(":") ? idAttr.split(":").pop() : "";
+    const linkHrefRaw = firstMatch(
+      inner,
+      /<a\b[^>]*class=(["'])[^"']*\bmyListLink\b[^"']*\1[^>]*href=(["'])([^"']*)\2/i,
+      3,
+    ) ||
+      firstMatch(
+        inner,
+        /<a\b[^>]*href=(["'])([^"']*)\1[^>]*class=(["'])[^"']*\bmyListLink\b/i,
+        2,
+      );
+    const linkHref = decodeHtmlEntities(linkHrefRaw);
+    const listIdFromHref = firstMatch(linkHref, /mylists\/([^/?#]+)/i);
+    const listId = listIdFromLi || listIdFromHref;
+    if (!listId) continue;
+
+    const rawLinkText = stripHtml(
+      firstMatch(
+        inner,
+        /<a\b[^>]*class=(["'])[^"']*\bmyListLink\b[^"']*\1[^>]*>([\s\S]*?)<\/a>/i,
+        2,
+      ),
+    );
+    const countText = firstMatch(rawLinkText, /\((\d+)\)\s*$/);
+    const name = rawLinkText.replace(/\s*\(\d+\)\s*$/, "").trim();
+    const isActive = /\bactiveList\b/i.test(attrs);
+    if (isActive && !formActionListId) activeListId = listId;
+
+    const cbMatch = inner.match(/<input\b[^>]*type=(["'])checkbox\1[^>]*>/i);
+    const cbName = cbMatch
+      ? firstMatch(cbMatch[0], /\bname=(["'])([^"']*)\1/i, 2)
+      : "";
+    const cbVal = cbMatch
+      ? decodeHtmlEntities(firstMatch(cbMatch[0], /\bvalue=(["'])([^"']*)\1/i, 2))
+      : "";
+
+    upsertList(listId, {
+      name,
+      active: isActive,
+      count: countText ? Number.parseInt(countText, 10) : null,
+      href: linkHref ? resolveLibraryHref(linkHref, OPAC_ORIGIN) : undefined,
+      deleteInputName: cbName,
+      deleteInputValue: cbVal,
+    });
+  }
+
+  // Destination `<select id="listdetails_destList">` also enumerates all lists
+  const destSelectHtml =
+    firstMatch(
+      source,
+      /<select\b[^>]*id=(["'])listdetails_destList\1[^>]*>([\s\S]*?)<\/select>/i,
+      2,
+    ) || "";
+  for (const [, , valRaw, labelRaw] of destSelectHtml.matchAll(
+    /<option\b[^>]*value=(["'])([^"']*)\1[^>]*>([\s\S]*?)<\/option>/gi,
+  )) {
+    const listId = decodeHtmlEntities(valRaw).trim();
+    const name = stripHtml(labelRaw);
+    if (listId && name) {
+      upsertList(listId, { name });
+    }
+  }
+
+  const activeName =
+    stripHtml(
+      firstMatch(
+        source,
+        /<span\b[^>]*class=(["'])[^"']*\bmyListName\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i,
+        2,
+      ),
+    ) || (activeListId === "0" ? "臨時清單" : "");
+  const activeCountRaw = stripHtml(
+    firstMatch(
+      source,
+      /<span\b[^>]*class=(["'])[^"']*\bmyListItemCount\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i,
+      2,
+    ),
+  );
+  const activeCountNum = activeCountRaw.match(/\d+/)?.[0];
+
+  // Items inside `#listdetails_list`
+  const itemsSectionHtml =
+    firstMatch(source, /<div\b[^>]*class=(["'])listWrapper\1[\s\S]*?<form\b[^>]*id=(["'])myListForm\2/i, 0) ||
+    firstMatch(source, /<div\b[^>]*id=(["'])myListItemsZone\1[\s\S]*?<\/div>\s*<\/div>/i, 0) ||
+    source;
+
+  const listItemsChunks = itemsSectionHtml.split(/(?=<li\b[^>]*class=(?:["'])[^"']*\bmyListItem\b)/i);
+  const items = [];
+  for (const chunk of listItemsChunks) {
+    if (!/^<li\b[^>]*class=(["'])[^"']*\bmyListItem\b/i.test(chunk)) continue;
+    const liId = firstMatch(chunk, /^<li\b[^>]*\bid=(["'])([^"']*)\1/i, 2);
+    const cbVal = decodeHtmlEntities(
+      firstMatch(
+        chunk,
+        /<input\b[^>]*class=(["'])[^"']*\bbulkActionCheckbox\b[^"']*\1[^>]*\bvalue=(["'])([^"']*)\2/i,
+        3,
+      ) ||
+        firstMatch(
+          chunk,
+          /<input\b[^>]*\bvalue=(["'])(ent:\/\/[^"']+)\1[^>]*class=(["'])[^"']*\bbulkActionCheckbox\b/i,
+          2,
+        ) ||
+        liId.replace(/^listdetails_li:/i, ""),
+    );
+    const titleId = firstMatch(cbVal || chunk, /SD_ILS:(\d+)/i);
+    if (!titleId) continue;
+
+    const rawIsbn = stripHtml(
+      firstMatch(chunk, /<input\b[^>]*class=(["'])isbnValue\1[^>]*value=(["'])([^"']*)\2/i, 3) ||
+        firstMatch(chunk, /<input\b[^>]*value=(["'])([^"']*)\1[^>]*class=(["'])isbnValue\3/i, 2),
+    );
+    const isbn = normalizeIsbn(rawIsbn) || rawIsbn;
+    const title = stripHtml(
+      firstMatch(chunk, /<a\b[^>]*id=(["'])detailLink\d+\1[^>]*>([\s\S]*?)<\/a>/i, 2) ||
+        firstMatch(
+          chunk,
+          /<div\s+class="displayDetailLink"[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/i,
+        ),
+    );
+    if (!title) continue;
+
+    const author = cleanAuthorText(
+      stripHtml(
+        firstMatch(
+          chunk,
+          /<div\s+class="displayElementText[^"]*\bAUTHOR\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+        ) ||
+          firstMatch(
+            chunk,
+            /<div\s+class="displayElementText[^"]*INITIAL_AUTHOR_SRCH[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+          ),
+      ),
+    );
+    const publisherYear = stripHtml(
+      firstMatch(
+        chunk,
+        /<div\s+class="displayElementText[^"]*PUBYEAR[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      ),
+    );
+    const callNumber = stripHtml(
+      firstMatch(
+        chunk,
+        /<div\s+class="displayElementText[^"]*CALLNUMBER[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      ),
+    );
+    const campus = stripHtml(
+      firstMatch(
+        chunk,
+        /<div\s+class="displayElementText[^"]*LIBRARY[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      ),
+    );
+    const encodedEnt = `ent:$002f$002fSD_ILS$002f0$002fSD_ILS:${titleId}`;
+    const detailPath = `/client/zh_TW/NUTC/search/detailnonmodal/${encodedEnt}/one`;
+
+    items.push({
+      index: items.length,
+      id: titleId,
+      entUri: cbVal || `ent://SD_ILS/0/SD_ILS:${titleId}`,
+      title,
+      author,
+      publisherYear,
+      isbn,
+      callNumber,
+      campus,
+      detailPath,
+      officialUrl: `${OPAC_ORIGIN}${detailPath}`,
+    });
+  }
+
+  upsertList(activeListId, {
+    name: activeName || undefined,
+    active: true,
+    count: activeCountNum != null ? Number.parseInt(activeCountNum, 10) : items.length,
+  });
+
+  const lists = [...listsMap.values()].map((l) => ({
+    ...l,
+    active: l.id === activeListId,
+  }));
+
+  const saveTempListFormHtml =
+    firstMatch(source, /<form\b[^>]*id=(["'])saveTempListForm\1[\s\S]*?<\/form>/i, 0) || "";
+  const saveTempListForm = parseFormTagMeta(saveTempListFormHtml);
+  if (saveTempListForm) {
+    saveTempListForm.nameField =
+      firstMatch(
+        saveTempListFormHtml,
+        /<input\b[^>]*class=(["'])listName\1[^>]*name=(["'])([^"']*)\2/i,
+        3,
+      ) || "listdetails_newListName";
+    saveTempListForm.zoneId = linkZones.get("saveTempListForm") || "newListZone";
+  }
+
+  const createDialogHtml =
+    firstMatch(source, /<div\b[^>]*id=(["'])lists_createDialog\1[\s\S]*?<\/form>\s*<\/div>/i, 0) || "";
+  const createFormRaw =
+    firstMatch(createDialogHtml, /<form\b[\s\S]*?<\/form>/i, 0) || "";
+  const createListForm = parseFormTagMeta(createFormRaw);
+  if (createListForm) {
+    createListForm.nameField =
+      firstMatch(createFormRaw, /<input\b[^>]*id=(["'])lists_createName\1[^>]*name=(["'])([^"']*)\2/i, 3) ||
+      firstMatch(createFormRaw, /<input\b[^>]*type=(["'])text\1[^>]*name=(["'])([^"']*)\2/i, 3) ||
+      "lists_createName";
+    if (createListForm.id && linkZones.has(createListForm.id)) {
+      createListForm.zoneId = linkZones.get(createListForm.id);
+    }
+  }
+
+  const sidebarSection =
+    firstMatch(source, /<div\b[^>]*id=(["'])lists_main\1[\s\S]*?<div\b[^>]*id=(["'])newListZone\2/i, 0) || "";
+  let deleteListsForm = null;
+  for (const [formBlock] of sidebarSection.matchAll(/<form\b[\s\S]*?<\/form>/gi)) {
+    if (/lists_action|lists_submit/i.test(formBlock)) {
+      deleteListsForm = parseFormTagMeta(formBlock);
+      if (deleteListsForm) {
+        deleteListsForm.actionField =
+          firstMatch(formBlock, /<input\b[^>]*id=(["'])lists_action\1[^>]*name=(["'])([^"']*)\2/i, 3) ||
+          "lists_action";
+        deleteListsForm.activeListField =
+          firstMatch(formBlock, /<input\b[^>]*id=(["'])lists_activeList\1[^>]*name=(["'])([^"']*)\2/i, 3) ||
+          "lists_activeList";
+        if (deleteListsForm.id && linkZones.has(deleteListsForm.id)) {
+          deleteListsForm.zoneId = linkZones.get(deleteListsForm.id);
+        }
+      }
+      break;
+    }
+  }
+
+  return {
+    loginRequired,
+    activeListId,
+    activeListName: lists.find((l) => l.active)?.name || activeName || "臨時清單",
+    lists,
+    items,
+    forms: {
+      myListForm,
+      saveTempListForm,
+      createListForm,
+      deleteListsForm,
+    },
+  };
 }
