@@ -2506,23 +2506,56 @@
       ),
     );
 
-    const listTabs = state.lists.length
-      ? h(
-          "div",
-          { class: "mylist-bar" },
-          h(
+    const activeListIdResolved = activeList?.id || state.activeListId;
+    const selectListByIndex = (tabs, nextIdx) => {
+      const target = tabs[nextIdx];
+      if (!target) return;
+      target.focus();
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+
+    const listTabsBar = h(
+      "div",
+      { class: "mylist-bar" },
+      state.lists.length
+        ? h(
             "div",
-            { class: "chips", role: "tablist", "aria-label": "OPAC 我的清單" },
-            state.lists.map((l) =>
-              h(
+            {
+              class: "mylist-tabs",
+              role: "tablist",
+              "aria-label": "OPAC 我的清單",
+              onkeydown: (e) => {
+                const tabs = [...e.currentTarget.querySelectorAll('[role="tab"]')];
+                const curIdx = tabs.indexOf(document.activeElement);
+                if (curIdx < 0) return;
+                if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  selectListByIndex(tabs, (curIdx + 1) % tabs.length);
+                } else if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  selectListByIndex(tabs, (curIdx - 1 + tabs.length) % tabs.length);
+                } else if (e.key === "Home") {
+                  e.preventDefault();
+                  selectListByIndex(tabs, 0);
+                } else if (e.key === "End") {
+                  e.preventDefault();
+                  selectListByIndex(tabs, tabs.length - 1);
+                }
+              },
+            },
+            state.lists.map((l) => {
+              const isSelected = l.id === activeListIdResolved;
+              return h(
                 "button",
                 {
                   class: "chip-btn",
                   type: "button",
                   role: "tab",
+                  tabindex: isSelected ? "0" : "-1",
                   disabled: state.favoritesLoading || state.listActionBusy,
-                  "aria-pressed": String(l.id === (activeList?.id || state.activeListId)),
-                  onclick: () => {
+                  "aria-selected": String(isSelected),
+                  onclick: (e) => {
+                    e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
                     if (l.id === state.activeListId) return;
                     state.activeListId = l.id;
                     state.confirmDeleteListId = "";
@@ -2535,96 +2568,59 @@
                 l.count != null
                   ? h("span", { class: "chip-count num" }, formatNumber(l.count))
                   : null,
-              ),
-            ),
-          ),
-          h(
-            "div",
-            { class: "mylist-actions" },
-            state.canSaveTemp
-              ? h(
+              );
+            }),
+          )
+        : h("span", { class: "meta" }, state.activeListName || "我的清單"),
+      h(
+        "div",
+        { class: "mylist-toolbar", role: "toolbar", "aria-label": "清單操作與顯示模式" },
+        activeList && activeList.canDelete
+          ? state.confirmDeleteListId === activeList.id
+            ? h(
+                "div",
+                { class: "mylist-confirm" },
+                h(
                   "button",
                   {
-                    class: "btn small",
+                    class: "btn small danger",
+                    type: "button",
+                    disabled: state.listActionBusy,
+                    onclick: () => void submitDeleteOpacList(activeList.id),
+                  },
+                  state.listActionBusy ? "刪除中…" : "確定刪除清單",
+                ),
+                h(
+                  "button",
+                  {
+                    class: "btn small ghost",
                     type: "button",
                     disabled: state.listActionBusy,
                     onclick: () => {
-                      state.listCreateOpen = true;
-                      state.listCreateFromTemp = true;
-                      state.listCreateDraft = "";
+                      state.confirmDeleteListId = "";
                       render();
-                      requestAnimationFrame(() => document.getElementById("opacNewListNameInput")?.focus());
                     },
                   },
-                  "保存臨時清單",
-                )
-              : null,
-            state.canCreateList
-              ? h(
-                  "button",
-                  {
-                    class: "btn small",
-                    type: "button",
-                    disabled: state.listActionBusy,
-                    onclick: () => {
-                      state.listCreateOpen = !state.listCreateOpen || state.listCreateFromTemp;
-                      state.listCreateFromTemp = false;
-                      state.listCreateDraft = "";
-                      render();
-                      if (state.listCreateOpen) {
-                        requestAnimationFrame(() => document.getElementById("opacNewListNameInput")?.focus());
-                      }
-                    },
+                  "取消",
+                ),
+              )
+            : h(
+                "button",
+                {
+                  class: "btn small ghost",
+                  type: "button",
+                  disabled: state.listActionBusy,
+                  onclick: () => {
+                    state.confirmDeleteListId = activeList.id;
+                    render();
                   },
-                  "新增清單",
-                )
-              : null,
-            activeList && activeList.canDelete
-              ? state.confirmDeleteListId === activeList.id
-                ? h(
-                    "div",
-                    { class: "mylist-confirm" },
-                    h(
-                      "button",
-                      {
-                        class: "btn small danger",
-                        type: "button",
-                        disabled: state.listActionBusy,
-                        onclick: () => void submitDeleteOpacList(activeList.id),
-                      },
-                      state.listActionBusy ? "刪除中…" : "確定刪除清單",
-                    ),
-                    h(
-                      "button",
-                      {
-                        class: "btn small ghost",
-                        type: "button",
-                        disabled: state.listActionBusy,
-                        onclick: () => {
-                          state.confirmDeleteListId = "";
-                          render();
-                        },
-                      },
-                      "取消",
-                    ),
-                  )
-                : h(
-                    "button",
-                    {
-                      class: "btn small ghost",
-                      type: "button",
-                      disabled: state.listActionBusy,
-                      onclick: () => {
-                        state.confirmDeleteListId = activeList.id;
-                        render();
-                      },
-                    },
-                    "刪除清單",
-                  )
-              : null,
-          ),
-        )
-      : null;
+                },
+                "刪除清單",
+              )
+          : null,
+        viewToggle,
+      ),
+    );
 
     let createSubmitBtn = null;
     if (state.listCreateOpen) {
@@ -2680,6 +2676,39 @@
         )
       : null;
 
+    const filterRow = allItems.length
+      ? h(
+          "form",
+          {
+            class: "mylist-filter-row",
+            onsubmit: (e) => e.preventDefault(),
+          },
+          filterInput,
+          state.favoritesQuery
+            ? h(
+                "button",
+                {
+                  class: "btn small",
+                  type: "button",
+                  onclick: () => {
+                    state.favoritesQuery = "";
+                    render();
+                  },
+                },
+                "清除",
+              )
+            : null,
+        )
+      : null;
+
+    const workspacePanel = h(
+      "div",
+      { class: "mylist-panel" },
+      listTabsBar,
+      createListForm,
+      filterRow,
+    );
+
     let bodyNode;
     if (state.favoritesError) {
       bodyNode = h(
@@ -2700,69 +2729,55 @@
       );
     } else if (!state.favoritesLoaded && state.favoritesLoading) {
       bodyNode = h(
-        "section",
-        { class: "section" },
-        h("div", { class: "list" }, h("div", { class: "empty" }, icon("heart"), h("strong", null, "載入清單中…"))),
+        "div",
+        { class: "favorites-empty" },
+        h("div", { class: "favorites-empty-mark" }, icon("heart")),
+        h("div", { class: "favorites-empty-title" }, "載入清單中…"),
       );
-    } else {
+    } else if (filtered.length) {
       bodyNode = h(
-        "section",
-        { class: "section" },
-        h(
-          "div",
-          { class: "section-head" },
-          h(
-            "h2",
-            null,
-            state.activeListName || "清單書目",
-            h("span", { class: "count" }, `(${filtered.length})`),
-          ),
-          h("div", { class: "section-controls" }, viewToggle),
-        ),
-        filtered.length
-          ? state.catalogView === "grid"
-            ? h(
-                "div",
-                { class: "book-grid" },
-                filtered.map((item, idx) => renderBookCard(item, idx)),
-              )
-            : h(
-                "div",
-                { class: "list" },
-                filtered.map((item, idx) => renderBookRow(item, idx)),
-              )
+        "div",
+        { class: "mylist-results", role: "tabpanel" },
+        state.catalogView === "grid"
+          ? h(
+              "div",
+              { class: "book-grid" },
+              filtered.map((item, idx) => renderBookCard(item, idx)),
+            )
           : h(
               "div",
               { class: "list" },
-              h(
-                "div",
-                { class: "empty" },
-                icon("heart"),
-                h("strong", null, allItems.length ? "找不到符合篩選的館藏" : "此清單目前沒有館藏"),
-                h(
-                  "div",
-                  { class: "actions", style: "justify-content:center" },
-                  allItems.length
-                    ? h(
-                        "button",
-                        {
-                          class: "btn small",
-                          type: "button",
-                          onclick: () => {
-                            state.favoritesQuery = "";
-                            render();
-                          },
-                        },
-                        "清除篩選",
-                      )
-                    : h(
-                        "a",
-                        { class: "btn small primary", href: routeUrl("catalog") },
-                        icon("search"),
-                        "前往館藏查詢",
-                      ),
-                ),
-              ),
+              filtered.map((item, idx) => renderBookRow(item, idx)),
+            ),
+      );
+    } else {
+      bodyNode = h(
+        "div",
+        { class: "favorites-empty", role: "tabpanel" },
+        h("div", { class: "favorites-empty-mark" }, icon(allItems.length ? "search" : "heart")),
+        h(
+          "div",
+          { class: "favorites-empty-title" },
+          allItems.length ? "找不到符合篩選的館藏" : "此清單目前沒有館藏",
+        ),
+        allItems.length
+          ? h(
+              "button",
+              {
+                class: "btn small",
+                type: "button",
+                onclick: () => {
+                  state.favoritesQuery = "";
+                  render();
+                },
+              },
+              "清除篩選",
+            )
+          : h(
+              "a",
+              { class: "btn small primary", href: routeUrl("catalog") },
+              icon("search"),
+              "前往館藏查詢",
             ),
       );
     }
@@ -2779,48 +2794,61 @@
           "div",
           { class: "hero-side" },
           h(
-            "a",
-            {
-              class: "btn small ghost",
-              href: "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/mylists?",
-              target: "_blank",
-              rel: "noopener",
-            },
-            icon("external"),
-            "在官方清單開啟",
+            "div",
+            { class: "mylist-hero-actions" },
+            state.canSaveTemp
+              ? h(
+                  "button",
+                  {
+                    class: "btn small",
+                    type: "button",
+                    disabled: state.listActionBusy,
+                    onclick: () => {
+                      state.listCreateOpen = true;
+                      state.listCreateFromTemp = true;
+                      state.listCreateDraft = "";
+                      render();
+                      requestAnimationFrame(() => document.getElementById("opacNewListNameInput")?.focus());
+                    },
+                  },
+                  "保存臨時清單",
+                )
+              : null,
+            state.canCreateList
+              ? h(
+                  "button",
+                  {
+                    class: "btn small",
+                    type: "button",
+                    disabled: state.listActionBusy,
+                    onclick: () => {
+                      state.listCreateOpen = !state.listCreateOpen || state.listCreateFromTemp;
+                      state.listCreateFromTemp = false;
+                      state.listCreateDraft = "";
+                      render();
+                      if (state.listCreateOpen) {
+                        requestAnimationFrame(() => document.getElementById("opacNewListNameInput")?.focus());
+                      }
+                    },
+                  },
+                  "新增清單",
+                )
+              : null,
+            h(
+              "a",
+              {
+                class: "btn small ghost",
+                href: "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/mylists?",
+                target: "_blank",
+                rel: "noopener",
+              },
+              icon("external"),
+              "在官方清單開啟",
+            ),
           ),
         ),
       ),
-      listTabs,
-      createListForm,
-      allItems.length
-        ? h(
-            "form",
-            {
-              class: "search-panel",
-              onsubmit: (e) => e.preventDefault(),
-            },
-            h(
-              "div",
-              { class: "search-bar" },
-              filterInput,
-              state.favoritesQuery
-                ? h(
-                    "button",
-                    {
-                      class: "btn",
-                      type: "button",
-                      onclick: () => {
-                        state.favoritesQuery = "";
-                        render();
-                      },
-                    },
-                    "清除",
-                  )
-                : null,
-            ),
-          )
-        : null,
+      workspacePanel,
       bodyNode,
     );
   }
