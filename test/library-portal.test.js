@@ -913,3 +913,17 @@ test("library UI styles shelf-zone holding status chips cleanly", async () => {
   assert.match(js, /書區/);
   assert.match(js, /到期/);
 });
+
+test("library catalog supports infinite scrolling with append-only DOM updates", async () => {
+  const [js, css] = await Promise.all([
+    read("../public/library.js"),
+    read("../public/library.css"),
+  ]);
+  assert.match(js, /IntersectionObserver/);
+  assert.match(js, /id:\s*"catalogLoadSentinel"/);
+  assert.match(js, /id:\s*"catalogResultsList"/);
+  assert.match(js, /async function loadNextCatalogPage\(/);
+  assert.match(js, /listEl\.append\(/);
+  assert.match(css, /\.catalog-feed-foot\s*\{/);
+  assert.match(css, /\.infinite-sentinel\s*\{/);
+});

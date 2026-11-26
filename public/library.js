@@ -57,19 +57,6 @@
     return Number.isFinite(n) ? n.toLocaleString("en-US") : String(val ?? "");
   }
 
-  function buildPageTokens(current, total) {
-    if (total <= 7) {
-      return Array.from({ length: total }, (_, idx) => idx + 1);
-    }
-    if (current <= 4) {
-      return [1, 2, 3, 4, 5, "…", total];
-    }
-    if (current >= total - 3) {
-      return [1, "…", total - 4, total - 3, total - 2, total - 1, total];
-    }
-    return [1, "…", current - 1, current, current + 1, "…", total];
-  }
-
   function tagLabelFromQf(qf) {
     const parts = String(qf || "").split("\t");
     return parts[3] || parts[2] || String(qf || "");
@@ -324,6 +311,8 @@
     catalogData: null,
     catalogLoading: false,
     catalogError: "",
+    catalogAppending: false,
+    catalogAppendError: "",
 
     loanTab: "checkouts",
     selectedRenewIds: new Set(),
@@ -448,26 +437,58 @@
       preset: data.preset || "",
       sort: data.sort || "RE",
       tags: Array.isArray(data.tags) ? data.tags : [],
-      page: (data.page || 1) + 1,
+      page: (data.endPage || data.page || 1) + 1,
       pageSize: data.pageSize || state.catalogPageSize,
     };
+    if (nextParams.page > (Number(data.totalPages) || 1)) return;
     nextPagePrefetchTimer = setTimeout(() => {
       nextPagePrefetchTimer = null;
       prefetchCatalogQuery(nextParams);
     }, 350);
   }
 
-  async function hydrateCatalogAvailability(data, reqId) {
-    if (!data || !data.availabilityPending || !Array.isArray(data.items)) return;
+  function initLoadedCatalogData(res) {
+    const pageNum = Math.max(1, Number(res?.page) || 1);
+    return {
+      ...res,
+      page: pageNum,
+      startPage: pageNum,
+      endPage: pageNum,
+      items: Array.isArray(res?.items) ? [...res.items] : [],
+    };
+  }
+
+  function catalogHasMore(data = state.catalogData) {
+    if (!data || !Array.isArray(data.items) || !data.items.length) return false;
+    const endPage = Math.max(1, Number(data.endPage || data.page) || 1);
+    const totalPages = Math.max(1, Number(data.totalPages) || 1);
+    return endPage < totalPages;
+  }
+
+  function formatCatalogPageMeta(data) {
+    if (!data) return "";
+    const start = Math.max(1, Number(data.startPage || data.page) || 1);
+    const end = Math.max(start, Number(data.endPage || data.page) || start);
+    const totalPages = Math.max(1, Number(data.totalPages) || 1);
+    const rangeLabel = start === end ? formatNumber(end) : `${formatNumber(start)}–${formatNumber(end)}`;
+    return `第 ${rangeLabel} / ${formatNumber(totalPages)} 頁`;
+  }
+
+  async function hydrateCatalogAvailability(target, reqId) {
+    const itemsList = Array.isArray(target) ? target : target?.items;
+    const shouldCheck = Array.isArray(target)
+      ? itemsList.length > 0
+      : Boolean(target?.availabilityPending);
+    if (!shouldCheck || !Array.isArray(itemsList)) return;
     const pendingIds = [
       ...new Set(
-        data.items
+        itemsList
           .filter((item) => item.availableCount == null && item.id)
           .map((item) => item.id),
       ),
     ];
     if (!pendingIds.length) {
-      data.availabilityPending = false;
+      if (!Array.isArray(target) && target) target.availabilityPending = false;
       return;
     }
     try {
@@ -480,7 +501,7 @@
       for (const el of mainEl.querySelectorAll(".book-row[data-book-id], .book-card[data-book-id]")) {
         rowsById.set(el.getAttribute("data-book-id"), el);
       }
-      for (const item of data.items) {
+      for (const item of itemsList) {
         const hit = availMap[item.id];
         if (!hit) continue;
         item.availableCount = hit.availableCount;
@@ -492,7 +513,7 @@
           endEl.replaceChildren(...buildBookEndChildren(item));
         }
       }
-      data.availabilityPending = false;
+      if (!Array.isArray(target) && target) target.availabilityPending = false;
     } catch {
       // Availability lookup is best-effort; keep catalog interactive.
     }
@@ -521,6 +542,8 @@
     state.catalogPage = page;
     state.catalogPageSize = cleanPageSize;
     state.catalogError = "";
+    state.catalogAppending = false;
+    state.catalogAppendError = "";
 
     const qs = buildCatalogSearchParams({
       q,
@@ -535,13 +558,14 @@
     const cacheKey = qs.toString();
     const cached = getClientCatalogCache(cacheKey);
     if (cached) {
-      state.catalogData = cached;
+      const initialData = initLoadedCatalogData(cached);
+      state.catalogData = initialData;
       state.catalogLoading = false;
       render();
       if (cached.availabilityPending) {
-        void hydrateCatalogAvailability(cached, reqId);
+        void hydrateCatalogAvailability(initialData.items, reqId);
       }
-      scheduleNextPagePrefetch(cached);
+      scheduleNextPagePrefetch(initialData);
       return;
     }
 
@@ -551,13 +575,14 @@
       const res = await apiJson(`/api/library/catalog/search?${qs}`);
       if (reqId !== catalogRequestSeq) return;
       setClientCatalogCache(cacheKey, res);
-      state.catalogData = res;
+      const initialData = initLoadedCatalogData(res);
+      state.catalogData = initialData;
       state.catalogLoading = false;
       render();
       if (res.availabilityPending) {
-        void hydrateCatalogAvailability(res, reqId);
+        void hydrateCatalogAvailability(initialData.items, reqId);
       }
-      scheduleNextPagePrefetch(res);
+      scheduleNextPagePrefetch(initialData);
     } catch (error) {
       if (reqId !== catalogRequestSeq) return;
       state.catalogError = error?.message || "無法查詢館藏系統。";
@@ -2209,7 +2234,7 @@
           1,
           Math.min(maxPages, Math.floor(Number(nextPage) || 1)),
         );
-        if (clamped === data.page) return;
+        if (clamped === (data.startPage || data.page) && data.startPage === data.endPage) return;
         submitSearch(clamped, nextPreset);
         const secEl = mainEl.querySelector(".section");
         if (secEl && secEl.getBoundingClientRect().top < 64) {
@@ -2217,8 +2242,7 @@
         }
       };
 
-      const pageTokens =
-        data.totalPages > 1 ? buildPageTokens(data.page, data.totalPages) : [];
+      const endPage = data.endPage || data.page || 1;
       const pageJumpInput = h("input", {
         id: "catalogPageJump",
         class: "input pager-input num",
@@ -2226,7 +2250,7 @@
         inputmode: "numeric",
         min: "1",
         max: String(data.totalPages),
-        value: String(data.page),
+        value: String(endPage),
         disabled: state.catalogLoading,
         "aria-label": "前往頁碼",
       });
@@ -2275,7 +2299,7 @@
             "h2",
             null,
             headingText,
-            h("span", { class: "count" }, `(${formatNumber(data.totalResults)})`),
+            h("span", { id: "catalogTotalCount", class: "count" }, `(${formatNumber(data.totalResults)})`),
           ),
           h(
             "div",
@@ -2285,8 +2309,8 @@
             sortEl,
             h(
               "span",
-              { class: "meta num" },
-              `第 ${formatNumber(data.page)} / ${formatNumber(data.totalPages)} 頁`,
+              { id: "catalogPageMeta", class: "meta num" },
+              formatCatalogPageMeta(data),
             ),
           ),
         ),
@@ -2294,12 +2318,12 @@
           ? state.catalogView === "grid"
             ? h(
                 "div",
-                { class: "book-grid" },
+                { id: "catalogResultsList", class: "book-grid" },
                 data.items.map((item, idx) => renderBookCard(item, idx)),
               )
             : h(
                 "div",
-                { class: "list" },
+                { id: "catalogResultsList", class: "list" },
                 data.items.map((item, idx) => renderBookRow(item, idx)),
               )
           : h(
@@ -2338,79 +2362,36 @@
                   : null,
               ),
             ),
-        data.totalPages > 1
+        data.items.length
           ? h(
-              "nav",
-              { class: "pager", "aria-label": "頁碼導覽" },
-              h(
-                "div",
-                { class: "pager-nav" },
-                h(
-                  "button",
-                  {
-                    class: "btn small",
-                    type: "button",
-                    disabled: data.page <= 1 || state.catalogLoading,
-                    onclick: () => goToCatalogPage(data.page - 1, data.preset),
-                  },
-                  icon("left"),
-                  "上一頁",
-                ),
-                h(
-                  "div",
-                  { class: "pager-pages" },
-                  pageTokens.map((token) =>
-                    token === "…"
-                      ? h("span", { class: "pager-ellipsis", "aria-hidden": "true" }, "…")
-                      : h(
-                          "button",
-                          {
-                            class: "btn small pager-num num",
-                            type: "button",
-                            "aria-current": token === data.page ? "page" : false,
-                            "aria-label": `第 ${formatNumber(token)} 頁`,
-                            disabled: state.catalogLoading || token === data.page,
-                            onclick: () => goToCatalogPage(token, data.preset),
-                          },
-                          formatNumber(token),
-                        ),
-                  ),
-                ),
-                h(
-                  "button",
-                  {
-                    class: "btn small",
-                    type: "button",
-                    disabled: data.page >= data.totalPages || state.catalogLoading,
-                    onclick: () => goToCatalogPage(data.page + 1, data.preset),
-                  },
-                  "下一頁",
-                  icon("right"),
-                ),
-              ),
-              h(
-                "form",
-                {
-                  class: "pager-jump",
-                  onsubmit: (e) => {
-                    e.preventDefault();
-                    const target = Number.parseInt(pageJumpInput.value, 10);
-                    if (!Number.isFinite(target)) return;
-                    goToCatalogPage(target, data.preset);
-                  },
-                },
-                pageJumpInput,
-                h("span", { class: "meta num" }, `/ ${formatNumber(data.totalPages)}`),
-                h(
-                  "button",
-                  {
-                    class: "btn small",
-                    type: "submit",
-                    disabled: state.catalogLoading,
-                  },
-                  "前往",
-                ),
-              ),
+              "div",
+              { class: "catalog-feed-foot" },
+              h("div", { id: "catalogLoadSentinel", class: "infinite-sentinel" }, ...buildCatalogSentinelNodes(data)),
+              data.totalPages > 1
+                ? h(
+                    "form",
+                    {
+                      class: "pager-jump",
+                      onsubmit: (e) => {
+                        e.preventDefault();
+                        const target = Number.parseInt(pageJumpInput.value, 10);
+                        if (!Number.isFinite(target)) return;
+                        goToCatalogPage(target, data.preset);
+                      },
+                    },
+                    pageJumpInput,
+                    h("span", { class: "meta num" }, `/ ${formatNumber(data.totalPages)} 頁`),
+                    h(
+                      "button",
+                      {
+                        class: "btn small",
+                        type: "submit",
+                        disabled: state.catalogLoading,
+                      },
+                      "前往",
+                    ),
+                  )
+                : null,
             )
           : null,
       );
@@ -3480,6 +3461,220 @@
   }
 
   // ---------------------------------------------------------------------------
+  let catalogSentinelObserver = null;
+  let catalogScrollRaf = 0;
+
+  function buildCatalogSentinelNodes(data = state.catalogData) {
+    if (!data) return [];
+    if (state.catalogAppendError) {
+      return [
+        h("span", { class: "meta" }, state.catalogAppendError),
+        h(
+          "button",
+          {
+            id: "catalogLoadRetry",
+            class: "btn small",
+            type: "button",
+            onclick: () => {
+              state.catalogAppendError = "";
+              void loadNextCatalogPage();
+            },
+          },
+          icon("refresh"),
+          "重試載入更多",
+        ),
+      ];
+    }
+    const endPage = Math.max(1, Number(data.endPage || data.page) || 1);
+    if (catalogHasMore(data)) {
+      if (state.catalogAppending) {
+        return [
+          h(
+            "span",
+            { class: "meta num", role: "status", "aria-live": "polite" },
+            `正在載入第 ${formatNumber(endPage + 1)} / ${formatNumber(data.totalPages)} 頁…`,
+          ),
+        ];
+      }
+      return [
+        h(
+          "button",
+          {
+            id: "catalogLoadMoreButton",
+            class: "btn small",
+            type: "button",
+            onclick: () => void loadNextCatalogPage(),
+          },
+          `載入更多（已顯示 ${formatNumber(data.items.length)} / ${formatNumber(data.totalResults)} 筆）`,
+        ),
+      ];
+    }
+    return [
+      h(
+        "span",
+        { class: "meta num" },
+        `已顯示全部 ${formatNumber(data.items.length)} 筆館藏`,
+      ),
+    ];
+  }
+
+  function syncCatalogSentinelDom() {
+    const sentinel = document.getElementById("catalogLoadSentinel");
+    if (!sentinel) return;
+    sentinel.replaceChildren(...buildCatalogSentinelNodes(state.catalogData));
+  }
+
+  function disconnectCatalogObserver() {
+    if (catalogSentinelObserver) {
+      catalogSentinelObserver.disconnect();
+      catalogSentinelObserver = null;
+    }
+  }
+
+  function maybeLoadMoreFromViewport() {
+    const sentinel = document.getElementById("catalogLoadSentinel");
+    if (
+      !sentinel ||
+      !catalogHasMore() ||
+      state.catalogLoading ||
+      state.catalogAppending ||
+      state.catalogAppendError ||
+      activeModal
+    ) {
+      return;
+    }
+    const rect = sentinel.getBoundingClientRect();
+    if (rect.top <= window.innerHeight + 600) {
+      void loadNextCatalogPage();
+    }
+  }
+
+  function setupCatalogInfiniteObserver() {
+    disconnectCatalogObserver();
+    const sentinel = document.getElementById("catalogLoadSentinel");
+    if (!sentinel || !catalogHasMore()) return;
+    if (typeof IntersectionObserver === "function") {
+      catalogSentinelObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            void loadNextCatalogPage();
+          }
+        },
+        { rootMargin: "600px 0px" },
+      );
+      catalogSentinelObserver.observe(sentinel);
+    }
+  }
+
+  async function loadNextCatalogPage() {
+    const currentRoute = matchRoute(new URL(location.href)) || { name: "home" };
+    if (currentRoute.name !== "catalog" || activeModal) return;
+    const data = state.catalogData;
+    if (!data || state.catalogLoading || state.catalogAppending || state.catalogAppendError) {
+      return;
+    }
+    if (!catalogHasMore(data)) return;
+
+    const reqId = catalogRequestSeq;
+    const nextPage = Math.max(1, Number(data.endPage || data.page) || 1) + 1;
+    const params = {
+      q: data.query || "",
+      field: data.field || "ALL",
+      scope: data.scope || "ALL",
+      preset: data.preset || "",
+      sort: data.sort || "RE",
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      page: nextPage,
+      pageSize: data.pageSize || state.catalogPageSize,
+    };
+    const qs = buildCatalogSearchParams(params);
+    const cacheKey = qs.toString();
+
+    state.catalogAppending = true;
+    state.catalogAppendError = "";
+    syncCatalogSentinelDom();
+
+    try {
+      let nextRes = getClientCatalogCache(cacheKey);
+      if (!nextRes) {
+        nextRes = await apiJson(`/api/library/catalog/search?${qs}`);
+        if (reqId !== catalogRequestSeq) return;
+        setClientCatalogCache(cacheKey, nextRes);
+      }
+      if (reqId !== catalogRequestSeq || state.catalogData !== data) return;
+
+      const seenIds = new Set(
+        data.items.map((item) => String(item?.id || "")).filter(Boolean),
+      );
+      const freshItems = [];
+      for (const item of Array.isArray(nextRes.items) ? nextRes.items : []) {
+        const id = String(item?.id || "");
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        freshItems.push(item);
+      }
+
+      const baseIndex = data.items.length;
+      data.items.push(...freshItems);
+      data.page = nextRes.page || nextPage;
+      data.endPage = nextRes.page || nextPage;
+      if (Number(nextRes.totalResults) > 0) data.totalResults = nextRes.totalResults;
+      if (Number(nextRes.totalPages) > 0) data.totalPages = nextRes.totalPages;
+      state.catalogAppending = false;
+
+      const listEl = document.getElementById("catalogResultsList");
+      if (listEl) {
+        if (freshItems.length) {
+          const nodes = freshItems.map((item, offset) =>
+            state.catalogView === "grid"
+              ? renderBookCard(item, baseIndex + offset)
+              : renderBookRow(item, baseIndex + offset),
+          );
+          listEl.append(...nodes);
+        }
+        const countEl = document.getElementById("catalogTotalCount");
+        if (countEl) countEl.textContent = `(${formatNumber(data.totalResults)})`;
+        const metaEl = document.getElementById("catalogPageMeta");
+        if (metaEl) metaEl.textContent = formatCatalogPageMeta(data);
+        const jumpInput = document.getElementById("catalogPageJump");
+        if (jumpInput) {
+          jumpInput.value = String(data.endPage);
+          jumpInput.max = String(data.totalPages);
+        }
+        syncCatalogSentinelDom();
+        setupCatalogInfiniteObserver();
+      } else {
+        render();
+      }
+
+      if (nextRes.availabilityPending && freshItems.length) {
+        void hydrateCatalogAvailability(freshItems, reqId);
+      }
+      scheduleNextPagePrefetch(data);
+      requestAnimationFrame(() => {
+        maybeLoadMoreFromViewport();
+      });
+    } catch (error) {
+      if (reqId !== catalogRequestSeq) return;
+      state.catalogAppending = false;
+      state.catalogAppendError = error?.message || "無法載入更多館藏。";
+      syncCatalogSentinelDom();
+    }
+  }
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (catalogScrollRaf) return;
+      catalogScrollRaf = requestAnimationFrame(() => {
+        catalogScrollRaf = 0;
+        const route = matchRoute(new URL(location.href)) || { name: "home" };
+        if (route.name === "catalog") maybeLoadMoreFromViewport();
+      });
+    },
+    { passive: true },
+  );
+
   // Root Mount + Lazy Data Trigger
 
   const headerSlot = h("div");
@@ -3552,6 +3747,7 @@
     }
 
     activeSelect?.close({ returnFocus: false });
+    disconnectCatalogObserver();
     headerSlot.replaceChildren(renderHeader(route.name));
     mainEl.replaceChildren(
       view,
@@ -3567,6 +3763,9 @@
         ),
       ),
     );
+    if (route.name === "catalog") {
+      setupCatalogInfiniteObserver();
+    }
     if (route.name !== lastRouteName) {
       lastRouteName = route.name;
       mainEl.classList.remove("enter");
