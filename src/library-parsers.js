@@ -131,6 +131,38 @@ export function stripBookstorePromo(raw = "") {
 }
 
 /**
+ * Strip stray outer API/JSON wrapper quotes (e.g. Eslite `" '..."`) from book descriptions
+ * without touching inner narrative quotation marks.
+ */
+export function cleanBookDescription(raw = "") {
+  let text = String(raw || "").trim();
+  if (!text) return "";
+  if (
+    /^["']+["']?(?=[「『（(\[\u4e00-\u9fff\u3040-\u30ff\u3400-\u4dbfA-Za-z0-9【◆★●•◎※])/.test(text) &&
+    (text.startsWith("\"'") || text.startsWith("'\"") || /["']$/.test(text))
+  ) {
+    text = text.replace(/^["']+/, "").trim();
+  }
+  if (/(?<=[。！？」』）】…\n])\s*["']+$/.test(text) || /^["']/.test(raw) && /["']$/.test(text)) {
+    text = text.replace(/\s*["']+$/, "").trim();
+  }
+  return text;
+}
+
+/**
+ * Remove MARC authority lifespan dates (e.g. `, 1984-` or `, 1955-2021`) from author display strings.
+ */
+export function cleanAuthorText(raw = "") {
+  return String(raw || "")
+    .replace(
+      /[,，]\s*\d{4}-(?:\d{4})?(?=\s*(?:[著編譯繪寫作攝影審訂主編述註釋選編輯]|$))/g,
+      "",
+    )
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
  * Mask student/card identifiers so raw personal numbers are never shown by default.
  */
 export function maskLibraryIdentifier(value = "") {
@@ -546,10 +578,12 @@ export function parseOpacSearchResults(
     const title = stripHtml(titleRaw);
     if (!title) continue;
 
-    const author = stripHtml(
-      firstMatch(
-        block,
-        /<div\s+class="displayElementText[^"]*INITIAL_AUTHOR_SRCH"[^>]*>([\s\S]*?)<\/div>/i,
+    const author = cleanAuthorText(
+      stripHtml(
+        firstMatch(
+          block,
+          /<div\s+class="displayElementText[^"]*INITIAL_AUTHOR_SRCH"[^>]*>([\s\S]*?)<\/div>/i,
+        ),
       ),
     );
     const publisherYear = stripHtml(
@@ -689,14 +723,18 @@ export function parseSanminProductDetail(html = "", expectedIsbn = "") {
   const rawIntro2 = extractSanminSection(decoded, "Intro2");
 
   const description = rawIntro1
-    ? stripBookstorePromo(
-        htmlToCleanParagraphs(rawIntro1).replace(/^商品簡介\s*/, ""),
+    ? cleanBookDescription(
+        stripBookstorePromo(
+          htmlToCleanParagraphs(rawIntro1).replace(/^商品簡介\s*/, ""),
+        ),
       )
     : "";
   const authorBio = rawIntro2
-    ? htmlToCleanParagraphs(rawIntro2, { maxLength: 1400 }).replace(
-        /^作者簡介\s*/,
-        "",
+    ? cleanBookDescription(
+        htmlToCleanParagraphs(rawIntro2, { maxLength: 1400 }).replace(
+          /^作者簡介\s*/,
+          "",
+        ),
       )
     : "";
 
@@ -730,26 +768,19 @@ export function parseSanminProductDetail(html = "", expectedIsbn = "") {
 export function parseOpacItemDetail(html = "", detailPath = "") {
   const source = String(html || "");
 
-  const extractBiblio = (cls) =>
-    stripHtml(
-      firstMatch(
-        source,
-        new RegExp(
-          `<div\\s+class="displayElementText[^"]*\\b${cls}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/div>`,
-          "i",
-        ),
-      ),
+  const extractRawBlocks = (cls) =>
+    extractBalancedTagBlocks(
+      source,
+      `<div\\s+class="[^"]*\\bdisplayElementText\\b[^"]*\\b${cls}\\b[^"]*"[^>]*>`,
     );
+
+  const extractBiblio = (cls) => stripHtml(extractRawBlocks(cls)[0] || "");
 
   const extractAllBiblio = (cls) => {
     const out = [];
     const seen = new Set();
-    const re = new RegExp(
-      `<div\\s+class="displayElementText[^"]*\\b${cls}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/div>`,
-      "gi",
-    );
-    for (const [, inner] of source.matchAll(re)) {
-      const text = stripHtml(inner);
+    for (const block of extractRawBlocks(cls)) {
+      const text = stripHtml(block);
       if (text && !seen.has(text)) {
         seen.add(text);
         out.push(text);
@@ -761,16 +792,23 @@ export function parseOpacItemDetail(html = "", detailPath = "") {
   const title =
     extractBiblio("INITIAL_TITLE_SRCH") ||
     stripHtml(firstMatch(source, /<title>([\s\S]*?)<\/title>/i));
-  const author =
-    extractBiblio("INITIAL_AUTHOR_SRCH") || extractBiblio("PERSONAL_AUTHOR");
+  const author = cleanAuthorText(
+    extractBiblio("INITIAL_AUTHOR_SRCH") || extractBiblio("PERSONAL_AUTHOR"),
+  );
+  const bareAuthor = author.replace(/\s*[著編譯繪寫作攝影審訂主編述註釋選編輯]+$/g, "").trim();
+  const contributors = extractAllBiblio("ADDED_AUTHOR")
+    .map(cleanAuthorText)
+    .filter((name) => name && name !== author && name !== bareAuthor)
+    .slice(0, 6);
   const publisherYear =
     extractBiblio("PUBLICATION_INFO") || extractBiblio("PUBYEAR");
-  const isbn = extractBiblio("ISBN");
-  const summary =
+  const rawIsbns = extractAllBiblio("ISBN");
+  const isbn = normalizeIsbn(rawIsbns.join(" ; ")) || rawIsbns[0] || "";
+  const summary = cleanBookDescription(
     extractBiblio("SUMMARY") ||
-    extractBiblio("DESCRIPTION") ||
-    extractBiblio("BOOKSUMMARY") ||
-    extractBiblio("NOTE");
+      extractBiblio("DESCRIPTION") ||
+      extractBiblio("BOOKSUMMARY"),
+  );
   const edition = extractBiblio("EDITION");
   const physicalDesc = extractBiblio("PHYSICAL_DESC");
   const series = extractBiblio("SERIES");
@@ -781,13 +819,15 @@ export function parseOpacItemDetail(html = "", detailPath = "") {
       ...extractAllBiblio("SUBJECT"),
     ]),
   ].slice(0, 8);
-  const notes = extractAllBiblio("GENERAL_NOTE").slice(0, 4);
+  const notes = [
+    ...new Set([
+      ...extractAllBiblio("GENERAL_NOTE"),
+      ...extractAllBiblio("NOTE"),
+    ]),
+  ].slice(0, 4);
 
   const elecChunk =
-    firstMatch(
-      source,
-      /<div\s+class="displayElementText[^"]*\b(?:ELECTRONIC_ACCESS|ELECTRONIC_LOCATION)\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-    ) || "";
+    extractRawBlocks("(?:ELECTRONIC_ACCESS|ELECTRONIC_LOCATION)")[0] || "";
   const rawElecHref = firstMatch(
     elecChunk,
     /<a\b[^>]*href=(["'])([^"']*)\1/i,
@@ -851,6 +891,7 @@ export function parseOpacItemDetail(html = "", detailPath = "") {
   return {
     title,
     author,
+    contributors,
     publisherYear,
     isbn,
     summary,

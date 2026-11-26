@@ -356,12 +356,17 @@ button.row:first-child { border-top: 0; }
 
 /* Catalog Book Rows */
 .book-row {
-  display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 14px;
-  padding: 13px 16px; border-top: 1px solid var(--edge); width: 100%; border-left: 0; border-right: 0; border-bottom: 0;
-  background: none; text-align: left; cursor: pointer; transition: background .15s;
+  position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 14px;
+  padding: 13px 16px; border-top: 1px solid var(--edge); width: 100%;
+  background: none; text-align: left; transition: background .15s;
 }
 .book-row:first-child { border-top: 0; }
-.book-row:hover { background: rgba(255,255,255,.035); }
+.book-row:hover,
+.book-row:has(.book-row-action:hover) { background: rgba(255,255,255,.035); }
+.book-row:has(.book-row-action:focus-visible) { outline: 2px solid var(--primary); outline-offset: -2px; }
+.book-row-action { border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.book-row-action:focus-visible { outline: none; }
+.book-row-action::after { content: ""; position: absolute; inset: 0; }
 .book-cover {
   width: 52px; height: 70px; border-radius: var(--radius-sm); border: 1px solid var(--edge);
   background: var(--sunken); display: grid; place-items: center; color: var(--faint); overflow: hidden; flex: none;
@@ -372,12 +377,52 @@ button.row:first-child { border-top: 0; }
 .book-author { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .book-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: var(--faint); font-size: 12px; }
 .book-call { font-variant-numeric: tabular-nums; padding: 1px 7px; border-radius: var(--radius-sm); background: rgba(255,255,255,.05); color: var(--soft); }
+.book-row-side { display: flex; align-items: center; gap: 10px; flex: none; }
 .book-end { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.book-end:empty { display: none; }
 @media (max-width: 600px) {
   .book-row { grid-template-columns: 44px minmax(0, 1fr); align-items: start; gap: 10px 12px; }
   .book-cover { width: 44px; height: 60px; }
-  .book-end { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; width: 100%; margin-top: 2px; }
+  .book-row-side { grid-column: 2; justify-content: space-between; width: 100%; margin-top: 2px; }
+  .book-end { flex-direction: row; align-items: center; flex-wrap: wrap; }
 }
+
+/* Favorite Toggle Button */
+.fav-btn {
+  position: relative; z-index: 2; display: inline-grid; place-items: center;
+  width: 32px; height: 32px; flex: none; padding: 0;
+  border: 1px solid var(--edge); border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.03); color: var(--muted); cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s, transform .15s var(--ease);
+}
+.fav-btn .i { width: 15px; height: 15px; transition: transform .15s var(--ease); }
+.fav-btn:hover { color: var(--text); border-color: var(--edge-strong); background: rgba(255,255,255,.08); }
+.fav-btn:active { transform: scale(.94); }
+.fav-btn[aria-pressed="true"] {
+  color: var(--primary); border-color: var(--primary-ring); background: var(--primary-soft);
+}
+.fav-btn[aria-pressed="true"] .i { fill: currentColor; }
+.fav-btn--card {
+  position: absolute; top: 16px; right: 16px; z-index: 2; width: 30px; height: 30px;
+  border-radius: 99px; border-color: rgba(255,255,255,.16);
+  background: rgba(14,12,16,.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  opacity: 0; transition: opacity .15s, color .15s, background .15s, border-color .15s, transform .15s var(--ease);
+}
+.book-card:hover .fav-btn--card,
+.book-card:focus-within .fav-btn--card,
+.fav-btn--card[aria-pressed="true"],
+.fav-btn--card:focus-visible { opacity: 1; }
+@media (hover: none) {
+  .fav-btn--card { opacity: 1; }
+}
+.fav-btn--card[aria-pressed="true"] {
+  background: rgba(14,12,16,.84); border-color: var(--primary-ring); color: var(--primary);
+}
+.fav-btn--modal {
+  width: auto; height: 34px; padding: 0 11px; gap: 6px;
+  display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500;
+}
+.book-modal-head-actions { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 
 /* Catalog Icon / Cover Grid Mode */
 .seg.view-seg { padding: 2px; min-height: 32px; align-items: center; }

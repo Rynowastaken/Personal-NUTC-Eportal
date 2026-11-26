@@ -13,6 +13,7 @@ import {
   searchLibraryCatalog,
 } from "../src/library-portal.js";
 import { MODULES, moduleById, publicModules } from "../src/eportal.js";
+import { DashboardPreferenceStore } from "../src/dashboard-preferences.js";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -926,4 +927,127 @@ test("library catalog supports infinite scrolling with append-only DOM updates",
   assert.match(js, /listEl\.append\(/);
   assert.match(css, /\.catalog-feed-foot\s*\{/);
   assert.match(css, /\.infinite-sentinel\s*\{/);
+});
+
+test("searchLibraryCatalog resolves single-hit SirsiDynix detail redirect instead of returning empty list", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+  const detailUrl =
+    "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:858267/one";
+
+  globalThis.fetch = async (input) => {
+    const u = String(input);
+    if (u.includes("/search/results")) {
+      return new Response("", {
+        status: 302,
+        headers: { Location: detailUrl },
+      });
+    }
+    if (u === detailUrl) {
+      return new Response(
+        `
+          <div class="displayElementText text-p INITIAL_TITLE_SRCH">賜給名偵探甜美的死亡</div>
+          <div class="displayElementText text-p INITIAL_AUTHOR_SRCH">方丈貴惠, 1984- 著</div>
+          <div class="displayElementText text-p PUBLICATION_INFO">臺北市 : 獨步文化, 2023[民112]</div>
+          <div class="displayElementText text-p ISBN">9786267226278</div>
+          <table>
+            <tr class="detailItemsTableRow">
+              <td class="detailItemsTable_LIBRARY">臺中科技大學 - 三民總館</td>
+              <td class="detailItemsTable_CALLNUMBER">861.57 0555-2 112</td>
+              <td class="detailItemsTable_BARCODE">382599</td>
+            </tr>
+          </table>
+        `,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    }
+    if (u.includes(":loadavailability")) {
+      return new Response(
+        JSON.stringify([
+          { titleId: "858267", availableCount: "1", copyCount: "1", holdCount: "0", holdable: true },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response("", { status: 404 });
+  };
+
+  try {
+    const res = await searchLibraryCatalog({ q: "9786267226278" });
+    assert.equal(res.totalResults, 1);
+    assert.equal(res.totalPages, 1);
+    assert.equal(res.items.length, 1);
+    assert.equal(res.items[0].id, "858267");
+    assert.equal(res.items[0].title, "賜給名偵探甜美的死亡");
+    assert.equal(res.items[0].author, "方丈貴惠 著");
+    assert.equal(res.items[0].callNumber, "861.57 0555-2 112");
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("handleLibraryRequest manages persisted library favorites and UI exposes /library/favorites", async () => {
+  const store = new DashboardPreferenceStore();
+  // Prevent touching real data file in unit tests
+  store.persist = async () => {};
+  const handlers = makeHandlers();
+
+  const postRes = makeMockRes();
+  assert.equal(
+    await handleLibraryRequest(
+      {
+        method: "POST",
+        _body: {
+          id: "858267",
+          title: "賜給名偵探甜美的死亡",
+          author: "方丈貴惠 著",
+          isbn: "9786267226278",
+          detailPath: "/client/zh_TW/NUTC/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:858267/one",
+          coverProxyUrl: "/api/library/cover?isbn=9786267226278",
+        },
+      },
+      postRes,
+      new URL("http://localhost/api/library/favorites"),
+      handlers,
+      { favoritesStore: store },
+    ),
+    true,
+  );
+  assert.equal(postRes.statusCode, 200);
+  const posted = JSON.parse(postRes.body);
+  assert.equal(posted.items.length, 1);
+  assert.equal(posted.items[0].id, "858267");
+
+  const getRes = makeMockRes();
+  await handleLibraryRequest(
+    { method: "GET" },
+    getRes,
+    new URL("http://localhost/api/library/favorites"),
+    handlers,
+    { favoritesStore: store },
+  );
+  assert.equal(getRes.statusCode, 200);
+  assert.equal(JSON.parse(getRes.body).items.length, 1);
+
+  const delRes = makeMockRes();
+  await handleLibraryRequest(
+    { method: "DELETE" },
+    delRes,
+    new URL("http://localhost/api/library/favorites/858267"),
+    handlers,
+    { favoritesStore: store },
+  );
+  assert.equal(delRes.statusCode, 200);
+  assert.equal(JSON.parse(delRes.body).items.length, 0);
+
+  const [js, css] = await Promise.all([
+    read("../public/library.js"),
+    read("../public/library.css"),
+  ]);
+  assert.match(js, /favorites:\s*"favorites"/);
+  assert.match(js, /function renderFavoritesView\(/);
+  assert.match(js, /function renderFavoriteButton\(/);
+  assert.match(css, /\.fav-btn\[aria-pressed="true"\]/);
+  assert.match(css, /\.book-row-action::after/);
 });

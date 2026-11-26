@@ -5,6 +5,8 @@ import {
   stripHtml,
   htmlToCleanParagraphs,
   stripBookstorePromo,
+  cleanAuthorText,
+  cleanBookDescription,
   maskLibraryIdentifier,
   normalizeIsbn,
   sanminCoverUrlFromIsbn,
@@ -499,4 +501,40 @@ test("parseOpacLookupTitleInfoUrl and mergeOpacItemLookup apply shelf locations 
   assert.equal(merged[0].status, "10F中文書區");
   assert.equal(merged[1].branch, "臺中科技大學 - 民生分館");
   assert.equal(merged[1].status, "到期 2026/12/7");
+});
+
+test("cleanAuthorText, cleanBookDescription, and parseOpacItemDetail clean MARC noise and preserve contributors", () => {
+  assert.equal(cleanAuthorText("方丈貴惠, 1984- 著"), "方丈貴惠 著");
+  assert.equal(cleanAuthorText("方丈貴惠, 1984- 作"), "方丈貴惠 作");
+  assert.equal(cleanAuthorText("王小明, 1955-2020"), "王小明");
+  assert.equal(
+    cleanBookDescription("\"'「從現在起，要請各位賭命參加遊戲」\n\n故事開始。\n\n\""),
+    "「從現在起，要請各位賭命參加遊戲」\n\n故事開始。",
+  );
+
+  const html = `
+    <div class="displayElementText text-p INITIAL_TITLE_SRCH">賜給名偵探甜美的死亡</div>
+    <div class="displayElementText text-p INITIAL_AUTHOR_SRCH">方丈貴惠, 1984- 著</div>
+    <div class="displayElementText text-p ADDED_AUTHOR">方丈貴惠, 1984-</div>
+    <div class="displayElementText text-p ADDED_AUTHOR">李彥樺</div>
+    <div class="displayElementText text-p ISBN">9786267226278 (平裝)</div>
+    <div class="displayElementText text-p NOTE">含參考書目</div>
+    <div class="displayElementText text-p SUMMARY"><div class="nested">第一層簡介</div> 完整內容。</div>
+  `;
+  const detail = parseOpacItemDetail(
+    html,
+    "/client/zh_TW/NUTC/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:858267/one",
+  );
+  assert.equal(detail.author, "方丈貴惠 著");
+  assert.deepEqual(detail.contributors, ["李彥樺"]);
+  assert.equal(detail.isbn, "9786267226278");
+  assert.equal(detail.summary, "第一層簡介 完整內容。");
+  assert.deepEqual(detail.notes, ["含參考書目"]);
+
+  const noteOnlyDetail = parseOpacItemDetail(
+    `<div class="displayElementText INITIAL_TITLE_SRCH">測試書目</div><div class="displayElementText NOTE">版權頁誤植</div>`,
+    "/client/zh_TW/NUTC/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:1/one",
+  );
+  assert.equal(noteOnlyDetail.summary, "");
+  assert.deepEqual(noteOnlyDetail.notes, ["版權頁誤植"]);
 });

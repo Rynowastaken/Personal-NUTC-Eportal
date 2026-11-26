@@ -212,6 +212,89 @@ const MAX_CUSTOM_LINKS = 30;
 const CUSTOM_LINK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PINNED_MODULES = 32;
 const MODULE_ID_PATTERN = /^[a-z0-9-]+$/;
+const MAX_LIBRARY_FAVORITES = 200;
+const LIBRARY_FAVORITE_ID = /^[a-z0-9._:-]{1,64}$/i;
+
+function cleanFavoriteField(val, maxLen = 200) {
+  return typeof val === "string" ? val.trim().slice(0, maxLen) : "";
+}
+
+export function validateLibraryFavorite(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw linkError("Book favorite payload must be an object.");
+  }
+  const id = cleanFavoriteField(payload.id, 64);
+  if (!LIBRARY_FAVORITE_ID.test(id)) {
+    throw linkError("Valid catalog book ID is required.");
+  }
+  const title = cleanFavoriteField(payload.title, 300);
+  if (!title) {
+    throw linkError("Book title is required.");
+  }
+
+  let detailPath = cleanFavoriteField(payload.detailPath, 320);
+  if (detailPath && !detailPath.startsWith("/")) {
+    detailPath = "";
+  }
+
+  let officialUrl = cleanFavoriteField(payload.officialUrl, 500);
+  if (officialUrl) {
+    try {
+      const parsed = new URL(officialUrl);
+      if (!["https:", "http:"].includes(parsed.protocol)) officialUrl = "";
+      else officialUrl = parsed.toString();
+    } catch {
+      officialUrl = "";
+    }
+  }
+
+  let coverProxyUrl = cleanFavoriteField(payload.coverProxyUrl, 800);
+  if (
+    coverProxyUrl &&
+    !coverProxyUrl.startsWith("/api/library/cover?") &&
+    !coverProxyUrl.startsWith("data:image/svg+xml")
+  ) {
+    coverProxyUrl = "";
+  }
+
+  const rawSavedAt = cleanFavoriteField(payload.savedAt, 40);
+  const savedAt =
+    rawSavedAt && !Number.isNaN(Date.parse(rawSavedAt))
+      ? new Date(rawSavedAt).toISOString()
+      : new Date().toISOString();
+
+  return {
+    id,
+    title,
+    author: cleanFavoriteField(payload.author, 200),
+    publisherYear: cleanFavoriteField(payload.publisherYear, 200),
+    isbn: cleanFavoriteField(payload.isbn, 40),
+    callNumber: cleanFavoriteField(payload.callNumber, 80),
+    campus: cleanFavoriteField(payload.campus, 120),
+    detailPath,
+    officialUrl,
+    coverProxyUrl,
+    savedAt,
+  };
+}
+
+function loadLibraryFavorites(items) {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set();
+  const validated = [];
+  for (const item of items) {
+    if (validated.length >= MAX_LIBRARY_FAVORITES) break;
+    try {
+      const clean = validateLibraryFavorite(item);
+      if (seen.has(clean.id)) continue;
+      seen.add(clean.id);
+      validated.push(clean);
+    } catch {
+      // Ignore malformed records without discarding the other preferences.
+    }
+  }
+  return validated;
+}
 
 export function validatePinnedModules(input, allowedIds = null) {
   if (input === null) return null;
@@ -390,6 +473,7 @@ export class DashboardPreferenceStore {
       },
       customLinks: [],
       pinnedModules: null,
+      libraryFavorites: [],
       ai: defaultAiSettings(),
       updatedAt: null,
     };
@@ -448,6 +532,7 @@ export class DashboardPreferenceStore {
         },
         customLinks: loadCustomLinks(parsed?.customLinks),
         pinnedModules: loadPinnedModules(parsed?.pinnedModules),
+        libraryFavorites: loadLibraryFavorites(parsed?.libraryFavorites),
         ai: loadAiSettings(parsed?.ai),
         updatedAt:
           typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null,
@@ -620,6 +705,47 @@ export class DashboardPreferenceStore {
       this.value.updatedAt = new Date().toISOString();
       await this.persist();
       return this.get();
+    });
+  }
+
+  getLibraryFavorites() {
+    return this.value.libraryFavorites.map((item) => ({ ...item }));
+  }
+
+  async addLibraryFavorite(payload) {
+    return this.enqueue(async () => {
+      const nextItem = validateLibraryFavorite(payload);
+      const filtered = this.value.libraryFavorites.filter(
+        (existing) => existing.id !== nextItem.id,
+      );
+      if (filtered.length >= MAX_LIBRARY_FAVORITES) {
+        throw linkError(
+          `You can favorite up to ${MAX_LIBRARY_FAVORITES} books.`,
+        );
+      }
+      this.value.libraryFavorites = [nextItem, ...filtered];
+      this.value.updatedAt = new Date().toISOString();
+      await this.persist();
+      return { item: { ...nextItem }, items: this.getLibraryFavorites() };
+    });
+  }
+
+  async removeLibraryFavorite(id) {
+    const cleanId = cleanFavoriteField(id, 64);
+    if (!LIBRARY_FAVORITE_ID.test(cleanId)) {
+      throw linkError("Valid catalog book ID is required.");
+    }
+    return this.enqueue(async () => {
+      const prevLen = this.value.libraryFavorites.length;
+      this.value.libraryFavorites = this.value.libraryFavorites.filter(
+        (item) => item.id !== cleanId,
+      );
+      const removed = this.value.libraryFavorites.length !== prevLen;
+      if (removed) {
+        this.value.updatedAt = new Date().toISOString();
+        await this.persist();
+      }
+      return { removed, items: this.getLibraryFavorites() };
     });
   }
 

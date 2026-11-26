@@ -1175,7 +1175,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (await handleLibraryRequest(req, res, url, { sendJson, sendError, readJsonBody })) {
+    if (
+      await handleLibraryRequest(
+        req,
+        res,
+        url,
+        { sendJson, sendError, readJsonBody },
+        { favoritesStore: dashboardPreferenceStore },
+      )
+    ) {
       return;
     }
 

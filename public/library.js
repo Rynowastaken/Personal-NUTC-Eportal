@@ -8,6 +8,7 @@
   const ROUTES = {
     "": "home",
     catalog: "catalog",
+    favorites: "favorites",
     loans: "loans",
     rooms: "rooms",
     resources: "resources",
@@ -15,6 +16,7 @@
   const NAV = [
     ["home", "總覽"],
     ["catalog", "館藏"],
+    ["favorites", "收藏"],
     ["loans", "借閱"],
     ["rooms", "空間"],
     ["resources", "資源"],
@@ -223,6 +225,7 @@
     file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
     list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
     grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+    heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
     spark: '<path d="M12 2.5v19M3.77 7.25l16.46 9.5M20.23 7.25l-16.46 9.5"/>',
   };
 
@@ -296,6 +299,14 @@
     overviewLoading: false,
     privacyRevealed: false,
 
+    favorites: [],
+    favoritesLoaded: false,
+    favoritesLoading: false,
+    favoritesError: "",
+    favoritesQuery: "",
+    favoriteIds: new Set(),
+    favoritePendingIds: new Set(),
+
     catalogQuery: "",
     catalogDraftQ: "",
     catalogField: "ALL",
@@ -352,6 +363,154 @@
     } finally {
       state.overviewLoading = false;
     }
+  }
+
+  function extractBookId(item) {
+    if (!item) return "";
+    const direct = String(item.id || "").trim();
+    if (direct) return direct;
+    const match = String(item.detailPath || "").match(/SD_ILS:(\d+)/i);
+    return match ? match[1] : "";
+  }
+
+  function buildFavoritePayload(item, fallback = {}) {
+    const id = extractBookId(item) || extractBookId(fallback);
+    return {
+      id,
+      title: String(item?.title || fallback?.title || "").trim(),
+      author: String(item?.author || fallback?.author || "").trim(),
+      publisherYear: String(item?.publisherYear || fallback?.publisherYear || "").trim(),
+      isbn: String(item?.isbn || fallback?.isbn || "").trim(),
+      callNumber: String(
+        item?.callNumber || item?.holdings?.[0]?.callNumber || fallback?.callNumber || "",
+      ).trim(),
+      campus: String(
+        item?.campus || item?.holdings?.[0]?.branch || fallback?.campus || "",
+      ).trim(),
+      detailPath: String(item?.detailPath || fallback?.detailPath || "").trim(),
+      officialUrl: String(item?.officialUrl || fallback?.officialUrl || "").trim(),
+      coverProxyUrl: String(item?.coverProxyUrl || fallback?.coverProxyUrl || "").trim(),
+    };
+  }
+
+  function syncFavoritesState(items) {
+    const list = Array.isArray(items) ? items : [];
+    const byId = new Map(state.favorites.map((fav) => [String(fav.id), fav]));
+    state.favorites = list.map((item) => {
+      const prev = byId.get(String(item.id));
+      return prev && item.availableCount == null && prev.availableCount != null
+        ? {
+            ...item,
+            availableCount: prev.availableCount,
+            totalCount: prev.totalCount,
+            holdsCount: prev.holdsCount,
+            holdable: prev.holdable,
+          }
+        : item;
+    });
+    state.favoriteIds = new Set(state.favorites.map((item) => String(item.id)));
+  }
+
+  function syncFavoriteButtonsInDom(bookId) {
+    const id = String(bookId || "").trim();
+    if (!id) return;
+    const isFav = state.favoriteIds.has(id);
+    const busy = state.favoritePendingIds.has(id);
+    for (const btn of document.querySelectorAll(".fav-btn[data-fav-book-id]")) {
+      if (btn.getAttribute("data-fav-book-id") !== id) continue;
+      btn.setAttribute("aria-pressed", String(isFav));
+      btn.disabled = busy;
+      const label = isFav ? "取消收藏" : "加入收藏";
+      btn.setAttribute("aria-label", label);
+      btn.setAttribute("title", label);
+      const txt = btn.querySelector("[data-fav-label]");
+      if (txt) txt.textContent = isFav ? "已收藏" : "收藏";
+    }
+  }
+
+  async function loadFavorites({ force = false } = {}) {
+    if (state.favoritesLoading && !force) return;
+    state.favoritesLoading = true;
+    state.favoritesError = "";
+    try {
+      const res = await apiJson("/api/library/favorites");
+      syncFavoritesState(res?.items);
+      state.favoritesLoaded = true;
+    } catch (error) {
+      state.favoritesError = error?.message || "無法載入我的收藏。";
+    } finally {
+      state.favoritesLoading = false;
+    }
+  }
+
+  async function toggleFavorite(item, fallback = {}) {
+    const payload = buildFavoritePayload(item, fallback);
+    if (!payload.id || !payload.title || state.favoritePendingIds.has(payload.id)) return;
+
+    const wasFav = state.favoriteIds.has(payload.id);
+    const prevFavorites = [...state.favorites];
+    state.favoritePendingIds.add(payload.id);
+    state.favoritesError = "";
+
+    if (wasFav) {
+      syncFavoritesState(state.favorites.filter((fav) => String(fav.id) !== payload.id));
+    } else {
+      syncFavoritesState([
+        { ...payload, savedAt: new Date().toISOString() },
+        ...state.favorites.filter((fav) => String(fav.id) !== payload.id),
+      ]);
+    }
+    syncFavoriteButtonsInDom(payload.id);
+
+    const route = matchRoute(new URL(location.href)) || { name: "home" };
+    if (route.name === "favorites" || route.name === "home") render();
+
+    try {
+      const res = wasFav
+        ? await apiJson(`/api/library/favorites/${encodeURIComponent(payload.id)}`, {
+            method: "DELETE",
+          })
+        : await apiJson("/api/library/favorites", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+      syncFavoritesState(res?.items);
+      state.favoritesLoaded = true;
+    } catch (error) {
+      syncFavoritesState(prevFavorites);
+      state.favoritesError = error?.message || "更新收藏失敗。";
+    } finally {
+      state.favoritePendingIds.delete(payload.id);
+      syncFavoriteButtonsInDom(payload.id);
+      const current = matchRoute(new URL(location.href)) || { name: "home" };
+      if (current.name === "favorites" || current.name === "home") render();
+    }
+  }
+
+  function renderFavoriteButton(item, { showLabel = false, className = "fav-btn", fallback = {} } = {}) {
+    const id = extractBookId(item) || extractBookId(fallback);
+    if (!id) return null;
+    const isFav = state.favoriteIds.has(id);
+    const busy = state.favoritePendingIds.has(id);
+    const ariaText = isFav ? "取消收藏" : "加入收藏";
+    return h(
+      "button",
+      {
+        class: className,
+        type: "button",
+        disabled: busy,
+        "data-fav-book-id": id,
+        "aria-pressed": String(isFav),
+        "aria-label": ariaText,
+        title: ariaText,
+        onclick: (e) => {
+          e.stopPropagation();
+          void toggleFavorite(item, fallback);
+        },
+      },
+      icon("heart"),
+      showLabel ? h("span", { "data-fav-label": "1" }, isFav ? "已收藏" : "收藏") : null,
+    );
   }
 
   let catalogRequestSeq = 0;
@@ -940,7 +1099,7 @@
     return wrap;
   }
 
-  function renderBookModalHero(book, fallbackCoverUrl, onPickSubject) {
+  function renderBookModalHero(book, fallbackCoverUrl, onPickSubject, favFallback = {}) {
     const coverUrl = book.coverProxyUrl || fallbackCoverUrl || "";
     const coverBox = h(
       "div",
@@ -962,7 +1121,11 @@
         : icon("book"),
     );
 
+    const contributorsText = Array.isArray(book.contributors)
+      ? book.contributors.filter(Boolean).join("、")
+      : "";
     const specPairs = [
+      ["譯者／合著", contributorsText, false],
       ["出版", book.publisherYear, false],
       ["版本", book.edition, false],
       ["規格", book.physicalDesc, false],
@@ -972,6 +1135,11 @@
     ].filter(([, val]) => Boolean(val));
 
     const subjects = Array.isArray(book.subjects) ? book.subjects.filter(Boolean) : [];
+    const favBtn = renderFavoriteButton(book, {
+      showLabel: true,
+      className: "fav-btn fav-btn--modal",
+      fallback: favFallback,
+    });
 
     return h(
       "div",
@@ -985,14 +1153,19 @@
           { class: "book-modal-title-row" },
           h("h2", { class: "dialog-title" }, book.title),
           h(
-            "button",
-            {
-              class: "dialog-close",
-              type: "button",
-              "aria-label": "關閉",
-              onclick: closeModal,
-            },
-            icon("x"),
+            "div",
+            { class: "book-modal-head-actions" },
+            favBtn,
+            h(
+              "button",
+              {
+                class: "dialog-close",
+                type: "button",
+                "aria-label": "關閉",
+                onclick: closeModal,
+              },
+              icon("x"),
+            ),
           ),
         ),
         book.author ? h("div", { class: "book-modal-author" }, book.author) : null,
@@ -1193,7 +1366,7 @@
 
     replaceNodes(
       dialog,
-      renderBookModalHero(item, item.coverProxyUrl, onPickSubject),
+      renderBookModalHero(item, item.coverProxyUrl, onPickSubject, item),
       h(
         "div",
         { class: "dialog-body" },
@@ -1215,7 +1388,7 @@
         const heroEl = dialog.querySelector(".book-modal-hero");
         if (heroEl) {
           heroEl.replaceWith(
-            renderBookModalHero(detail, item.coverProxyUrl, onPickSubject),
+            renderBookModalHero(detail, item.coverProxyUrl, onPickSubject, item),
           );
         }
         const body = dialog.querySelector(".dialog-body");
@@ -1517,18 +1690,28 @@
     const coverImg = buildCatalogCoverNode(item, index);
 
     return h(
-      "button",
+      "article",
       {
         class: "book-row",
-        type: "button",
         "data-book-id": item.id,
-        onclick: () => openBookModal(item),
       },
       h("div", { class: "book-cover" }, coverImg),
       h(
         "div",
         { class: "book-meta" },
-        h("div", { class: "book-title" }, item.title),
+        h(
+          "div",
+          { class: "book-title" },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "book-row-action",
+              onclick: () => openBookModal(item),
+            },
+            item.title,
+          ),
+        ),
         (item.author || item.publisherYear)
           ? h(
               "div",
@@ -1544,7 +1727,12 @@
           item.isbn ? h("span", { class: "num" }, `ISBN ${item.isbn}`) : null,
         ),
       ),
-      h("div", { class: "book-end" }, buildBookEndChildren(item)),
+      h(
+        "div",
+        { class: "book-row-side" },
+        h("div", { class: "book-end" }, buildBookEndChildren(item)),
+        renderFavoriteButton(item),
+      ),
     );
   }
 
@@ -1558,6 +1746,7 @@
         "data-book-id": item.id,
       },
       buildCatalogCoverNode(item, index, { fallbackClass: "media book-card-empty" }),
+      renderFavoriteButton(item, { className: "fav-btn fav-btn--card" }),
       h(
         "h3",
         { class: "book-card-title" },
@@ -1703,6 +1892,15 @@
             onclick: () => navigate(`${BASE}/resources`),
           },
           "電子資料庫 & EndNote",
+        ),
+        h(
+          "button",
+          {
+            class: "chip-btn",
+            type: "button",
+            onclick: () => navigate(routeUrl("favorites")),
+          },
+          state.favorites.length ? `我的收藏 (${state.favorites.length})` : "我的收藏",
         ),
       ),
     );
@@ -1870,6 +2068,29 @@
       ),
     );
 
+    const favoritesSection = state.favorites.length
+      ? h(
+          "section",
+          { class: "section" },
+          h(
+            "div",
+            { class: "section-head" },
+            h(
+              "h2",
+              null,
+              "我的收藏",
+              h("span", { class: "count" }, `(${state.favorites.length})`),
+            ),
+            h("a", { class: "meta", href: routeUrl("favorites") }, "查看全部"),
+          ),
+          h(
+            "div",
+            { class: "list" },
+            state.favorites.slice(0, 4).map((fav, idx) => renderBookRow(fav, idx)),
+          ),
+        )
+      : null;
+
     return h(
       "div",
       null,
@@ -1893,7 +2114,194 @@
       kpiGrid,
       quickForm,
       h("div", { class: "home-grid" }, loansSection, roomsSection),
+      favoritesSection,
       quickRow,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // View: Favorites (/library/favorites)
+
+  function renderFavoritesView() {
+    const query = state.favoritesQuery.trim().toLowerCase();
+    const allItems = state.favorites;
+    const filtered = query
+      ? allItems.filter((item) =>
+          [item.title, item.author, item.publisherYear, item.isbn, item.callNumber, item.campus]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+        )
+      : allItems;
+
+    const filterInput = h("input", {
+      id: "favoritesFilterInput",
+      class: "input",
+      type: "search",
+      placeholder: "搜尋已收藏書名、作者、ISBN 或索書號…",
+      value: state.favoritesQuery,
+      oninput: (e) => {
+        state.favoritesQuery = e.target.value;
+        render();
+      },
+      "aria-label": "篩選收藏書籍",
+    });
+
+    const setView = (nextView) => {
+      if (state.catalogView === nextView) return;
+      state.catalogView = nextView;
+      saveCatalogView(nextView);
+      render();
+    };
+
+    const viewToggle = h(
+      "div",
+      { id: "favoritesViewToggle", class: "seg view-seg", role: "group", "aria-label": "顯示模式" },
+      h(
+        "button",
+        {
+          type: "button",
+          "data-view": "list",
+          "aria-pressed": String(state.catalogView === "list"),
+          onclick: () => setView("list"),
+        },
+        icon("list"),
+        "列表",
+      ),
+      h(
+        "button",
+        {
+          type: "button",
+          "data-view": "grid",
+          "aria-pressed": String(state.catalogView === "grid"),
+          onclick: () => setView("grid"),
+        },
+        icon("grid"),
+        "圖示",
+      ),
+    );
+
+    let bodyNode;
+    if (state.favoritesError) {
+      bodyNode = h(
+        "div",
+        { class: "notice danger", style: "margin-top:16px;align-items:center" },
+        icon("alert"),
+        h("span", { style: "flex:1" }, state.favoritesError),
+        h(
+          "button",
+          {
+            class: "btn small",
+            type: "button",
+            onclick: () => void loadFavorites({ force: true }).then(() => render()),
+          },
+          icon("refresh"),
+          "重試",
+        ),
+      );
+    } else if (!state.favoritesLoaded && state.favoritesLoading) {
+      bodyNode = h(
+        "section",
+        { class: "section" },
+        h("div", { class: "list" }, h("div", { class: "empty" }, icon("heart"), h("strong", null, "載入收藏中…"))),
+      );
+    } else {
+      bodyNode = h(
+        "section",
+        { class: "section" },
+        h(
+          "div",
+          { class: "section-head" },
+          h(
+            "h2",
+            null,
+            "收藏書單",
+            h("span", { class: "count" }, `(${filtered.length})`),
+          ),
+          h("div", { class: "section-controls" }, viewToggle),
+        ),
+        filtered.length
+          ? state.catalogView === "grid"
+            ? h(
+                "div",
+                { class: "book-grid" },
+                filtered.map((item, idx) => renderBookCard(item, idx)),
+              )
+            : h(
+                "div",
+                { class: "list" },
+                filtered.map((item, idx) => renderBookRow(item, idx)),
+              )
+          : h(
+              "div",
+              { class: "list" },
+              h(
+                "div",
+                { class: "empty" },
+                icon("heart"),
+                h("strong", null, allItems.length ? "找不到符合篩選的收藏" : "尚無收藏書籍"),
+                h(
+                  "div",
+                  { class: "actions", style: "justify-content:center" },
+                  allItems.length
+                    ? h(
+                        "button",
+                        {
+                          class: "btn small",
+                          type: "button",
+                          onclick: () => {
+                            state.favoritesQuery = "";
+                            render();
+                          },
+                        },
+                        "清除篩選",
+                      )
+                    : h(
+                        "a",
+                        { class: "btn small primary", href: routeUrl("catalog") },
+                        icon("search"),
+                        "前往館藏查詢",
+                      ),
+                ),
+              ),
+            ),
+      );
+    }
+
+    return h(
+      "div",
+      null,
+      h("div", { class: "hero" }, h("h1", null, "我的收藏")),
+      allItems.length
+        ? h(
+            "form",
+            {
+              class: "search-panel",
+              onsubmit: (e) => e.preventDefault(),
+            },
+            h(
+              "div",
+              { class: "search-bar" },
+              filterInput,
+              state.favoritesQuery
+                ? h(
+                    "button",
+                    {
+                      class: "btn",
+                      type: "button",
+                      onclick: () => {
+                        state.favoritesQuery = "";
+                        render();
+                      },
+                    },
+                    "清除",
+                  )
+                : null,
+            ),
+          )
+        : null,
+      bodyNode,
     );
   }
 
@@ -3682,6 +4090,7 @@
   const rootWrap = h("div", { id: "libraryApp" }, headerSlot, mainEl);
   document.body.append(rootWrap, modalEl);
   let lastRouteName = "";
+  const favoriteAvailabilityAttemptedIds = new Set();
 
   function render() {
     const route = matchRoute(new URL(location.href)) || { name: "home" };
@@ -3706,6 +4115,26 @@
         void runCatalogSearch();
       }
     }
+    if (route.name === "favorites") {
+      if (!state.favoritesLoaded && !state.favoritesLoading) {
+        void loadFavorites().then(() => render());
+      } else {
+        const pendingFavs = state.favorites
+          .filter(
+            (item) =>
+              /^\d+$/.test(String(item.id || "")) &&
+              item.availableCount == null &&
+              !favoriteAvailabilityAttemptedIds.has(String(item.id)),
+          )
+          .slice(0, 48);
+        if (pendingFavs.length) {
+          for (const item of pendingFavs) {
+            favoriteAvailabilityAttemptedIds.add(String(item.id));
+          }
+          void hydrateCatalogAvailability(pendingFavs, catalogRequestSeq);
+        }
+      }
+    }
     if (route.name === "rooms" && !state.calData && !state.calLoading && !state.calError) {
       void loadCarrelCalendar();
     }
@@ -3716,6 +4145,7 @@
     const titles = {
       home: "圖書館",
       catalog: "館藏查詢 · 圖書館",
+      favorites: "我的收藏 · 圖書館",
       loans: "借閱帳戶 · 圖書館",
       rooms: "空間預約 · 圖書館",
       resources: "電子資源 · 圖書館",
@@ -3724,6 +4154,7 @@
 
     let view;
     if (route.name === "catalog") view = renderCatalogView();
+    else if (route.name === "favorites") view = renderFavoritesView();
     else if (route.name === "loans") view = renderLoansView();
     else if (route.name === "rooms") view = renderRoomsView();
     else if (route.name === "resources") view = renderResourcesView();
@@ -3789,7 +4220,7 @@
   window.NutcTheme?.init?.();
   void (async () => {
     render();
-    await loadOverview();
+    await Promise.all([loadOverview(), loadFavorites()]);
     render();
   })();
 })();

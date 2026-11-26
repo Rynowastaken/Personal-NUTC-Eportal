@@ -667,6 +667,34 @@ export function createLibraryMockHandler() {
     sectionErrors: {},
   });
 
+  const DEMO_FAV_STORAGE_KEY = "nutc-library-demo-favorites-v1";
+  const toFavSnapshot = (b) => ({
+    id: String(b.id),
+    title: b.title || "",
+    author: b.author || "",
+    publisherYear: b.publisherYear || "",
+    isbn: b.isbn || "",
+    callNumber: b.callNumber || "",
+    campus: b.campus || "",
+    detailPath: b.detailPath || "",
+    officialUrl: b.officialUrl || "",
+    coverProxyUrl: b.coverProxyUrl || "",
+    savedAt: b.savedAt || new Date().toISOString(),
+  });
+  let favorites = (() => {
+    try {
+      const saved = JSON.parse(globalThis.localStorage?.getItem(DEMO_FAV_STORAGE_KEY) || "null");
+      if (Array.isArray(saved)) return saved;
+    } catch {}
+    return catalog.slice(0, 2).map(toFavSnapshot);
+  })();
+  const saveDemoFavorites = (next) => {
+    favorites = next;
+    try {
+      globalThis.localStorage?.setItem(DEMO_FAV_STORAGE_KEY, JSON.stringify(next));
+    } catch {}
+  };
+
   const buildCalendarMonth = (year, month) => {
     const totalDays = new Date(year, month, 0).getDate();
     const todayIso = isoDay(0);
@@ -699,6 +727,29 @@ export function createLibraryMockHandler() {
 
     if (p === "/api/library/overview") {
       return { status: 200, body: getOverview() };
+    }
+
+    if (p === "/api/library/favorites" && method === "GET") {
+      return { status: 200, body: { ok: true, items: favorites } };
+    }
+
+    if (p === "/api/library/favorites" && method === "POST") {
+      const id = String(body?.id || "").trim();
+      if (!id || !body?.title) {
+        return { status: 400, body: { error: "無效的館藏收藏項目。" } };
+      }
+      const nextItem = toFavSnapshot({ ...body, id, savedAt: new Date().toISOString() });
+      const next = [nextItem, ...favorites.filter((item) => item.id !== id)];
+      saveDemoFavorites(next);
+      return { status: 200, body: { ok: true, item: nextItem, items: next } };
+    }
+
+    const favDeleteMatch = method === "DELETE" && p.match(/^\/api\/library\/favorites\/([^/]+)$/);
+    if (favDeleteMatch) {
+      const id = decodeURIComponent(favDeleteMatch[1]);
+      const next = favorites.filter((item) => item.id !== id);
+      saveDemoFavorites(next);
+      return { status: 200, body: { ok: true, removed: next.length !== favorites.length, items: next } };
     }
 
     if (p === "/api/library/catalog/search") {

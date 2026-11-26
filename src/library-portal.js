@@ -6,6 +6,7 @@ import { chromium } from "playwright";
 import { createModuleHandoff } from "./portal-session.js";
 import {
   buildOpacAvailabilityUrl,
+  cleanBookDescription,
   decodeHtmlEntities,
   htmlToCleanParagraphs,
   mergeOpacItemLookup,
@@ -1052,7 +1053,7 @@ async function fetchOpacResultsStream(
       html = await response.text();
     }
 
-    return { html, availPromise };
+    return { html, availPromise, finalUrl: current.toString() };
   } catch (error) {
     if (timedOut || (!abortedEarly && (error?.name === "TimeoutError" || error?.name === "AbortError"))) {
       throw libraryError("館藏系統回應逾時，請稍後再試。", "LIBRARY_OPAC_TIMEOUT", 504);
@@ -1074,12 +1075,55 @@ function fetchCatalogPage({
   if (existing) return existing;
 
   const promise = (async () => {
-    const { html, availPromise: earlyAvailPromise } = await fetchOpacResultsStream(
+    const { html, availPromise: earlyAvailPromise, finalUrl } = await fetchOpacResultsStream(
       urlStr,
       { cachedFacets, searchMeta, timeoutMs: 25_000 },
     );
 
-    const parsed = parseOpacSearchResults(html, searchMeta);
+    let parsed = parseOpacSearchResults(html, searchMeta);
+    if (parsed.items.length === 0) {
+      let singleTitleId = "";
+      let singleDetailPath = "";
+      try {
+        const finalParsedUrl = new URL(finalUrl || urlStr);
+        const match = finalParsedUrl.pathname.match(
+          /^(\/client\/zh_TW\/NUTC\/search\/detailnonmodal\/.*SD_ILS:(\d+)\/one)$/i,
+        );
+        if (match) {
+          singleDetailPath = match[1];
+          singleTitleId = match[2];
+        }
+      } catch {}
+      if (singleTitleId && /displayElementText[^"]*INITIAL_TITLE_SRCH/i.test(html)) {
+        const detail = parseOpacItemDetail(html, singleDetailPath);
+        if (detail.title) {
+          const firstHolding = detail.holdings?.[0] || null;
+          parsed = {
+            ...parsed,
+            totalResults: 1,
+            totalPages: 1,
+            items: [
+              {
+                id: singleTitleId,
+                title: detail.title,
+                author: detail.author,
+                publisherYear: detail.publisherYear,
+                isbn: detail.isbn,
+                callNumber: firstHolding?.callNumber || "",
+                campus: firstHolding?.branch || "",
+                availableCount: null,
+                totalCount: null,
+                holdsCount: null,
+                holdable: false,
+                rawCoverUrl: detail.rawCoverUrl || "",
+                detailPath: singleDetailPath,
+                officialUrl: `${OPAC_ORIGIN}${singleDetailPath}`,
+              },
+            ],
+          };
+        }
+      }
+    }
     const facets = parsed.facets.length > 0 ? parsed.facets : cachedFacets || [];
     if (parsed.facets.length > 0) {
       setCachedMap(facetCache, filterKey, parsed.facets, FACET_TTL_MS, 80);
@@ -1395,10 +1439,10 @@ async function fetchEsliteEnrichment(isbn) {
     const rawDesc =
       descEntry?.description || prod?.short_description || matched?.description || "";
     const description = rawDesc
-      ? stripBookstorePromo(htmlToCleanParagraphs(rawDesc))
+      ? cleanBookDescription(stripBookstorePromo(htmlToCleanParagraphs(rawDesc)))
       : "";
     const authorBio = bioEntry?.description
-      ? htmlToCleanParagraphs(bioEntry.description, { maxLength: 1400 })
+      ? cleanBookDescription(htmlToCleanParagraphs(bioEntry.description, { maxLength: 1400 }))
       : "";
 
     if (!description && !authorBio) return null;
@@ -1518,8 +1562,17 @@ async function fetchGoogleBooksEnrichment(isbn) {
         "";
     }
 
-    const description = rawSyn ? htmlToCleanParagraphs(rawSyn) : "";
+    const description = rawSyn ? cleanBookDescription(htmlToCleanParagraphs(rawSyn)) : "";
     if (!description || /^Preview this book/i.test(description)) return null;
+    if (
+      /^978(957|986|626|7)/.test(isbn) &&
+      !/[\u4e00-\u9fff]/.test(description) &&
+      /\b(?:ben shu|zhong guo|jin xing|xue xi|yan jiu|ji shu|xi tong|chan shu)\b/i.test(
+        description,
+      )
+    ) {
+      return null;
+    }
     return { description, authorBio: "", pages: "", source: "Google Books" };
   } catch {
     return null;
@@ -2937,7 +2990,85 @@ export async function handleLibraryRequest(
     downloadFn = downloadEndnoteFile,
     coverFn = fetchLibraryCover,
     openTargetFn = resolveLibraryOpenTarget,
+    favoritesStore = null,
+    favoritesListFn = null,
+    favoritesAddFn = null,
+    favoritesRemoveFn = null,
   } = deps;
+
+  if (req.method === "GET" && url.pathname === "/api/library/favorites") {
+    try {
+      const listFn =
+        favoritesListFn ||
+        (favoritesStore ? () => favoritesStore.getLibraryFavorites() : null);
+      if (!listFn) {
+        sendError(res, 501, "Library favorites storage is unavailable.");
+        return true;
+      }
+      const items = await listFn();
+      sendJson(res, 200, { ok: true, items: Array.isArray(items) ? items : [] });
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to load library favorites.",
+        "LIBRARY_FAVORITES_ERROR",
+      );
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/library/favorites") {
+    try {
+      const addFn =
+        favoritesAddFn ||
+        (favoritesStore ? (body) => favoritesStore.addLibraryFavorite(body) : null);
+      if (!addFn) {
+        sendError(res, 501, "Library favorites storage is unavailable.");
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const saved = await addFn(body);
+      sendJson(res, 200, { ok: true, ...saved });
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to save favorite book.",
+        "LIBRARY_FAVORITES_ERROR",
+      );
+    }
+    return true;
+  }
+
+  const favoriteDeleteMatch =
+    req.method === "DELETE" &&
+    url.pathname.match(/^\/api\/library\/favorites\/([^/]+)$/);
+  if (favoriteDeleteMatch) {
+    try {
+      const removeFn =
+        favoritesRemoveFn ||
+        (favoritesStore ? (id) => favoritesStore.removeLibraryFavorite(id) : null);
+      if (!removeFn) {
+        sendError(res, 501, "Library favorites storage is unavailable.");
+        return true;
+      }
+      const id = decodeURIComponent(favoriteDeleteMatch[1]);
+      const result = await removeFn(id);
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to remove favorite book.",
+        "LIBRARY_FAVORITES_ERROR",
+      );
+    }
+    return true;
+  }
 
   if (req.method === "GET" && url.pathname === "/api/library/overview") {
     try {
