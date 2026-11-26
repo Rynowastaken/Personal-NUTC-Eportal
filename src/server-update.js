@@ -208,6 +208,138 @@ export function createServerUpdater({
     }
   }
 
+  async function applyGitPullAndBuild({
+    before,
+    needPull = true,
+    emit,
+    staged,
+    backup,
+    live,
+  }) {
+    let pullOutput = "";
+    if (needPull) {
+      emit("pulling", "正在取得最新程式碼…");
+      const pull = await runCommand("git", ["pull", "--ff-only"], {
+        errorCode: "SERVER_UPDATE_GIT_FAILED",
+        timeoutMs: 90_000,
+      });
+      pullOutput = pull.stdout;
+    }
+
+    const after = (
+      await runCommand("git", ["rev-parse", "HEAD"], {
+        errorCode: "SERVER_UPDATE_GIT_FAILED",
+        timeoutMs: 15_000,
+      })
+    ).stdout;
+    const updated = before !== after;
+
+    let dependencyChanged = false;
+    if (updated) {
+      const diff = await runCommand(
+        "git",
+        [
+          "diff",
+          "--name-only",
+          before,
+          after,
+          "--",
+          "package.json",
+          "package-lock.json",
+          "npm-shrinkwrap.json",
+        ],
+        { errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 15_000 },
+      );
+      dependencyChanged = Boolean(diff.stdout);
+    }
+
+    const viteInstalled = await exists(path.join(rootDir, "node_modules", "vite"));
+    const stampFile = path.join(rootDir, "node_modules", ".nutc-dependency-revision");
+    const revision = await dependencyFingerprint();
+    const installedRevision = await files.readFile(stampFile, "utf8").catch((error) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    const needsInstall =
+      dependencyChanged || !viteInstalled || installedRevision.trim() !== revision;
+    if (needsInstall) {
+      emit("installing", "正在安裝前端依賴套件…");
+      // A previous manual 'npm install' may have left an UNTRACKED
+      // package-lock.json in the checkout. That file can be older than
+      // package.json and makes npm ci fail with EUSAGE. Only treat lockfiles
+      // committed to Git as authoritative, never incidental local files.
+      const localLocks = ["npm-shrinkwrap.json", "package-lock.json"];
+      const hasLocalLock = (
+        await Promise.all(localLocks.map((name) => exists(path.join(rootDir, name))))
+      ).some(Boolean);
+      // Most installations have no local lockfile at all. Only look up
+      // tracked lockfile status when there is one in the working tree.
+      const trackedLocks = hasLocalLock
+        ? (
+            await runCommand("git", ["ls-files", "--cached", "--", ...localLocks], {
+              errorCode: "SERVER_UPDATE_GIT_FAILED",
+              timeoutMs: 15_000,
+            })
+          ).stdout.split(/\r?\n/)
+        : [];
+      const committedLock = localLocks.find((name) => trackedLocks.includes(name));
+      if (committedLock && !(await exists(path.join(rootDir, committedLock)))) {
+        throw updateError(
+          "SERVER_UPDATE_LOCKFILE_MISSING",
+          "Committed npm lockfile " +
+            committedLock +
+            " is missing from the checkout. Restore it from Git before updating.",
+        );
+      }
+      const unlockedInstall = [
+        "install",
+        "--no-save",
+        "--package-lock=false",
+        "--no-audit",
+        "--no-fund",
+      ];
+      if (committedLock) {
+        try {
+          await runNpmInstall(["ci", "--no-audit", "--no-fund"], staged);
+        } catch (error) {
+          if (!error.lockMismatch) throw error;
+          // Recover without changing tracked files or the deployed assets.
+          // The maintainer should still commit a synchronized lockfile.
+          emit("installing", "鎖定檔與套件清單不一致，改用不依賴鎖定檔的安裝方式…");
+          await runNpmInstall(unlockedInstall, staged);
+        }
+      } else {
+        await runNpmInstall(unlockedInstall, staged);
+      }
+      await files.mkdir(path.dirname(stampFile), { recursive: true });
+      await files.writeFile(stampFile, revision + "\n");
+    }
+
+    // Also repair browser binaries on an unchanged Git checkout: the
+    // previous npm install may have succeeded without downloading Chromium.
+    emit("browser", "正在確認並補齊 Playwright Chromium 瀏覽器…");
+    await ensurePlaywrightChromium();
+
+    // Rebuild on *every manual update*, even when Git has no new commits.
+    // This repairs stale/missing generated CSS without requiring SSH.
+    emit("building", "正在重新編譯 CSS 與 UI…");
+    await runViteBuild(staged);
+    emit("verifying", "正在檢查新產生的前端檔案…");
+    await verifyAssets(staged);
+    emit("publishing", "正在套用更新後的資源…");
+    await publishAssets(staged, live, backup);
+    emit("complete", "前端資源已更新，即將重新啟動 Server。");
+    return {
+      updated,
+      rebuilt: true,
+      restartRequired: true,
+      previousCommit: before || null,
+      currentCommit: after || null,
+      dependenciesInstalled: needsInstall,
+      output: pullOutput,
+    };
+  }
+
   async function updateServerFromGitPull({ onProgress } = {}) {
     if (inFlight) throw Object.assign(new Error("A server update is already running."), {
       code: "SERVER_UPDATE_IN_PROGRESS",
@@ -221,109 +353,108 @@ export function createServerUpdater({
 
     try {
       emit("checking", "檢查目前版本…");
-      const before = (await runCommand("git", ["rev-parse", "HEAD"], {
-        errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 15_000,
-      })).stdout;
-      emit("pulling", "正在取得最新程式碼…");
-      const pull = await runCommand("git", ["pull", "--ff-only"], {
-        errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 90_000,
+      const before = (
+        await runCommand("git", ["rev-parse", "HEAD"], {
+          errorCode: "SERVER_UPDATE_GIT_FAILED",
+          timeoutMs: 15_000,
+        })
+      ).stdout;
+      return await applyGitPullAndBuild({
+        before,
+        needPull: true,
+        emit,
+        staged,
+        backup,
+        live,
       });
-      const after = (await runCommand("git", ["rev-parse", "HEAD"], {
-        errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 15_000,
-      })).stdout;
-      const updated = before !== after;
+    } finally {
+      inFlight = false;
+      await files.rm(staged, { recursive: true, force: true }).catch(() => {});
+    }
+  }
 
-      let dependencyChanged = false;
-      if (updated) {
-        const diff = await runCommand(
+  /**
+   * Fetch upstream silently on page reload and only rebuild/restart when remote is ahead.
+   */
+  async function checkAndApplyRemoteUpdate({ onUpdateFound, onProgress } = {}) {
+    if (inFlight) {
+      throw Object.assign(new Error("A server update is already running."), {
+        code: "SERVER_UPDATE_IN_PROGRESS",
+        statusCode: 409,
+      });
+    }
+    inFlight = true;
+    const emit = (stage, detail) => onProgress?.({ stage, detail });
+    const staged = path.join(rootDir, ".update-build-" + makeId());
+    const backup = path.join(rootDir, ".update-backup-" + makeId());
+    const live = path.join(rootDir, "public", "generated");
+
+    try {
+      let before = "";
+      let behindCount = 0;
+      try {
+        before = (
+          await runCommand("git", ["rev-parse", "HEAD"], {
+            errorCode: "SERVER_UPDATE_GIT_FAILED",
+            timeoutMs: 10_000,
+          })
+        ).stdout;
+        await runCommand(
           "git",
-          ["diff", "--name-only", before, after, "--", "package.json", "package-lock.json", "npm-shrinkwrap.json"],
-          { errorCode: "SERVER_UPDATE_GIT_FAILED", timeoutMs: 15_000 },
+          ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+          {
+            errorCode: "SERVER_UPDATE_GIT_FAILED",
+            timeoutMs: 10_000,
+          },
         );
-        dependencyChanged = Boolean(diff.stdout);
+        await runCommand("git", ["fetch", "--quiet"], {
+          errorCode: "SERVER_UPDATE_GIT_FAILED",
+          timeoutMs: 15_000,
+        });
+        const behindRaw = (
+          await runCommand("git", ["rev-list", "--count", "HEAD..@{u}"], {
+            errorCode: "SERVER_UPDATE_GIT_FAILED",
+            timeoutMs: 10_000,
+          })
+        ).stdout;
+        behindCount = Number.parseInt(behindRaw, 10) || 0;
+      } catch (error) {
+        return {
+          checked: false,
+          hasUpdate: false,
+          updated: false,
+          rebuilt: false,
+          restartRequired: false,
+          currentCommit: before || null,
+          reason: error?.message || "Git remote check skipped.",
+        };
       }
 
-      const viteInstalled = await exists(path.join(rootDir, "node_modules", "vite"));
-      const stampFile = path.join(rootDir, "node_modules", ".nutc-dependency-revision");
-      const revision = await dependencyFingerprint();
-      const installedRevision = await files.readFile(stampFile, "utf8").catch((error) => {
-        if (error.code === "ENOENT") return "";
-        throw error;
+      if (behindCount <= 0) {
+        return {
+          checked: true,
+          hasUpdate: false,
+          updated: false,
+          rebuilt: false,
+          restartRequired: false,
+          currentCommit: before || null,
+        };
+      }
+
+      onUpdateFound?.({ currentCommit: before || null, behindCount });
+      const applied = await applyGitPullAndBuild({
+        before,
+        needPull: true,
+        emit,
+        staged,
+        backup,
+        live,
       });
-      const needsInstall = dependencyChanged || !viteInstalled ||
-        installedRevision.trim() !== revision;
-      if (needsInstall) {
-        emit("installing", "正在安裝前端依賴套件…");
-        // A previous manual 'npm install' may have left an UNTRACKED
-        // package-lock.json in the checkout. That file can be older than
-        // package.json and makes npm ci fail with EUSAGE. Only treat lockfiles
-        // committed to Git as authoritative, never incidental local files.
-        const localLocks = ["npm-shrinkwrap.json", "package-lock.json"];
-        const hasLocalLock = (await Promise.all(localLocks.map((name) =>
-          exists(path.join(rootDir, name)),
-        ))).some(Boolean);
-        // Most installations have no local lockfile at all. Only look up
-        // tracked lockfile status when there is one in the working tree.
-        const trackedLocks = hasLocalLock
-          ? (await runCommand("git", [
-              "ls-files", "--cached", "--", ...localLocks,
-            ], {
-              errorCode: "SERVER_UPDATE_GIT_FAILED",
-              timeoutMs: 15_000,
-            })).stdout.split(/\r?\n/)
-          : [];
-        const committedLock = localLocks.find((name) =>
-          trackedLocks.includes(name),
-        );
-        if (committedLock && !(await exists(path.join(rootDir, committedLock)))) {
-          throw updateError(
-            "SERVER_UPDATE_LOCKFILE_MISSING",
-            "Committed npm lockfile " + committedLock +
-              " is missing from the checkout. Restore it from Git before updating.",
-          );
-        }
-        const unlockedInstall = [
-          "install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund",
-        ];
-        if (committedLock) {
-          try {
-            await runNpmInstall(["ci", "--no-audit", "--no-fund"], staged);
-          } catch (error) {
-            if (!error.lockMismatch) throw error;
-            // Recover without changing tracked files or the deployed assets.
-            // The maintainer should still commit a synchronized lockfile.
-            emit("installing", "鎖定檔與套件清單不一致，改用不依賴鎖定檔的安裝方式…");
-            await runNpmInstall(unlockedInstall, staged);
-          }
-        } else {
-          await runNpmInstall(unlockedInstall, staged);
-        }
-        await files.mkdir(path.dirname(stampFile), { recursive: true });
-        await files.writeFile(stampFile, revision + "\n");
-      }
-
-      // Also repair browser binaries on an unchanged Git checkout: the
-      // previous npm install may have succeeded without downloading Chromium.
-      emit("browser", "正在確認並補齊 Playwright Chromium 瀏覽器…");
-      await ensurePlaywrightChromium();
-
-      // Rebuild on *every manual update*, even when Git has no new commits.
-      // This repairs stale/missing generated CSS without requiring SSH.
-      emit("building", "正在重新編譯 CSS 與 UI…");
-      await runViteBuild(staged);
-      emit("verifying", "正在檢查新產生的前端檔案…");
-      await verifyAssets(staged);
-      emit("publishing", "正在套用更新後的資源…");
-      await publishAssets(staged, live, backup);
-      emit("complete", "前端資源已更新，即將重新啟動 Server。");
       return {
-        updated,
-        rebuilt: true,
-        restartRequired: true,
-        previousCommit: before || null,
-        currentCommit: after || null,
-        dependenciesInstalled: needsInstall,
-        output: pull.stdout,
+        checked: true,
+        hasUpdate: true,
+        behindCount,
+        ...applied,
       };
     } finally {
       inFlight = false;
@@ -331,5 +462,5 @@ export function createServerUpdater({
     }
   }
 
-  return { updateServerFromGitPull };
+  return { updateServerFromGitPull, checkAndApplyRemoteUpdate };
 }

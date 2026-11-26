@@ -504,3 +504,87 @@ test("missing Playwright CLI produces an actionable update error", () =>
     assert.equal(tasks.remaining(), 0);
   })
 );
+
+test("checkAndApplyRemoteUpdate skips build and restart when remote has no new commits", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([
+      git(["rev-parse", "HEAD"], "aaa"),
+      git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], "origin/main"),
+      git(["fetch", "--quiet"], ""),
+      git(["rev-list", "--count", "HEAD..@{u}"], "0"),
+    ]);
+    let found = false;
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+    }).checkAndApplyRemoteUpdate({
+      onUpdateFound: () => { found = true; },
+    });
+
+    assert.equal(found, false);
+    assert.equal(result.checked, true);
+    assert.equal(result.hasUpdate, false);
+    assert.equal(result.updated, false);
+    assert.equal(result.restartRequired, false);
+    assert.equal(
+      await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"),
+      "old css",
+    );
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("checkAndApplyRemoteUpdate pulls, builds, and signals restart when remote is ahead", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const tasks = fakeQueue([
+      git(["rev-parse", "HEAD"], "aaa"),
+      git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], "origin/main"),
+      git(["fetch", "--quiet"], ""),
+      git(["rev-list", "--count", "HEAD..@{u}"], "2"),
+      git(["pull", "--ff-only"], "Updating aaa..bbb"),
+      git(["rev-parse", "HEAD"], "bbb"),
+      git(["diff", "--name-only", "aaa", "bbb", "--", "package.json", "package-lock.json", "npm-shrinkwrap.json"], ""),
+      install(),
+      browser(),
+      build(),
+    ]);
+    let notifiedBehind = 0;
+    const phases = [];
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: tasks.spawnCommand,
+    }).checkAndApplyRemoteUpdate({
+      onUpdateFound: ({ behindCount }) => { notifiedBehind = behindCount; },
+      onProgress: ({ stage }) => phases.push(stage),
+    });
+
+    assert.equal(notifiedBehind, 2);
+    assert.equal(result.checked, true);
+    assert.equal(result.hasUpdate, true);
+    assert.equal(result.updated, true);
+    assert.equal(result.restartRequired, true);
+    assert.deepEqual(phases, ["pulling", "installing", "browser",
+      "building", "verifying", "publishing", "complete"]);
+    assert.equal(
+      await fs.readFile(path.join(rootDir, "public/generated/site.css"), "utf8"),
+      "/* fresh CSS */",
+    );
+    assert.equal(tasks.remaining(), 0);
+  })
+);
+
+test("checkAndApplyRemoteUpdate degrades softly when offline or no upstream exists", () =>
+  fixture(async ({ rootDir, makeId }) => {
+    const offlineTasks = fakeQueue([
+      git(["rev-parse", "HEAD"], "aaa"),
+      git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], "origin/main"),
+      { ...git(["fetch", "--quiet"], ""), exitCode: 128, stderr: "Could not resolve host" },
+    ]);
+    const result = await createServerUpdater({
+      rootDir, makeId, spawnCommand: offlineTasks.spawnCommand,
+    }).checkAndApplyRemoteUpdate();
+
+    assert.equal(result.checked, false);
+    assert.equal(result.updated, false);
+    assert.equal(result.restartRequired, false);
+    assert.equal(offlineTasks.remaining(), 0);
+  })
+);

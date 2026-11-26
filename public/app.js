@@ -2995,7 +2995,10 @@ async function waitForUpdateAndRestart(previousInstanceId, operationId) {
         throw new Error(state.detail || "前端編譯或發佈失敗。");
       }
       if (state.stage !== lastStage || state.detail) {
-        debugUpdateStatus.textContent = state.detail || "正在更新 Server…";
+        const message = state.detail || "正在更新 Server…";
+        debugUpdateStatus.textContent = message;
+        const bannerText = document.querySelector("#autoUpdateBannerText");
+        if (bannerText) bannerText.textContent = message;
         lastStage = state.stage;
       }
     } catch (error) {
@@ -3009,6 +3012,51 @@ async function waitForUpdateAndRestart(previousInstanceId, operationId) {
   }
 
   throw new Error("更新後的 Server 尚未重新上線，請檢查服務紀錄。");
+}
+
+async function trackUpdateAndReload(
+  previousInstanceId,
+  operationId,
+  { initialDetail = "正在啟動更新與前端重建…", showBanner = false } = {},
+) {
+  const banner = document.querySelector("#autoUpdateBanner");
+  const bannerText = document.querySelector("#autoUpdateBannerText");
+
+  debugUpdateServer.disabled = true;
+  debugRestartServer.disabled = true;
+  debugUpdateIcon.classList.add("animate-spin");
+  debugUpdateStatus.textContent = initialDetail;
+  debugUpdateStatus.classList.remove("text-[#f4a0a5]");
+  debugUpdateStatus.classList.add("text-[var(--muted)]");
+  if (showBanner && banner && bannerText) {
+    bannerText.textContent = initialDetail;
+    banner.classList.remove("hidden");
+    banner.classList.add("inline-flex");
+  }
+
+  try {
+    const newInstanceId = await waitForUpdateAndRestart(previousInstanceId, operationId);
+    const doneMessage = "前端檔案已更新，正在載入最新版…";
+    debugUpdateStatus.textContent = doneMessage;
+    if (bannerText) bannerText.textContent = doneMessage;
+    // A new URL forces the mobile browser and its reverse proxy to retrieve
+    // fresh HTML. Server also marks JS/CSS/HTML no-store.
+    const target = new URL(window.location.href);
+    target.searchParams.set("build", newInstanceId);
+    window.location.replace(target.toString());
+  } catch (error) {
+    debugUpdateServer.disabled = false;
+    debugRestartServer.disabled = false;
+    debugUpdateIcon.classList.remove("animate-spin");
+    debugUpdateStatus.textContent =
+      "更新失敗：" + (error?.message || String(error));
+    debugUpdateStatus.classList.remove("text-[var(--muted)]");
+    debugUpdateStatus.classList.add("text-[#f4a0a5]");
+    if (banner) {
+      banner.classList.remove("inline-flex");
+      banner.classList.add("hidden");
+    }
+  }
 }
 
 debugUpdateServer?.addEventListener("click", async () => {
@@ -3036,13 +3084,9 @@ debugUpdateServer?.addEventListener("click", async () => {
     }
     if (!data.id) throw new Error("Server 未回傳更新工作 ID。");
 
-    const newInstanceId = await waitForUpdateAndRestart(before.instanceId, data.id);
-    debugUpdateStatus.textContent = "前端檔案已更新，正在載入最新版…";
-    // A new URL forces the mobile browser and its reverse proxy to retrieve
-    // fresh HTML. Server also marks JS/CSS/HTML no-store.
-    const target = new URL(window.location.href);
-    target.searchParams.set("build", newInstanceId);
-    window.location.replace(target.toString());
+    await trackUpdateAndReload(before.instanceId, data.id, {
+      initialDetail: data.detail || "正在啟動更新與前端重建…",
+    });
   } catch (error) {
     debugUpdateServer.disabled = false;
     debugRestartServer.disabled = false;
@@ -3053,6 +3097,31 @@ debugUpdateServer?.addEventListener("click", async () => {
     debugUpdateStatus.classList.add("text-[#f4a0a5]");
   }
 });
+
+async function checkAutoServerUpdate() {
+  try {
+    const currentBuild = new URLSearchParams(window.location.search).get("build") || "";
+    const qs = currentBuild ? `?build=${encodeURIComponent(currentBuild)}` : "";
+    const response = await fetch(`/api/debug/update/auto${qs}`, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return;
+    const data = await response.json().catch(() => null);
+    if (!data?.id || !data?.instanceId) return;
+    if (data.state !== "running" && data.state !== "restarting") return;
+    if (debugUpdateServer?.disabled) return;
+
+    await trackUpdateAndReload(data.instanceId, data.id, {
+      initialDetail: data.detail || "偵測到新版本，正在更新 Server…",
+      showBanner: true,
+    });
+  } catch {
+    // Background F5 check must fail silently offline.
+  }
+}
 serverLogoutAction.addEventListener("click", async () => {
   if (serverLogoutAction.disabled) return;
 
@@ -3225,6 +3294,8 @@ if (typeof ResizeObserver !== "undefined") {
     moduleLoadingDetail.textContent =
       "Waiting for /api/modules and /api/portal-status to finish before rendering the dashboard.";
   }
+
+  void checkAutoServerUpdate();
 
   const results = await Promise.allSettled([
     modulesRequest,

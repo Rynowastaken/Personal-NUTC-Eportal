@@ -51,3 +51,15 @@ test("dashboard waits for the NEW instance and forces a fresh navigation", async
   assert.match(app, /target\.searchParams\.set\("build", newInstanceId\)/);
   assert.match(app, /window\.location\.replace\(target\.toString\(\)\)/);
 });
+
+test("page reloads trigger non-blocking remote update checks on server and dashboard", async () => {
+  const [server, app] = await Promise.all([
+    readFile(new URL("../server.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /url\.pathname === "\/api\/debug\/update\/auto"/);
+  assert.match(server, /shouldTriggerAutoUpdateForPage\(req, requestUrl, relative\)/);
+  assert.match(server, /triggerAutoUpdateCheck\(\{ force: true \}\)/);
+  assert.match(app, /checkAutoServerUpdate\(\)/);
+  assert.match(app, /\/api\/debug\/update\/auto/);
+});

@@ -71,7 +71,19 @@ import { applyTronclassLanding } from "./src/tronclass-handoff.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
-const { updateServerFromGitPull } = createServerUpdater({ rootDir: __dirname });
+const { updateServerFromGitPull, checkAndApplyRemoteUpdate } = createServerUpdater({
+  rootDir: __dirname,
+});
+const autoUpdateEnabled =
+  process.env.EPORTAL_AUTO_UPDATE_ON_RELOAD !== "0" &&
+  !process.env.NODE_TEST_CONTEXT &&
+  !process.execArgv.includes("--test");
+const AUTO_UPDATE_DOCUMENT_PAGES = new Set([
+  "index.html",
+  "ais.html",
+  "library.html",
+  "tronclass.html",
+]);
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4174);
 const serverInstanceId =
@@ -79,6 +91,9 @@ const serverInstanceId =
 const serverStartedAt = Date.now();
 let restartScheduled = false;
 let updateOperation = null;
+let autoCheckInFlight = null;
+let lastAutoCheckFinishedAt = 0;
+let lastAutoCheckResult = null;
 const preferenceStore = new PreferenceStore();
 const dashboardPreferenceStore = new DashboardPreferenceStore();
 const hitokotoService = createHitokotoService();
@@ -294,6 +309,13 @@ async function serveStatic(req, res, pathname, { csp = DEFAULT_CSP } = {}) {
 
   try {
     const asset = await loadStaticAsset(resolved, relative);
+    const requestUrl = new URL(
+      req.url || "/",
+      `http://${req.headers?.host || "localhost"}`,
+    );
+    if (shouldTriggerAutoUpdateForPage(req, requestUrl, relative)) {
+      void triggerAutoUpdateCheck({ force: true });
+    }
     const headers = {
       "Content-Type": asset.contentType,
       "Content-Length": asset.body.length,
@@ -538,6 +560,162 @@ function startModuleLaunchJob(moduleId, { target = "" } = {}) {
   return job;
 }
 
+function buildUpdateOperation(source = "manual", stage = "checking", detail = "檢查 Server 更新…") {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    source,
+    state: "running",
+    stage,
+    detail,
+    startedAt: now,
+    updatedAt: now,
+  };
+}
+
+async function finalizeUpdateOperation(operation, result) {
+  operation.state = "restarting";
+  operation.stage = "restarting";
+  operation.detail = "更新成功，正在重新啟動 Server…";
+  operation.updatedAt = new Date().toISOString();
+  operation.result = result;
+
+  await shutdownLoginBridge();
+  clearActivityRelaySessions();
+  clearClassScheduleCache();
+  clearAbsenceListCache();
+  clearAisPortalCache();
+
+  restartScheduled = true;
+  // Give the browser time to receive one last progress response.
+  setTimeout(restartServerProcess, 1100).unref();
+}
+
+function failUpdateOperation(operation, error) {
+  console.error("In-site update failed:", error?.message || error);
+  operation.state = "error";
+  operation.stage = "error";
+  operation.detail = error?.message || "Server 更新失敗。";
+  operation.code = error?.code || "SERVER_UPDATE_FAILED";
+  operation.updatedAt = new Date().toISOString();
+}
+
+function isPostUpdateLanding(requestUrl) {
+  if (!requestUrl) return false;
+  return (
+    requestUrl.searchParams.get("build") === serverInstanceId &&
+    Date.now() - serverStartedAt < 15_000
+  );
+}
+
+function shouldTriggerAutoUpdateForPage(req, requestUrl, relative) {
+  if (!autoUpdateEnabled || req.method !== "GET") return false;
+  if (!AUTO_UPDATE_DOCUMENT_PAGES.has(relative)) return false;
+  return !isPostUpdateLanding(requestUrl);
+}
+
+function triggerAutoUpdateCheck({ force = false, coalesceWindowMs = 4000 } = {}) {
+  if (
+    restartScheduled ||
+    updateOperation?.state === "running" ||
+    updateOperation?.state === "restarting"
+  ) {
+    return Promise.resolve({
+      startedUpdate: true,
+      operation: updateOperation,
+    });
+  }
+  if (autoCheckInFlight) {
+    return autoCheckInFlight.decisionPromise;
+  }
+  if (!autoUpdateEnabled) {
+    return Promise.resolve({
+      startedUpdate: false,
+      checked: false,
+      updated: false,
+      state: "disabled",
+    });
+  }
+  if (
+    !force &&
+    lastAutoCheckFinishedAt > 0 &&
+    Date.now() - lastAutoCheckFinishedAt < coalesceWindowMs &&
+    lastAutoCheckResult
+  ) {
+    return Promise.resolve(lastAutoCheckResult);
+  }
+
+  let resolveDecision;
+  let decided = false;
+  const finishDecision = (payload) => {
+    if (decided) return;
+    decided = true;
+    resolveDecision(payload);
+  };
+  const decisionPromise = new Promise((resolve) => {
+    resolveDecision = resolve;
+  });
+
+  let activeOp = null;
+  const runPromise = (async () => {
+    try {
+      const result = await checkAndApplyRemoteUpdate({
+        onUpdateFound() {
+          activeOp = buildUpdateOperation("auto", "pulling", "偵測到新版本，正在取得最新程式碼…");
+          updateOperation = activeOp;
+          finishDecision({ startedUpdate: true, operation: activeOp });
+        },
+        onProgress({ stage, detail }) {
+          if (!activeOp) return;
+          activeOp.stage = stage;
+          activeOp.detail = detail;
+          activeOp.updatedAt = new Date().toISOString();
+        },
+      });
+
+      if (activeOp && result?.restartRequired) {
+        await finalizeUpdateOperation(activeOp, result);
+        return;
+      }
+
+      const idleDecision = {
+        startedUpdate: false,
+        checked: Boolean(result?.checked),
+        hasUpdate: Boolean(result?.hasUpdate),
+        updated: false,
+        currentCommit: result?.currentCommit || null,
+        state: "up-to-date",
+      };
+      lastAutoCheckFinishedAt = Date.now();
+      lastAutoCheckResult = idleDecision;
+      finishDecision(idleDecision);
+    } catch (error) {
+      if (activeOp) {
+        failUpdateOperation(activeOp, error);
+      } else {
+        const failedDecision = {
+          startedUpdate: false,
+          checked: false,
+          hasUpdate: false,
+          updated: false,
+          state: "up-to-date",
+          reason: error?.message || "Auto-update check failed.",
+        };
+        lastAutoCheckFinishedAt = Date.now();
+        lastAutoCheckResult = failedDecision;
+        finishDecision(failedDecision);
+      }
+    } finally {
+      if (autoCheckInFlight?.decisionPromise === decisionPromise) {
+        autoCheckInFlight = null;
+      }
+    }
+  })();
+
+  autoCheckInFlight = { decisionPromise, runPromise };
+  return decisionPromise;
+}
+
 function restartServerProcess() {
   const restartMode = String(
     process.env.EPORTAL_RESTART_MODE ||
@@ -704,6 +882,37 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/debug/update/auto") {
+      if (isPostUpdateLanding(url) && !updateOperation) {
+        sendJson(res, 200, {
+          ok: true,
+          state: "up-to-date",
+          updated: false,
+          skippedRecentRestart: true,
+          instanceId: serverInstanceId,
+        });
+        return;
+      }
+      const decision = await triggerAutoUpdateCheck({ force: false });
+      if (decision?.startedUpdate && decision.operation) {
+        sendJson(res, 202, {
+          ok: true,
+          ...decision.operation,
+          instanceId: serverInstanceId,
+        });
+        return;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        state: decision?.state || "up-to-date",
+        checked: Boolean(decision?.checked),
+        hasUpdate: Boolean(decision?.hasUpdate),
+        updated: Boolean(decision?.updated),
+        instanceId: serverInstanceId,
+      });
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/debug/update") {
       if (restartScheduled || updateOperation?.state === "running" ||
           updateOperation?.state === "restarting") {
@@ -711,16 +920,18 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      if (autoCheckInFlight) {
+        await autoCheckInFlight.runPromise.catch(() => {});
+        if (restartScheduled || updateOperation?.state === "running" ||
+            updateOperation?.state === "restarting") {
+          sendError(res, 409, "Update or restart already in progress.", "SERVER_UPDATE_IN_PROGRESS");
+          return;
+        }
+      }
+
       // Respond *before* git, npm, and Vite run. A mobile proxy may disconnect
       // long requests even when the subprocess is still making progress.
-      const operation = {
-        id: crypto.randomUUID(),
-        state: "running",
-        stage: "checking",
-        detail: "檢查 Server 更新…",
-        startedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const operation = buildUpdateOperation("manual", "checking", "檢查 Server 更新…");
       updateOperation = operation;
       sendJson(res, 202, { ok: true, ...operation, instanceId: serverInstanceId });
 
@@ -734,28 +945,9 @@ const server = http.createServer(async (req, res) => {
             },
           });
 
-          operation.state = "restarting";
-          operation.stage = "restarting";
-          operation.detail = "更新成功，正在重新啟動 Server…";
-          operation.updatedAt = new Date().toISOString();
-          operation.result = result;
-
-          await shutdownLoginBridge();
-          clearActivityRelaySessions();
-          clearClassScheduleCache();
-          clearAbsenceListCache();
-          clearAisPortalCache();
-
-          restartScheduled = true;
-          // Give the browser time to receive one last progress response.
-          setTimeout(restartServerProcess, 1100).unref();
+          await finalizeUpdateOperation(operation, result);
         } catch (error) {
-          console.error("In-site update failed:", error?.message || error);
-          operation.state = "error";
-          operation.stage = "error";
-          operation.detail = error?.message || "Server 更新失敗。";
-          operation.code = error?.code || "SERVER_UPDATE_FAILED";
-          operation.updatedAt = new Date().toISOString();
+          failUpdateOperation(operation, error);
         }
       })();
       return;
