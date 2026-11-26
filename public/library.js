@@ -382,18 +382,137 @@
     dbError: "",
   };
 
-  async function loadOverview({ force = false } = {}) {
-    if (state.overviewLoading && !force) return;
-    state.overviewLoading = true;
-    state.overviewError = null;
+  const LIBRARY_SNAPSHOT_KEY = "nutc.library.snapshot.v1";
+  const LIBRARY_SNAPSHOT_TTL_MS = 30 * 60_000;
+  const MYLISTS_CLIENT_TTL_MS = 3 * 60_000;
+  const BOOK_DETAIL_CLIENT_TTL_MS = 10 * 60_000;
+  const clientMyListsCache = new Map();
+  const myListsPrefetchInFlight = new Set();
+  const clientBookDetailCache = new Map();
+  const bookDetailInFlight = new Map();
+  let listPrefetchTimer = null;
+  let workspacePreloadStarted = false;
+  let snapshotSaveTimer = null;
+
+  function clearLibrarySnapshot() {
+    if (DEMO) return;
     try {
-      state.overview = await apiJson(
-        `/api/library/overview${force ? "?refresh=1" : ""}`,
-      );
+      sessionStorage.removeItem(LIBRARY_SNAPSHOT_KEY);
+    } catch {}
+  }
+
+  function scheduleLibrarySnapshotSave() {
+    if (DEMO) return;
+    if (snapshotSaveTimer) return;
+    snapshotSaveTimer = setTimeout(() => {
+      snapshotSaveTimer = null;
+      try {
+        const defaultCatalogKey = buildCatalogSearchParams({
+          q: "",
+          field: "ALL",
+          scope: "ALL",
+          preset: "",
+          sort: "RE",
+          tags: [],
+          page: 1,
+          pageSize: state.catalogPageSize,
+        }).toString();
+        const defaultCatalog = getClientCatalogCache(defaultCatalogKey);
+        const myListsById = {};
+        for (const [id, entry] of clientMyListsCache.entries()) {
+          if (entry?.data) myListsById[id] = entry.data;
+        }
+        const now = new Date();
+        const calKey = `${state.calYear}-${state.calMonth}`;
+        const curCalKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+        sessionStorage.setItem(
+          LIBRARY_SNAPSHOT_KEY,
+          JSON.stringify({
+            savedAt: Date.now(),
+            overview: state.overview || null,
+            activeListId: state.activeListId,
+            myListsById,
+            defaultCatalog: defaultCatalog
+              ? { key: defaultCatalogKey, value: defaultCatalog }
+              : null,
+            calKey: calKey === curCalKey ? calKey : "",
+            calData: calKey === curCalKey && state.calData ? state.calData : null,
+            dbData: state.dbFilterIdx === 0 && !state.dbKeyword && state.dbData ? state.dbData : null,
+          }),
+        );
+      } catch {
+        // Ignore quota / storage access failures cleanly.
+      }
+    }, 120);
+  }
+
+  function hydrateLibrarySnapshot() {
+    if (DEMO) return;
+    try {
+      const raw = sessionStorage.getItem(LIBRARY_SNAPSHOT_KEY);
+      if (!raw) return;
+      const snap = JSON.parse(raw);
+      if (!snap || typeof snap !== "object") return;
+      if (!snap.savedAt || Date.now() - snap.savedAt > LIBRARY_SNAPSHOT_TTL_MS) {
+        sessionStorage.removeItem(LIBRARY_SNAPSHOT_KEY);
+        return;
+      }
+      if (snap.overview && typeof snap.overview === "object") {
+        state.overview = snap.overview;
+      }
+      if (snap.myListsById && typeof snap.myListsById === "object") {
+        for (const [id, data] of Object.entries(snap.myListsById)) {
+          if (data && typeof data === "object") {
+            clientMyListsCache.set(String(id), {
+              data,
+              fetchedAt: snap.savedAt,
+              expiresAt: snap.savedAt + MYLISTS_CLIENT_TTL_MS,
+            });
+          }
+        }
+        const activeEntry = clientMyListsCache.get(String(state.activeListId || "0"));
+        if (activeEntry?.data) {
+          applyMyListsResponse(activeEntry.data, { prefetchOthers: false, persistSnapshot: false });
+        }
+      }
+      if (snap.defaultCatalog?.key && snap.defaultCatalog?.value) {
+        clientCatalogCache.set(snap.defaultCatalog.key, {
+          value: snap.defaultCatalog.value,
+          expiresAt: snap.savedAt + CATALOG_CLIENT_TTL_MS,
+        });
+      }
+      const curCalKey = `${state.calYear}-${state.calMonth}`;
+      if (snap.calKey === curCalKey && snap.calData && typeof snap.calData === "object") {
+        state.calData = snap.calData;
+      }
+      if (snap.dbData && typeof snap.dbData === "object") {
+        state.dbData = snap.dbData;
+      }
+    } catch {
+      clearLibrarySnapshot();
+    }
+  }
+
+  async function loadOverview({ force = false, silent = false } = {}) {
+    if (state.overviewLoading && !force) return;
+    if (!silent) {
+      state.overviewLoading = true;
+      state.overviewError = null;
+    }
+    try {
+      const res = await apiJson(`/api/library/overview${force ? "?refresh=1" : ""}`);
+      state.overview = res;
+      state.overviewError = null;
+      scheduleLibrarySnapshotSave();
     } catch (error) {
-      state.overviewError = error;
+      if (error?.status === 401 || error?.code === "EPORTAL_LOGIN_REQUIRED") {
+        clearLibrarySnapshot();
+      }
+      if (!silent || !state.overview) {
+        state.overviewError = error;
+      }
     } finally {
-      state.overviewLoading = false;
+      if (!silent) state.overviewLoading = false;
     }
   }
 
@@ -449,7 +568,52 @@
     }
   }
 
-  function applyMyListsResponse(res) {
+  function scheduleAllListsPrefetch() {
+    if (DEMO || !state.lists.length || state.listActionBusy) return;
+    if (listPrefetchTimer) clearTimeout(listPrefetchTimer);
+    const activeId = String(state.activeListId || "0");
+    const candidates = state.lists
+      .map((l) => String(l?.id || ""))
+      .filter((id) => {
+        if (!id || id === activeId || myListsPrefetchInFlight.has(id)) return false;
+        const cached = clientMyListsCache.get(id);
+        return !cached || Date.now() >= cached.expiresAt;
+      })
+      .slice(0, 6);
+    if (!candidates.length) return;
+
+    listPrefetchTimer = setTimeout(async () => {
+      listPrefetchTimer = null;
+      for (let i = 0; i < candidates.length; i += 2) {
+        const batch = candidates.slice(i, i + 2);
+        await Promise.allSettled(
+          batch.map(async (id) => {
+            myListsPrefetchInFlight.add(id);
+            try {
+              const data = await apiJson(`/api/library/opac/mylists?listId=${encodeURIComponent(id)}`);
+              if (data && typeof data === "object") {
+                clientMyListsCache.set(String(data.activeListId || id), {
+                  data,
+                  fetchedAt: Date.now(),
+                  expiresAt: Date.now() + MYLISTS_CLIENT_TTL_MS,
+                });
+                scheduleLibrarySnapshotSave();
+              }
+            } catch {
+              // Best-effort prefetch; ignore transient failures.
+            } finally {
+              myListsPrefetchInFlight.delete(id);
+            }
+          }),
+        );
+      }
+    }, 180);
+  }
+
+  function applyMyListsResponse(
+    res,
+    { prefetchOthers = true, persistSnapshot = true } = {},
+  ) {
     if (!res || typeof res !== "object") return;
     if (Array.isArray(res.lists)) {
       state.lists = res.lists;
@@ -467,6 +631,13 @@
     state.favoritesLoaded = true;
     state.favoritesError = "";
     state.favoritesErrorObj = null;
+    clientMyListsCache.set(String(res.activeListId ?? state.activeListId ?? "0"), {
+      data: res,
+      fetchedAt: Date.now(),
+      expiresAt: Date.now() + MYLISTS_CLIENT_TTL_MS,
+    });
+    if (persistSnapshot) scheduleLibrarySnapshotSave();
+    if (prefetchOthers) scheduleAllListsPrefetch();
     syncAllFavoriteButtonsInDom();
   }
 
@@ -488,11 +659,30 @@
     }
   }
 
-  async function loadFavorites({ listId = state.activeListId, force = false } = {}) {
-    if (state.favoritesLoading && !force) return;
-    state.favoritesLoading = true;
-    state.favoritesError = "";
-    state.favoritesErrorObj = null;
+  async function loadFavorites({
+    listId = state.activeListId,
+    force = false,
+    silent = false,
+  } = {}) {
+    const targetId = String(listId || state.activeListId || "0");
+    if (state.favoritesLoading && !force && !silent) return;
+
+    const cached = !force ? clientMyListsCache.get(targetId) : null;
+    if (cached && Date.now() < cached.expiresAt && !silent) {
+      applyMyListsResponse(cached.data);
+      if (Date.now() - cached.fetchedAt > 30_000) {
+        void loadFavorites({ listId: targetId, silent: true }).then(() => {
+          if ((matchRoute(new URL(location.href)) || {}).name === "favorites") render();
+        });
+      }
+      return;
+    }
+
+    if (!silent) {
+      state.favoritesLoading = true;
+      state.favoritesError = "";
+      state.favoritesErrorObj = null;
+    }
     try {
       const qs = new URLSearchParams();
       if (listId) qs.set("listId", String(listId));
@@ -501,12 +691,27 @@
       const res = await apiJson(
         `/api/library/opac/mylists${queryStr ? `?${queryStr}` : ""}`,
       );
-      applyMyListsResponse(res);
+      const resolvedId = String(res?.activeListId ?? targetId);
+      clientMyListsCache.set(resolvedId, {
+        data: res,
+        fetchedAt: Date.now(),
+        expiresAt: Date.now() + MYLISTS_CLIENT_TTL_MS,
+      });
+      if (!listId || String(state.activeListId || "0") === String(listId) || String(state.activeListId || "0") === resolvedId) {
+        applyMyListsResponse(res);
+      }
     } catch (error) {
-      state.favoritesErrorObj = error;
-      state.favoritesError = error?.message || "無法載入 OPAC 我的清單。";
+      if (error?.status === 401 || error?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" || error?.code === "EPORTAL_LOGIN_REQUIRED") {
+        clientMyListsCache.clear();
+        clearLibrarySnapshot();
+        state.favoritesLoaded = false;
+      }
+      if (!silent || !state.favoritesLoaded) {
+        state.favoritesErrorObj = error;
+        state.favoritesError = error?.message || "無法載入 OPAC 我的清單。";
+      }
     } finally {
-      state.favoritesLoading = false;
+      if (!silent) state.favoritesLoading = false;
     }
   }
 
@@ -549,6 +754,7 @@
               listId: targetListId,
             }),
           });
+      clientMyListsCache.clear();
       applyMyListsResponse(res);
     } catch (error) {
       syncFavoritesState(prevFavorites);
@@ -657,6 +863,17 @@
     void apiJson(`/api/library/catalog/search?${qs}`)
       .then((res) => {
         setClientCatalogCache(cacheKey, res);
+        if (
+          !params?.q &&
+          !params?.preset &&
+          (params?.field || "ALL") === "ALL" &&
+          (params?.scope || "ALL") === "ALL" &&
+          (params?.sort || "RE") === "RE" &&
+          (!params?.tags || !params.tags.length) &&
+          Number(params?.page || 1) === 1
+        ) {
+          scheduleLibrarySnapshotSave();
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -837,13 +1054,17 @@
   async function runDatabasesLoad({
     q = state.dbKeyword,
     filterIdx = state.dbFilterIdx,
+    silent = false,
   } = {}) {
-    state.dbKeyword = q;
-    state.dbDraftKeyword = q;
-    state.dbFilterIdx = filterIdx;
-    state.dbLoading = true;
-    state.dbError = "";
-    render();
+    if (silent && state.dbLoading) return;
+    if (!silent) {
+      state.dbKeyword = q;
+      state.dbDraftKeyword = q;
+      state.dbFilterIdx = filterIdx;
+      state.dbLoading = true;
+      state.dbError = "";
+      render();
+    }
     try {
       const params = new URLSearchParams();
       if (q.trim()) {
@@ -854,12 +1075,21 @@
           params.set(k, v);
         }
       }
-      state.dbData = await apiJson(`/api/library/databases?${params}`);
+      const res = await apiJson(`/api/library/databases?${params}`);
+      if (!silent || (!state.dbKeyword && state.dbFilterIdx === filterIdx)) {
+        state.dbData = res;
+        state.dbError = "";
+        scheduleLibrarySnapshotSave();
+      }
     } catch (error) {
-      state.dbError = error?.message || "無法載入電子資料庫清單。";
+      if (!silent || !state.dbData) {
+        state.dbError = error?.message || "無法載入電子資料庫清單。";
+      }
     } finally {
-      state.dbLoading = false;
-      render();
+      if (!silent) state.dbLoading = false;
+      if (!silent || (matchRoute(new URL(location.href)) || {}).name === "resources") {
+        render();
+      }
     }
   }
 
@@ -867,24 +1097,37 @@
     year = state.calYear,
     month = state.calMonth,
     force = false,
+    silent = false,
   } = {}) {
-    state.calYear = year;
-    state.calMonth = month;
-    state.calLoading = true;
-    state.calError = "";
-    render();
+    if (silent && state.calLoading) return;
+    if (!silent) {
+      state.calYear = year;
+      state.calMonth = month;
+      state.calLoading = true;
+      state.calError = "";
+      render();
+    }
     try {
       const qs = new URLSearchParams({
         year: String(year),
         month: String(month),
         ...(force ? { refresh: "1" } : {}),
       });
-      state.calData = await apiJson(`/api/library/rooms/carrel/availability?${qs}`);
+      const res = await apiJson(`/api/library/rooms/carrel/availability?${qs}`);
+      if (!silent || (state.calYear === year && state.calMonth === month)) {
+        state.calData = res;
+        state.calError = "";
+        scheduleLibrarySnapshotSave();
+      }
     } catch (error) {
-      state.calError = error?.message || "無法載入研究小間可預約日期。";
+      if (!silent || !state.calData) {
+        state.calError = error?.message || "無法載入研究小間可預約日期。";
+      }
     } finally {
-      state.calLoading = false;
-      render();
+      if (!silent) state.calLoading = false;
+      if (!silent || (matchRoute(new URL(location.href)) || {}).name === "rooms") {
+        render();
+      }
     }
   }
 
@@ -1443,6 +1686,152 @@
     );
   }
 
+  function getCachedBookDetail(detailPath) {
+    const clean = String(detailPath || "").trim();
+    if (!clean) return null;
+    const entry = clientBookDetailCache.get(clean);
+    if (!entry) return null;
+    if (Date.now() >= entry.expiresAt) {
+      clientBookDetailCache.delete(clean);
+      return null;
+    }
+    return entry.value;
+  }
+
+  function fetchBookDetail(detailPath) {
+    const clean = String(detailPath || "").trim();
+    if (!clean) return Promise.reject(new Error("Missing detail path."));
+    const cached = getCachedBookDetail(clean);
+    if (cached) return Promise.resolve(cached);
+    if (bookDetailInFlight.has(clean)) return bookDetailInFlight.get(clean);
+
+    const p = apiJson(`/api/library/catalog/item?path=${encodeURIComponent(clean)}`)
+      .then((detail) => {
+        if (clientBookDetailCache.has(clean)) clientBookDetailCache.delete(clean);
+        clientBookDetailCache.set(clean, {
+          value: detail,
+          expiresAt: Date.now() + BOOK_DETAIL_CLIENT_TTL_MS,
+        });
+        while (clientBookDetailCache.size > 40) {
+          clientBookDetailCache.delete(clientBookDetailCache.keys().next().value);
+        }
+        return detail;
+      })
+      .finally(() => {
+        bookDetailInFlight.delete(clean);
+      });
+    bookDetailInFlight.set(clean, p);
+    return p;
+  }
+
+  function prefetchBookDetail(detailPath) {
+    const clean = String(detailPath || "").trim();
+    if (!clean || getCachedBookDetail(clean) || bookDetailInFlight.has(clean)) return;
+    void fetchBookDetail(clean).catch(() => {});
+  }
+
+  function bindBookIntentPrefetch(el, item) {
+    if (!item?.detailPath) return el;
+    let hoverTimer = null;
+    el.addEventListener("pointerenter", () => {
+      if (hoverTimer || getCachedBookDetail(item.detailPath)) return;
+      hoverTimer = setTimeout(() => {
+        hoverTimer = null;
+        prefetchBookDetail(item.detailPath);
+      }, 90);
+    });
+    el.addEventListener("pointerleave", () => {
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+    });
+    el.addEventListener("focusin", () => {
+      prefetchBookDetail(item.detailPath);
+    });
+    return el;
+  }
+
+  function renderBookModalSuccess(dialog, detail, item, onPickSubject) {
+    const heroEl = dialog.querySelector(".book-modal-hero");
+    if (heroEl) {
+      heroEl.replaceWith(
+        renderBookModalHero(detail, item.coverProxyUrl, onPickSubject, item),
+      );
+    }
+    const body = dialog.querySelector(".dialog-body");
+    if (!body) return;
+    const holdings = Array.isArray(detail.holdings) ? detail.holdings : [];
+    const notes = Array.isArray(detail.notes) ? detail.notes.filter(Boolean) : [];
+    const bioParagraphs = String(detail.authorBio || "")
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    replaceNodes(
+      body,
+      buildBookSynopsisSection(detail.summary, detail.summarySource),
+      bioParagraphs.length
+        ? h(
+            "details",
+            { class: "rules-box book-modal-bio" },
+            h("summary", null, "作者簡介"),
+            h(
+              "div",
+              { class: "rules-body" },
+              bioParagraphs.map((p) => h("p", null, p)),
+            ),
+          )
+        : null,
+      notes.length
+        ? h(
+            "section",
+            { class: "book-modal-section" },
+            h("div", { class: "book-modal-section-head" }, h("h3", null, "書目附註")),
+            h(
+              "ul",
+              { class: "book-modal-notes" },
+              notes.map((n) => h("li", null, n)),
+            ),
+          )
+        : null,
+      buildBookHoldingsSection(holdings, detail.availability),
+      h(
+        "div",
+        { class: "actions" },
+        detail.electronicUrl
+          ? h(
+              "a",
+              {
+                class: "btn primary",
+                href: detail.electronicUrl,
+                target: "_blank",
+                rel: "noopener",
+              },
+              icon("external"),
+              "開啟電子資源",
+            )
+          : null,
+        h(
+          "a",
+          {
+            class: `btn${detail.electronicUrl ? "" : " primary"}`,
+            href: detail.officialUrl || item.officialUrl,
+            target: "_blank",
+            rel: "noopener",
+          },
+          icon("external"),
+          "在館藏系統開啟",
+        ),
+        h(
+          "button",
+          { class: "btn", type: "button", onclick: closeModal },
+          "關閉",
+        ),
+      ),
+    );
+  }
+
   function openBookModal(item) {
     lastFocused = document.activeElement;
     const dialog = modalEl.querySelector("#libDialog");
@@ -1463,15 +1852,16 @@
       navigate(`${BASE}/catalog?${qs}`);
     };
 
+    const cachedDetail = getCachedBookDetail(item.detailPath);
     replaceNodes(
       dialog,
-      renderBookModalHero(item, item.coverProxyUrl, onPickSubject, item),
+      renderBookModalHero(cachedDetail || item, item.coverProxyUrl, onPickSubject, item),
       h(
         "div",
         { class: "dialog-body" },
-        h("div", { class: "loading", style: "margin:4px 0 14px" }),
-        h("div", { class: "skel" }),
-        h("div", { class: "skel short" }),
+        cachedDetail ? null : h("div", { class: "loading", style: "margin:4px 0 14px" }),
+        cachedDetail ? null : h("div", { class: "skel" }),
+        cachedDetail ? null : h("div", { class: "skel short" }),
       ),
     );
     modalEl.hidden = false;
@@ -1479,88 +1869,15 @@
     activeModal = modalEl;
     dialog.focus({ preventScroll: true });
 
-    apiJson(
-      `/api/library/catalog/item?path=${encodeURIComponent(item.detailPath)}`,
-    )
+    if (cachedDetail) {
+      renderBookModalSuccess(dialog, cachedDetail, item, onPickSubject);
+      return;
+    }
+
+    fetchBookDetail(item.detailPath)
       .then((detail) => {
         if (modalEl.hidden) return;
-        const heroEl = dialog.querySelector(".book-modal-hero");
-        if (heroEl) {
-          heroEl.replaceWith(
-            renderBookModalHero(detail, item.coverProxyUrl, onPickSubject, item),
-          );
-        }
-        const body = dialog.querySelector(".dialog-body");
-        if (!body) return;
-        const holdings = Array.isArray(detail.holdings) ? detail.holdings : [];
-        const notes = Array.isArray(detail.notes) ? detail.notes.filter(Boolean) : [];
-        const bioParagraphs = String(detail.authorBio || "")
-          .split(/\n{2,}/)
-          .map((p) => p.trim())
-          .filter(Boolean);
-
-        replaceNodes(
-          body,
-          buildBookSynopsisSection(detail.summary, detail.summarySource),
-          bioParagraphs.length
-            ? h(
-                "details",
-                { class: "rules-box book-modal-bio" },
-                h("summary", null, "作者簡介"),
-                h(
-                  "div",
-                  { class: "rules-body" },
-                  bioParagraphs.map((p) => h("p", null, p)),
-                ),
-              )
-            : null,
-          notes.length
-            ? h(
-                "section",
-                { class: "book-modal-section" },
-                h("div", { class: "book-modal-section-head" }, h("h3", null, "書目附註")),
-                h(
-                  "ul",
-                  { class: "book-modal-notes" },
-                  notes.map((n) => h("li", null, n)),
-                ),
-              )
-            : null,
-          buildBookHoldingsSection(holdings, detail.availability),
-          h(
-            "div",
-            { class: "actions" },
-            detail.electronicUrl
-              ? h(
-                  "a",
-                  {
-                    class: "btn primary",
-                    href: detail.electronicUrl,
-                    target: "_blank",
-                    rel: "noopener",
-                  },
-                  icon("external"),
-                  "開啟電子資源",
-                )
-              : null,
-            h(
-              "a",
-              {
-                class: `btn${detail.electronicUrl ? "" : " primary"}`,
-                href: detail.officialUrl || item.officialUrl,
-                target: "_blank",
-                rel: "noopener",
-              },
-              icon("external"),
-              "在館藏系統開啟",
-            ),
-            h(
-              "button",
-              { class: "btn", type: "button", onclick: closeModal },
-              "關閉",
-            ),
-          ),
-        );
+        renderBookModalSuccess(dialog, detail, item, onPickSubject);
       })
       .catch((err) => {
         const body = dialog.querySelector(".dialog-body");
@@ -1594,6 +1911,42 @@
           ),
         );
       });
+  }
+
+  function prefetchRouteData(routeKey) {
+    if (routeKey === "catalog") {
+      prefetchCatalogQuery({
+        q: "",
+        field: "ALL",
+        scope: "ALL",
+        preset: "",
+        sort: "RE",
+        tags: [],
+        page: 1,
+        pageSize: state.catalogPageSize,
+      });
+    } else if (routeKey === "favorites" && !state.favoritesLoaded && !state.favoritesLoading) {
+      void loadFavorites({ listId: state.activeListId, silent: true });
+    } else if (routeKey === "rooms" && !state.calData && !state.calLoading) {
+      void loadCarrelCalendar({ silent: true });
+    } else if (routeKey === "resources" && !state.dbData && !state.dbLoading) {
+      void runDatabasesLoad({ silent: true });
+    }
+  }
+
+  function scheduleWorkspacePreload() {
+    if (workspacePreloadStarted) return;
+    workspacePreloadStarted = true;
+    const run = () => {
+      prefetchRouteData("catalog");
+      prefetchRouteData("rooms");
+      prefetchRouteData("resources");
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(run, { timeout: 1200 });
+    } else {
+      setTimeout(run, 180);
+    }
   }
 
   function renderHeader(currentRoute) {
@@ -1676,6 +2029,8 @@
               {
                 href: hrefFor(key),
                 "aria-current": currentRoute === key ? "page" : false,
+                onpointerenter: () => prefetchRouteData(key),
+                onfocus: () => prefetchRouteData(key),
               },
               label,
             ),
@@ -1919,84 +2274,90 @@
   function renderBookRow(item, index = 0) {
     const coverImg = buildCatalogCoverNode(item, index);
 
-    return h(
-      "article",
-      {
-        class: "book-row",
-        "data-book-id": item.id,
-      },
-      h("div", { class: "book-cover" }, coverImg),
+    return bindBookIntentPrefetch(
       h(
-        "div",
-        { class: "book-meta" },
+        "article",
+        {
+          class: "book-row",
+          "data-book-id": item.id,
+        },
+        h("div", { class: "book-cover" }, coverImg),
         h(
           "div",
-          { class: "book-title" },
+          { class: "book-meta" },
           h(
-            "button",
-            {
-              type: "button",
-              class: "book-row-action",
-              onclick: () => openBookModal(item),
-            },
-            item.title,
+            "div",
+            { class: "book-title" },
+            h(
+              "button",
+              {
+                type: "button",
+                class: "book-row-action",
+                onclick: () => openBookModal(item),
+              },
+              item.title,
+            ),
+          ),
+          (item.author || item.publisherYear)
+            ? h(
+                "div",
+                { class: "book-author" },
+                [item.author, item.publisherYear].filter(Boolean).join(" · "),
+              )
+            : null,
+          h(
+            "div",
+            { class: "book-tags" },
+            item.callNumber ? h("span", { class: "book-call" }, item.callNumber) : null,
+            item.campus ? h("span", null, item.campus) : null,
+            item.isbn ? h("span", { class: "num" }, `ISBN ${item.isbn}`) : null,
           ),
         ),
-        (item.author || item.publisherYear)
-          ? h(
-              "div",
-              { class: "book-author" },
-              [item.author, item.publisherYear].filter(Boolean).join(" · "),
-            )
-          : null,
         h(
           "div",
-          { class: "book-tags" },
-          item.callNumber ? h("span", { class: "book-call" }, item.callNumber) : null,
-          item.campus ? h("span", null, item.campus) : null,
-          item.isbn ? h("span", { class: "num" }, `ISBN ${item.isbn}`) : null,
+          { class: "book-row-side" },
+          h("div", { class: "book-end" }, buildBookEndChildren(item)),
+          renderFavoriteButton(item),
         ),
       ),
-      h(
-        "div",
-        { class: "book-row-side" },
-        h("div", { class: "book-end" }, buildBookEndChildren(item)),
-        renderFavoriteButton(item),
-      ),
+      item,
     );
   }
 
   function renderBookCard(item, index = 0) {
     const subline = [item.author, item.publisherYear].filter(Boolean).join(" · ") || item.campus || "";
     const endChildren = buildBookEndChildren(item);
-    return h(
-      "article",
-      {
-        class: "book-card",
-        "data-book-id": item.id,
-      },
-      buildCatalogCoverNode(item, index, { fallbackClass: "media book-card-empty" }),
-      renderFavoriteButton(item, { className: "fav-btn fav-btn--card" }),
+    return bindBookIntentPrefetch(
       h(
-        "h3",
-        { class: "book-card-title" },
+        "article",
+        {
+          class: "book-card",
+          "data-book-id": item.id,
+        },
+        buildCatalogCoverNode(item, index, { fallbackClass: "media book-card-empty" }),
+        renderFavoriteButton(item, { className: "fav-btn fav-btn--card" }),
         h(
-          "button",
-          {
-            type: "button",
-            class: "book-card-action",
-            onclick: () => openBookModal(item),
-          },
-          item.title,
+          "h3",
+          { class: "book-card-title" },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "book-card-action",
+              onclick: () => openBookModal(item),
+            },
+            item.title,
+          ),
+        ),
+        subline ? h("p", { class: "book-card-author" }, subline) : null,
+        h(
+          "footer",
+          { class: "book-card-foot" },
+          h("div", { class: "book-end" }, endChildren),
+          item.callNumber ? h("span", { class: "book-call" }, item.callNumber) : null,
         ),
       ),
-      subline ? h("p", { class: "book-card-author" }, subline) : null,
-      h(
-        "footer",
-        { class: "book-card-foot" },
-        h("div", { class: "book-end" }, endChildren),
-        item.callNumber ? h("span", { class: "book-call" }, item.callNumber) : null,
-      ),
+      item,
     );
   }
 
@@ -2388,6 +2749,7 @@
       state.listCreateOpen = false;
       state.listCreateDraft = "";
       state.listCreateFromTemp = false;
+      clientMyListsCache.clear();
       applyMyListsResponse(res);
     } catch (error) {
       state.favoritesErrorObj = error;
@@ -2409,6 +2771,7 @@
         { method: "DELETE" },
       );
       state.confirmDeleteListId = "";
+      clientMyListsCache.clear();
       applyMyListsResponse(res);
     } catch (error) {
       state.favoritesErrorObj = error;
@@ -4779,8 +5142,42 @@
 
   window.NutcTheme?.init?.();
   void (async () => {
+    hydrateLibrarySnapshot();
+    const hadCachedOverview = Boolean(state.overview);
+    const hadCachedFavorites = Boolean(state.favoritesLoaded);
+    const prevOverviewSig = hadCachedOverview ? JSON.stringify(state.overview) : "";
+    const prevFavSig = hadCachedFavorites
+      ? JSON.stringify({
+          lists: state.lists,
+          activeListId: state.activeListId,
+          favorites: state.favorites,
+        })
+      : "";
+
     render();
-    await Promise.all([loadOverview(), loadFavorites()]);
-    render();
+    await Promise.all([
+      loadOverview({ silent: hadCachedOverview }),
+      loadFavorites({ listId: state.activeListId, silent: hadCachedFavorites }),
+    ]);
+
+    const nextOverviewSig = state.overview ? JSON.stringify(state.overview) : "";
+    const nextFavSig = state.favoritesLoaded
+      ? JSON.stringify({
+          lists: state.lists,
+          activeListId: state.activeListId,
+          favorites: state.favorites,
+        })
+      : "";
+    if (
+      !hadCachedOverview ||
+      !hadCachedFavorites ||
+      prevOverviewSig !== nextOverviewSig ||
+      prevFavSig !== nextFavSig ||
+      state.overviewError ||
+      state.favoritesErrorObj
+    ) {
+      render();
+    }
+    scheduleWorkspacePreload();
   })();
 })();

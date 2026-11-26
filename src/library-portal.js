@@ -1408,6 +1408,43 @@ export async function warmLibraryCatalog() {
   }
 }
 
+/**
+ * Warm catalog, public databases/calendar, and (when a saved session already exists)
+ * the patron overview and OPAC lists in the background right after server start.
+ */
+export async function warmLibraryWorkspace() {
+  try {
+    await warmLibraryCatalog();
+    await Promise.allSettled([
+      searchLibraryDatabases({ college: "全校" }),
+      getCarrelAvailability(),
+    ]);
+
+    await loadLibrarySessionFromDisk();
+    if (!hasHostCookies("library.nutc.edu.tw")) return;
+
+    const [, listsResult] = await Promise.allSettled([
+      getLibraryOverview(),
+      getOpacMyLists(),
+    ]);
+    const lists =
+      listsResult.status === "fulfilled" && Array.isArray(listsResult.value?.lists)
+        ? listsResult.value.lists
+        : [];
+    const activeId = String(listsResult.value?.activeListId || "0");
+    const extraLists = lists
+      .filter((l) => l?.id && String(l.id) !== activeId)
+      .slice(0, 6);
+    for (let i = 0; i < extraLists.length; i += 2) {
+      await Promise.allSettled(
+        extraLists.slice(i, i + 2).map((l) => getOpacMyLists({ listId: l.id })),
+      );
+    }
+  } catch {
+    // Warmup is best-effort and must never fail server startup.
+  }
+}
+
 async function fetchSanminEnrichment(isbn) {
   try {
     const searchRes = await fetch(

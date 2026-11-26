@@ -13,6 +13,7 @@ import {
   loginOpacPatron,
   prefetchCatalogCovers,
   searchLibraryCatalog,
+  warmLibraryWorkspace,
 } from "../src/library-portal.js";
 import { MODULES, moduleById, publicModules } from "../src/eportal.js";
 import { DashboardPreferenceStore } from "../src/dashboard-preferences.js";
@@ -1294,4 +1295,18 @@ test("handleLibraryRequest dispatches POST /api/library/opac/login and UI expose
   assert.equal(handled, true);
   assert.equal(r.statusCode, 200);
   assert.deepEqual(received, { username: "S123", password: "456" });
+});
+
+test("library workspace preloading wires server warmup and client snapshot/list/detail prefetch", async () => {
+  assert.equal(typeof warmLibraryWorkspace, "function");
+  const [js, html] = await Promise.all([
+    read("../public/library.js"),
+    read("../public/library.html"),
+  ]);
+  assert.match(html, /rel="preload" href="\/fonts\/albert-sans\.woff2"/);
+  assert.match(js, /function hydrateLibrarySnapshot\(/);
+  assert.match(js, /function scheduleAllListsPrefetch\(/);
+  assert.match(js, /function scheduleWorkspacePreload\(/);
+  assert.match(js, /function prefetchBookDetail\(/);
+  assert.match(js, /function prefetchRouteData\(/);
 });
