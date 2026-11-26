@@ -494,6 +494,7 @@ button.row:first-child { border-top: 0; }
 }
 .holding-loc { font-weight: 500; font-size: 13.5px; }
 .holding-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.holding-row .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 520px) {
   .book-modal-hero { grid-template-columns: 80px minmax(0, 1fr); gap: 14px; }
   .book-modal-cover { width: 80px; height: 112px; }

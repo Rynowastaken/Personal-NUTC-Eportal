@@ -16,7 +16,9 @@ import {
   parseOpacFacets,
   parseOpacSearchResults,
   mergeOpacAvailability,
+  mergeOpacItemLookup,
   parseOpacItemDetail,
+  parseOpacLookupTitleInfoUrl,
   parseOpacAccount,
   parseCarrelForm,
   parseCarrelCalendar,
@@ -469,4 +471,32 @@ test("parseOpacSearchResults supports custom pageSize and preserves default 12",
   const page36 = parseOpacSearchResults(html, { query: "test", page: 1, pageSize: 36 });
   assert.equal(page36.pageSize, 36);
   assert.equal(page36.totalPages, 1);
+});
+
+test("parseOpacLookupTitleInfoUrl and mergeOpacItemLookup apply shelf locations and due dates per copy", () => {
+  const html = `
+    <script>
+      $J.ajax({url: '/client/zh_TW/NUTC/search/detailnonmodal.detail.detailavailabilityaccordions:lookuptitleinfo/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:180180/ILS/0/true/true?d=ent%3A%2F%2FSD_ILS%2F0%2FSD_ILS%3A180180%7E%7E0', type: 'POST'});
+    </script>
+  `;
+  assert.equal(
+    parseOpacLookupTitleInfoUrl(html),
+    "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/detailnonmodal.detail.detailavailabilityaccordions:lookuptitleinfo/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:180180/ILS/0/true/true?d=ent%3A%2F%2FSD_ILS%2F0%2FSD_ILS%3A180180%7E%7E0",
+  );
+
+  const merged = mergeOpacItemLookup(
+    [
+      { branch: "臺中科技大學 - 三民總館", itemType: "圖書", barcode: "389752", callNumber: "861.57 1323 114", status: "未知" },
+      { branch: "臺中科技大學 - 三民總館", itemType: "圖書", barcode: "389753", callNumber: "861.57 1323 114 c.2", status: "未知" },
+    ],
+    {
+      childRecords: [
+        { LIBRARY: "臺中科技大學 - 三民總館", barcode: "389752", SD_ITEM_STATUS: "10F中文書區" },
+        { LIBRARY: "臺中科技大學 - 民生分館", barcode: "389753", SD_ITEM_STATUS: "到期 2026/12/7" },
+      ],
+    },
+  );
+  assert.equal(merged[0].status, "10F中文書區");
+  assert.equal(merged[1].branch, "臺中科技大學 - 民生分館");
+  assert.equal(merged[1].status, "到期 2026/12/7");
 });

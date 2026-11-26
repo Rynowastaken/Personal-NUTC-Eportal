@@ -1047,6 +1047,28 @@
     );
   }
 
+  function holdingStatusTone(status, availability) {
+    const s = String(status || "").trim();
+    if (!s) return "muted";
+    if (/到期|借出|外借|遺失|毀損|修補|裝訂|註銷|缺書|賠書|不可外借/.test(s)) {
+      return "urgent";
+    }
+    if (/預約|保留|調撥|運送|移送|處理中|編目|驗收/.test(s)) {
+      return "soon";
+    }
+    if (
+      /在架|可借|可線上|在館|書區|書庫|書展|資料區|資料室|參考|期刊|視聽|特藏|新書|指定|\d+\s*[FB樓]|[區庫室廳]$/.test(
+        s,
+      ) ||
+      (availability &&
+        availability.totalCount > 0 &&
+        availability.availableCount >= availability.totalCount)
+    ) {
+      return "done";
+    }
+    return "muted";
+  }
+
   function buildBookHoldingsSection(holdings, availability) {
     const hasAvail = availability && availability.totalCount != null;
     const availPill = hasAvail
@@ -1112,13 +1134,7 @@
                   ? h(
                       "span",
                       {
-                        class: `chip ${
-                          /在架|可借|在館/.test(cleanStatus)
-                            ? "done"
-                            : /借出|預約/.test(cleanStatus)
-                              ? "urgent"
-                              : "muted"
-                        }`,
+                        class: `chip ${holdingStatusTone(cleanStatus, availability)}`,
                       },
                       cleanStatus,
                     )

@@ -8,6 +8,7 @@ import {
   buildOpacAvailabilityUrl,
   decodeHtmlEntities,
   htmlToCleanParagraphs,
+  mergeOpacItemLookup,
   normalizeIsbn,
   parseCarrelCalendar,
   parseCarrelForm,
@@ -17,6 +18,7 @@ import {
   parseLibraryPortalLinks,
   parseOpacAccount,
   parseOpacItemDetail,
+  parseOpacLookupTitleInfoUrl,
   parseOpacSearchResults,
   parseSanminProductDetail,
   sanminCoverUrlFromIsbn,
@@ -1646,6 +1648,36 @@ export async function fetchBookEnrichment(rawIsbn = "") {
   return promise;
 }
 
+function buildOpacLookupTitleInfoUrl(titleId = "") {
+  const id = String(titleId || "").trim();
+  if (!/^\d{1,12}$/.test(id)) return "";
+  const entEncoded = encodeURIComponent(`ent://SD_ILS/0/SD_ILS:${id}~~0`).replace(
+    /~/g,
+    "%7E",
+  );
+  return `${OPAC_BASE}/search/detailnonmodal.detail.detailavailabilityaccordions:lookuptitleinfo/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:${id}/ILS/0/true/true?d=${entEncoded}`;
+}
+
+async function fetchOpacItemLookup(lookupUrl = "") {
+  if (!lookupUrl) return null;
+  try {
+    const { response } = await httpRequestWithCookies(lookupUrl, {
+      method: "POST",
+      useCookies: false,
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        Accept: "application/json, text/javascript, */*; q=0.01",
+      },
+      timeoutMs: 8_000,
+    });
+    if (!response.ok) return null;
+    const json = await response.json();
+    return json && Array.isArray(json.childRecords) ? json : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetch detailed bibliographic info, live availability, ISBN enrichment, and holdings for one OPAC record.
  */
@@ -1660,10 +1692,16 @@ export async function getLibraryCatalogItem(detailPath) {
 
   const titleId = cleanPath.match(/SD_ILS:(\d+)\/one$/i)?.[1] || "";
   const targetUrl = `${OPAC_ORIGIN}${cleanPath}`;
-  const { response } = await httpRequestWithCookies(targetUrl, {
-    useCookies: false,
-    timeoutMs: 12_000,
-  });
+  const defaultLookupUrl = buildOpacLookupTitleInfoUrl(titleId);
+
+  const [{ response }, availMap, initialLookup] = await Promise.all([
+    httpRequestWithCookies(targetUrl, {
+      useCookies: false,
+      timeoutMs: 12_000,
+    }),
+    titleId ? fetchAvailabilityMap([titleId]).catch(() => ({})) : Promise.resolve({}),
+    defaultLookupUrl ? fetchOpacItemLookup(defaultLookupUrl) : Promise.resolve(null),
+  ]);
   if (!response.ok) {
     throw libraryError(
       `Catalog item lookup failed with HTTP ${response.status}.`,
@@ -1674,14 +1712,20 @@ export async function getLibraryCatalogItem(detailPath) {
 
   const html = await response.text();
   const detail = parseOpacItemDetail(html, cleanPath);
+  const embeddedLookupUrl = parseOpacLookupTitleInfoUrl(html);
 
-  const [availMap, enrichment] = await Promise.all([
-    titleId ? fetchAvailabilityMap([titleId]).catch(() => ({})) : Promise.resolve({}),
+  const [itemLookup, enrichment] = await Promise.all([
+    initialLookup?.childRecords?.length
+      ? Promise.resolve(initialLookup)
+      : embeddedLookupUrl && embeddedLookupUrl !== defaultLookupUrl
+        ? fetchOpacItemLookup(embeddedLookupUrl)
+        : Promise.resolve(initialLookup),
     detail.isbn ? fetchBookEnrichment(detail.isbn).catch(() => null) : Promise.resolve(null),
   ]);
 
+  const mergedHoldings = mergeOpacItemLookup(detail.holdings || [], itemLookup);
   const availability = (titleId && availMap[titleId]) || null;
-  const holdings = (detail.holdings || []).map((copy) => {
+  const holdings = mergedHoldings.map((copy) => {
     const rawStatus = String(copy.status || "").trim();
     if (rawStatus && rawStatus !== "未知") return copy;
     let resolvedStatus = "";

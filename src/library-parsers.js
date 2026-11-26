@@ -868,6 +868,62 @@ export function parseOpacItemDetail(html = "", detailPath = "") {
   };
 }
 
+/**
+ * Extract the asynchronous `:lookuptitleinfo` endpoint path embedded on a SirsiDynix item detail page.
+ */
+export function parseOpacLookupTitleInfoUrl(html = "") {
+  const match = firstMatch(
+    html,
+    /['"](\/client\/zh_TW\/NUTC\/search\/detailnonmodal[^'"]*:lookuptitleinfo\/[^'"]+)['"]/i,
+  );
+  return match ? `${OPAC_ORIGIN}${decodeHtmlEntities(match)}` : "";
+}
+
+/**
+ * Merge SirsiDynix `:lookuptitleinfo` childRecords (`LIBRARY`, `SD_ITEM_STATUS`, etc.) into parsed holdings.
+ */
+export function mergeOpacItemLookup(holdings = [], lookupPayload = null) {
+  if (!Array.isArray(holdings) || !holdings.length) return [];
+  const records = Array.isArray(lookupPayload)
+    ? lookupPayload
+    : Array.isArray(lookupPayload?.childRecords)
+      ? lookupPayload.childRecords
+      : [];
+  if (!records.length) return holdings;
+
+  const byBarcode = new Map();
+  for (const record of records) {
+    if (!record || typeof record !== "object") continue;
+    const barcode = stripHtml(record.barcode || "");
+    if (barcode && !byBarcode.has(barcode)) {
+      byBarcode.set(barcode, record);
+    }
+  }
+
+  return holdings.map((copy) => {
+    const barcode = String(copy?.barcode || "").trim();
+    const hit =
+      (barcode && byBarcode.get(barcode)) ||
+      (holdings.length === 1 && records.length === 1 ? records[0] : null);
+    if (!hit || typeof hit !== "object") return copy;
+
+    const nextBranch = stripHtml(hit.LIBRARY || "");
+    const nextStatus = stripHtml(hit.SD_ITEM_STATUS || "");
+    const nextCallNumber = stripHtml(hit.CALLNUMBER || "");
+    const validStatus =
+      nextStatus && nextStatus !== "未知" && nextStatus !== "正在查詢..."
+        ? nextStatus
+        : "";
+
+    return {
+      ...copy,
+      ...(nextBranch ? { branch: nextBranch } : {}),
+      ...(nextCallNumber ? { callNumber: nextCallNumber } : {}),
+      ...(validStatus ? { status: validStatus } : {}),
+    };
+  });
+}
+
 function parseAccountTableRows(sectionHtml = "") {
   const rows = [
     ...String(sectionHtml || "").matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi),

@@ -6,6 +6,7 @@ import {
   fetchBookEnrichment,
   fetchLibraryCover,
   getLibraryCatalogAvailability,
+  getLibraryCatalogItem,
   handleLibraryRequest,
   isAllowedCoverUrl,
   prefetchCatalogCovers,
@@ -840,4 +841,75 @@ test("library UI exposes persisted catalogPageSize selector with 12/24/36/48 opt
   for (const n of ["12", "24", "36", "48"]) {
     assert.match(js, new RegExp(`\\["${n}",\\s*"每頁 ${n} 筆"\\]`));
   }
+});
+
+test("getLibraryCatalogItem merges OPAC lookuptitleinfo shelf zones (e.g. 10F中文書區) into holdings", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+  const detailPath = "/client/zh_TW/NUTC/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:999001/one";
+
+  globalThis.fetch = async (input) => {
+    const u = String(input);
+    if (u.includes(":loadavailability")) {
+      return new Response(
+        JSON.stringify([
+          { titleId: "999001", availableCount: "1", copyCount: "2", holdCount: "0", holdable: true },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (u.includes(":lookuptitleinfo")) {
+      return new Response(
+        JSON.stringify({
+          childRecords: [
+            { LIBRARY: "臺中科技大學 - 三民總館", barcode: "389752", SD_ITEM_STATUS: "10F中文書區" },
+            { LIBRARY: "臺中科技大學 - 三民總館", barcode: "389753", SD_ITEM_STATUS: "到期 2026/12/7" },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (u.includes("/search/detailnonmodal/")) {
+      return new Response(
+        `
+          <div class="displayElementText INITIAL_TITLE_SRCH">中文現代詩選</div>
+          <table>
+            <tr class="detailItemsTableRow">
+              <td class="detailItemsTable_LIBRARY"><div id="asyncFieldDefault0">臺中科技大學 - 三民總館</div></td>
+              <td class="detailItemsTable_ITYPE">圖書</td>
+              <td class="detailItemsTable_BARCODE">389752</td>
+              <td class="detailItemsTable_CALLNUMBER">861.57 1323 114</td>
+              <td class="detailItemsTable_SD_ITEM_STATUS"><div id="asyncFieldDefault1">未知</div></td>
+            </tr>
+            <tr class="detailItemsTableRow">
+              <td class="detailItemsTable_LIBRARY"><div id="asyncFieldDefault2">臺中科技大學 - 三民總館</div></td>
+              <td class="detailItemsTable_ITYPE">圖書</td>
+              <td class="detailItemsTable_BARCODE">389753</td>
+              <td class="detailItemsTable_CALLNUMBER">861.57 1323 114 c.2</td>
+              <td class="detailItemsTable_SD_ITEM_STATUS"><div id="asyncFieldDefault3">未知</div></td>
+            </tr>
+          </table>
+        `,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    }
+    return new Response("", { status: 404 });
+  };
+
+  try {
+    const item = await getLibraryCatalogItem(detailPath);
+    assert.equal(item.holdings.length, 2);
+    assert.equal(item.holdings[0].status, "10F中文書區");
+    assert.equal(item.holdings[1].status, "到期 2026/12/7");
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("library UI styles shelf-zone holding status chips cleanly", async () => {
+  const js = await read("../public/library.js");
+  assert.match(js, /function holdingStatusTone\(/);
+  assert.match(js, /書區/);
+  assert.match(js, /到期/);
 });
