@@ -831,6 +831,145 @@
 
     applyBackdrop(currentBackground);
     applyPalette(source);
+    watchPageReloadAutoUpdate();
+  }
+
+  let autoUpdateWatchStarted = false;
+
+  function ensureAutoUpdateBanner(initialText) {
+    let banner = document.getElementById("nutcAutoUpdateBanner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "nutcAutoUpdateBanner";
+      banner.setAttribute("role", "status");
+      banner.setAttribute("aria-live", "polite");
+      banner.style.cssText = [
+        "position:fixed",
+        "right:20px",
+        "bottom:20px",
+        "z-index:200",
+        "display:inline-flex",
+        "align-items:center",
+        "gap:10px",
+        "max-width:calc(100vw - 32px)",
+        "padding:10px 14px",
+        "border-radius:6px",
+        "border:1px solid rgba(255,255,255,.12)",
+        "background:rgba(14,12,16,.90)",
+        "backdrop-filter:blur(20px)",
+        "-webkit-backdrop-filter:blur(20px)",
+        "box-shadow:0 12px 32px rgba(0,0,0,.38)",
+        "color:var(--foreground,#f7f1f6)",
+        "font-size:12px",
+        "font-weight:500",
+        "pointer-events:none",
+      ].join(";");
+      banner.innerHTML =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0;color:var(--primary,#d8c49a)"><path d="M21 12a9 9 0 1 1-6.219-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite"/></path></svg><span data-role="text"></span>';
+      document.body.appendChild(banner);
+    }
+    const label = banner.querySelector?.('[data-role="text"]');
+    if (label) label.textContent = initialText || "偵測到新版本，正在更新…";
+    return banner;
+  }
+
+  async function fetchAutoUpdateStatus() {
+    const controller =
+      typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), 6000)
+      : null;
+    try {
+      const response = await fetch("/api/debug/update/status", {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller?.signal,
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    } finally {
+      if (timer && typeof clearTimeout === "function") clearTimeout(timer);
+    }
+  }
+
+  async function waitForSubpageUpdateAndReload(
+    previousInstanceId,
+    operationId,
+    banner,
+  ) {
+    const deadline = Date.now() + 8 * 60_000;
+    const setLabel = (text) => {
+      const label = banner?.querySelector?.('[data-role="text"]');
+      if (label && text) label.textContent = text;
+    };
+
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 850));
+      const status = await fetchAutoUpdateStatus();
+      if (!status) continue;
+      if (status.detail) setLabel(status.detail);
+      if (status.instanceId && status.instanceId !== previousInstanceId) {
+        setLabel("已更新，正在重新載入…");
+        const target = new URL(window.location.href);
+        target.searchParams.set("build", status.instanceId);
+        window.location.replace(target.toString());
+        return;
+      }
+      if (status.state === "error") return;
+      if (status.id && status.id !== operationId) return;
+    }
+  }
+
+  function watchPageReloadAutoUpdate() {
+    if (
+      autoUpdateWatchStarted ||
+      typeof window !== "object" ||
+      typeof window.location?.href !== "string" ||
+      typeof fetch !== "function" ||
+      typeof setTimeout !== "function" ||
+      typeof document?.createElement !== "function" ||
+      !document.body ||
+      window.__NUTC_DEMO__ ||
+      document.getElementById("debugUpdateServer")
+    ) {
+      return;
+    }
+    autoUpdateWatchStarted = true;
+
+    const currentBuild =
+      new URL(window.location.href).searchParams.get("build") || "";
+    const triggerUrl = currentBuild
+      ? `/api/debug/update/auto?build=${encodeURIComponent(currentBuild)}`
+      : "/api/debug/update/auto";
+
+    fetch(triggerUrl, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (
+          !data ||
+          (data.state !== "running" && data.state !== "restarting") ||
+          !data.id ||
+          !data.instanceId
+        ) {
+          return;
+        }
+        const banner = ensureAutoUpdateBanner(data.detail);
+        return waitForSubpageUpdateAndReload(
+          data.instanceId,
+          data.id,
+          banner,
+        ).finally(() => {
+          banner?.remove?.();
+        });
+      })
+      .catch(() => {});
   }
 
   window.NutcTheme = {

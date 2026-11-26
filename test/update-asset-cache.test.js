@@ -63,3 +63,14 @@ test("page reloads trigger non-blocking remote update checks on server and dashb
   assert.match(app, /checkAutoServerUpdate\(\)/);
   assert.match(app, /\/api\/debug\/update\/auto/);
 });
+
+test("sub-hub pages watch F5 auto-updates via theme.js without duplicating dashboard", async () => {
+  const theme = await readFile(new URL("../public/theme.js", import.meta.url), "utf8");
+  assert.match(theme, /function watchPageReloadAutoUpdate\(\)/);
+  assert.match(theme, /document\.getElementById\("debugUpdateServer"\)/);
+  assert.match(theme, /\/api\/debug\/update\/auto/);
+  assert.match(theme, /\/api\/debug\/update\/status/);
+  assert.match(theme, /nutcAutoUpdateBanner/);
+  assert.match(theme, /target\.searchParams\.set\("build", status\.instanceId\)/);
+  assert.match(theme, /window\.location\.replace\(target\.toString\(\)\)/);
+});
