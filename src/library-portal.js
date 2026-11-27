@@ -2049,13 +2049,20 @@ export async function getLibraryCatalogMarc(rawId = "") {
   return result;
 }
 
+function isAuthenticatedOpacAccountPage(html = "") {
+  const source = String(html || "");
+  if (parseOpacAccount(source).loginRequired) return false;
+  return /checkoutsTab|holdsTab|finesTab|您的狀態|借閱\s*總計|讀者借閱證號碼/i.test(
+    source,
+  );
+}
+
 async function fetchOpacHoldContext(cleanId) {
   let { html: acctHtml } = await fetchAuthenticatedLibraryPage(
     `${OPAC_BASE}/search/account?`,
     { needOpac: true, opacOnly: true },
   );
-  let parsedAccount = parseOpacAccount(acctHtml);
-  if (parsedAccount.loginRequired) {
+  if (!isAuthenticatedOpacAccountPage(acctHtml)) {
     try {
       await ensureLibrarySession({ needOpac: true, forceRefresh: true });
       const retry = await httpRequestWithCookies(`${OPAC_BASE}/search/account?`, {
@@ -2063,11 +2070,10 @@ async function fetchOpacHoldContext(cleanId) {
         timeoutMs: 18_000,
       });
       acctHtml = await retry.response.text();
-      parsedAccount = parseOpacAccount(acctHtml);
     } catch {
-      parsedAccount = { loginRequired: true };
+      acctHtml = "";
     }
-    if (parsedAccount.loginRequired) {
+    if (!isAuthenticatedOpacAccountPage(acctHtml)) {
       throw libraryError(
         "請先登入館藏查詢系統 (OPAC) 以進行預約。",
         "LIBRARY_OPAC_LOGIN_REQUIRED",

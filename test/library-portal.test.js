@@ -1555,6 +1555,28 @@ test("getOpacHoldPreview and placeOpacHold require OPAC auth and submit Tapestry
       () => getOpacHoldPreview("865580"),
       (err) => err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" && err?.statusCode === 401,
     );
+
+    // 3. Even if /search/account lacks #loginPageForm AND lacks patron markers, :placehold is never called
+    let calledPlaceHold = false;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const u = String(input);
+      if (u.includes("/search/account")) {
+        return new Response("<html><body>OPAC Session Reset</body></html>", {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+      if (u.includes("resultactions:placehold")) {
+        calledPlaceHold = true;
+      }
+      return prevFetch(input, init);
+    };
+    await assert.rejects(
+      () => getOpacHoldPreview("865580"),
+      (err) => err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" && err?.statusCode === 401,
+    );
+    assert.equal(calledPlaceHold, false);
   } finally {
     globalThis.fetch = realFetch;
     await clearLibrarySession();

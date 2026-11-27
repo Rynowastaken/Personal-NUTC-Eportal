@@ -1818,6 +1818,17 @@
     const loadHoldPreview = async () => {
       holdPanel.hidden = false;
       holdBtn.setAttribute("aria-expanded", "true");
+      if (isLibraryAuthError(state.favoritesErrorObj)) {
+        renderAuthRequiredNotice(state.favoritesErrorObj);
+        return;
+      }
+      if (
+        !state.favoritesLoaded &&
+        state.overview?.sectionErrors?.opacCode === "LIBRARY_OPAC_LOGIN_REQUIRED"
+      ) {
+        renderAuthRequiredNotice({ code: "LIBRARY_OPAC_LOGIN_REQUIRED" });
+        return;
+      }
       replaceNodes(
         holdPanel,
         h(
@@ -1952,8 +1963,8 @@
                 );
                 void loadOverview({ force: true }).catch(() => {});
               } catch (err) {
-                if (err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED") {
-                  renderOpacAuthRequiredNotice();
+                if (isLibraryAuthError(err)) {
+                  renderAuthRequiredNotice(err);
                   return;
                 }
                 replaceNodes(
@@ -2015,8 +2026,8 @@
           form,
         );
       } catch (err) {
-        if (err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED") {
-          renderOpacAuthRequiredNotice();
+        if (isLibraryAuthError(err)) {
+          renderAuthRequiredNotice(err);
           return;
         }
         replaceNodes(
@@ -2041,7 +2052,8 @@
       }
     };
 
-    function renderOpacAuthRequiredNotice() {
+    function renderAuthRequiredNotice(err) {
+      const needPortal = err?.code === "EPORTAL_LOGIN_REQUIRED";
       replaceNodes(
         holdPanel,
         h(
@@ -2058,7 +2070,13 @@
           "div",
           { class: "notice" },
           icon("lock"),
-          h("span", null, "需先登入館藏查詢系統 (OPAC) 才能進行預約。"),
+          h(
+            "span",
+            null,
+            needPortal
+              ? "Server ePortal 登入工作階段已逾期，請重新登入後再進行預約。"
+              : "需先登入館藏查詢系統 (OPAC) 才能進行預約。",
+          ),
         ),
         h(
           "div",
@@ -2074,18 +2092,27 @@
             icon("external"),
             "在官方館藏預約",
           ),
-          h(
-            "button",
-            {
-              class: "btn small primary",
-              type: "button",
-              onclick: () => {
-                closeModal();
-                navigate("/library/lists");
-              },
-            },
-            "前往登入 OPAC",
-          ),
+          needPortal
+            ? h(
+                "a",
+                {
+                  class: "btn small primary",
+                  href: `/server-login/?force=1&next=${encodeURIComponent(location.pathname + location.search)}`,
+                },
+                "登入 Server ePortal",
+              )
+            : h(
+                "button",
+                {
+                  class: "btn small primary",
+                  type: "button",
+                  onclick: () => {
+                    closeModal();
+                    navigate(routeUrl("favorites"));
+                  },
+                },
+                "前往登入 OPAC",
+              ),
         ),
       );
     }
