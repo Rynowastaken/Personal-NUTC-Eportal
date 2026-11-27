@@ -437,3 +437,40 @@ async function relayPreview(reference, res, sendError, { headOnly = false } = {}
     "Content-Security-Policy": "frame-ancestors 'self'",
   });
 }
+
+let tronclassKeepaliveInFlight = null;
+
+/**
+ * Keep active TronClass cookies warm against upstream sliding timeouts,
+ * renewing from Server ePortal automatically when needed.
+ */
+export async function keepTronclassSessionAlive({ eportalValid = false } = {}) {
+  if (tronclassKeepaliveInFlight) return tronclassKeepaliveInFlight;
+  tronclassKeepaliveInFlight = (async () => {
+    await loadJar();
+    if (!jar.length) {
+      return { refreshed: false, valid: false };
+    }
+    try {
+      const current = await readUser();
+      if (current) {
+        user = current;
+        return { refreshed: true, valid: true };
+      }
+    } catch {
+      // fall through to optional ePortal SSO renewal
+    }
+    if (eportalValid) {
+      try {
+        await signIn();
+        return { refreshed: true, valid: Boolean(user) };
+      } catch {
+        return { refreshed: false, valid: false };
+      }
+    }
+    return { refreshed: false, valid: false };
+  })().finally(() => {
+    tronclassKeepaliveInFlight = null;
+  });
+  return tronclassKeepaliveInFlight;
+}

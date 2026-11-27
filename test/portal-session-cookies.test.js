@@ -229,3 +229,32 @@ test("portal-session and login-bridge wire session cookie save, restore, and cle
   assert.match(loginBridgeSrc, /savePortalSessionCookies\(session\.browser\.context\)/);
   assert.match(loginBridgeSrc, /clearSavedPortalSessionCookies\(\)/);
 });
+
+test("startPortalKeepalive runs onTick callback cleanly even if onTick rejects", async () => {
+  const seen = [];
+  try {
+    startPortalKeepalive({
+      intervalMinutes: 10,
+      initialDelayMs: 5,
+      retryDelayMs: 50,
+      async checkStatus() {
+        return { status: "valid", valid: true, checkedAt: "2026-11-27T00:00:00.000Z" };
+      },
+      async onTick(status) {
+        seen.push(status.valid);
+        throw new Error("downstream tick error");
+      },
+    });
+
+    const deadline = Date.now() + 1_000;
+    while (seen.length < 1 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    assert.deepEqual(seen, [true]);
+    assert.equal(getPortalKeepaliveState().lastStatus, "valid");
+  } finally {
+    stopPortalKeepalive();
+  }
+});

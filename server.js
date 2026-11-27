@@ -50,10 +50,12 @@ import {
   clearTronclassSession,
   fetchTronclassJson,
   handleTronclassRequest,
+  keepTronclassSessionAlive,
 } from "./src/tronclass.js";
 import {
   clearLibrarySession,
   handleLibraryRequest,
+  keepLibrarySessionAlive,
   warmLibraryCatalog,
   warmLibraryWorkspace,
 } from "./src/library-portal.js";
@@ -102,7 +104,7 @@ const launchJobs = new Map();
 let aiAskInFlight = false;
 const staticAssetCache = new Map();
 const launchJobTtlMs = 2 * 60_000;
-const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 5);
+const keepaliveMinutes = Number(process.env.EPORTAL_KEEPALIVE_MINUTES ?? 4);
 const loginBridgeTtlMinutes = Number(
   process.env.EPORTAL_LOGIN_BRIDGE_TTL_MINUTES ?? 15,
 );
@@ -1246,7 +1248,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/login-bridge/state") {
       try {
-        sendJson(res, 200, await getLoginBridgeState(bearerToken(req)));
+        const state = await getLoginBridgeState(bearerToken(req));
+        if (state?.status === "authenticated") {
+          void warmLibraryWorkspace({ bootstrapFromPortal: true }).catch(() => {});
+        }
+        sendJson(res, 200, state);
       } catch (error) {
         if (handleBridgeError(res, error)) return;
         throw error;
@@ -1257,11 +1263,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/login-bridge/action") {
       try {
         const body = await readJsonBody(req, 32 * 1024);
-        sendJson(
-          res,
-          200,
-          await applyLoginBridgeAction(bearerToken(req), body),
-        );
+        const result = await applyLoginBridgeAction(bearerToken(req), body);
+        if (result?.status === "authenticated") {
+          void warmLibraryWorkspace({ bootstrapFromPortal: true }).catch(() => {});
+        }
+        sendJson(res, 200, result);
       } catch (error) {
         if (handleBridgeError(res, error)) return;
         throw error;
@@ -1723,6 +1729,13 @@ await Promise.all([
 ]);
 const keepalive = startPortalKeepalive({
   intervalMinutes: keepaliveMinutes,
+  onTick: async (status) => {
+    const eportalValid = Boolean(status?.valid);
+    await Promise.allSettled([
+      keepLibrarySessionAlive({ eportalValid }),
+      keepTronclassSessionAlive({ eportalValid }),
+    ]);
+  },
 });
 
 server.listen(port, host, () => {

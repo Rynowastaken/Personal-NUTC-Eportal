@@ -13,6 +13,7 @@ import {
   getOpacMyLists,
   handleLibraryRequest,
   isAllowedCoverUrl,
+  keepLibrarySessionAlive,
   loginOpacPatron,
   placeOpacHold,
   prefetchCatalogCovers,
@@ -1737,6 +1738,74 @@ test("addOpacMyListItem verifies OPAC authentication before calling :addtolist",
         (err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" && err?.statusCode === 401),
     );
     assert.equal(addToListCalled, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("keepLibrarySessionAlive refreshes OPAC cookies and isolates public MARC lookups", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+  let accountPings = 0;
+  let marcHadCookie = false;
+
+  globalThis.fetch = async (input, init = {}) => {
+    const u = String(input);
+    const cookieHdr = init?.headers?.Cookie || "";
+    if (u.includes("mylists.template.patronloginform.loginpageform")) {
+      return new Response(JSON.stringify({ zones: {} }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "set-cookie": "JSESSIONID=KEEPALIVE_OPAC_1; Path=/; HttpOnly",
+        },
+      });
+    }
+    if (u.includes("/search/mylists")) {
+      return new Response(
+        cookieHdr.includes("KEEPALIVE_OPAC")
+          ? `<ul id="myLists_lists"><li id="lists_li:0" class="selected"><a href="#">臨時清單 (0)</a></li></ul>`
+          : `<a id="listLoginLink" href="#">登入</a><form id="loginPageForm" action="/client/zh_TW/NUTC/search/mylists.template.patronloginform.loginpageform/true?"><input type="hidden" name="t:formdata" value="FD" /><input id="j_username" name="j_username" /><input id="j_password" name="j_password" /></form>`,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    }
+    if (u.includes("/search/account")) {
+      accountPings += 1;
+      assert.match(cookieHdr, /JSESSIONID=KEEPALIVE_OPAC_1/);
+      return new Response(`<div id="checkoutsTab">已登入</div>`, {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "set-cookie": "JSESSIONID=KEEPALIVE_OPAC_2; Path=/; HttpOnly",
+        },
+      });
+    }
+    if (u.includes("/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:777001/one")) {
+      marcHadCookie = Boolean(cookieHdr);
+      return new Response(
+        `<div class="displayElementText INITIAL_TITLE_SRCH">Public Book</div>`,
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "set-cookie": "JSESSIONID=ANON_CLOBBER; Path=/; HttpOnly",
+          },
+        },
+      );
+    }
+    return new Response("", { status: 404 });
+  };
+
+  try {
+    await loginOpacPatron({ username: "S1411501046", password: "good" });
+    const status = await keepLibrarySessionAlive({ eportalValid: false });
+    assert.equal(accountPings, 1);
+    assert.equal(status.opacValid, true);
+    assert.equal(status.refreshed, true);
+
+    await getLibraryCatalogMarc("777001");
+    assert.equal(marcHadCookie, false);
   } finally {
     globalThis.fetch = realFetch;
     await clearLibrarySession();

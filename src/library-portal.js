@@ -1454,7 +1454,7 @@ export async function warmLibraryCatalog() {
  * Warm catalog, public databases/calendar, and (when a saved session already exists)
  * the patron overview and OPAC lists in the background right after server start.
  */
-export async function warmLibraryWorkspace() {
+export async function warmLibraryWorkspace({ bootstrapFromPortal = false } = {}) {
   try {
     await warmLibraryCatalog();
     await Promise.allSettled([
@@ -1463,6 +1463,9 @@ export async function warmLibraryWorkspace() {
     ]);
 
     await loadLibrarySessionFromDisk();
+    if (bootstrapFromPortal && !hasHostCookies("library.nutc.edu.tw")) {
+      await ensureLibrarySession({ needOpac: true }).catch(() => {});
+    }
     if (!hasHostCookies("library.nutc.edu.tw")) return;
 
     const [, listsResult] = await Promise.allSettled([
@@ -1485,6 +1488,97 @@ export async function warmLibraryWorkspace() {
   } catch {
     // Warmup is best-effort and must never fail server startup.
   }
+}
+
+let libraryKeepaliveInFlight = null;
+
+/**
+ * Keep active Library ASP.NET, OrderRoom, and OPAC sessions warm against
+ * sliding server-side idle timeouts and persist rolled cookies cleanly.
+ */
+export async function keepLibrarySessionAlive({ eportalValid = false } = {}) {
+  if (libraryKeepaliveInFlight) return libraryKeepaliveInFlight;
+  libraryKeepaliveInFlight = (async () => {
+    await loadLibrarySessionFromDisk();
+    const hasLib = hasHostCookies("library.nutc.edu.tw");
+    const hasOpac = hasHostCookies("ntit.ent.sirsidynix.net");
+    if (!hasLib && !hasOpac && !eportalValid) {
+      return { refreshed: false, libraryValid: false, opacValid: false };
+    }
+
+    let libraryValid = false;
+    let opacValid = false;
+    let dirty = false;
+
+    if (hasLib) {
+      try {
+        const res = await httpRequestWithCookies(
+          `${LIBRARY_ORIGIN}/sso/dslist.aspx`,
+          { maxRedirects: 6, timeoutMs: 12_000 },
+        );
+        const html = await res.response.text();
+        if (!needsLibraryRelogin(res.finalUrl, html)) {
+          libraryValid = true;
+          dirty = true;
+          if (sessionLinks.carrel) {
+            await httpRequestWithCookies(sessionLinks.carrel, {
+              maxRedirects: 6,
+              timeoutMs: 10_000,
+            }).catch(() => {});
+          }
+        }
+      } catch {
+        libraryValid = false;
+      }
+    }
+
+    if (!libraryValid && eportalValid && (hasLib || hasOpac)) {
+      try {
+        await establishLibrarySession({ needOpac: hasOpac });
+        libraryValid = hasHostCookies("library.nutc.edu.tw");
+        dirty = true;
+      } catch {
+        libraryValid = false;
+      }
+    }
+
+    if (hasHostCookies("ntit.ent.sirsidynix.net")) {
+      try {
+        const acctRes = await httpRequestWithCookies(
+          `${OPAC_BASE}/search/account?`,
+          { maxRedirects: 8, timeoutMs: 12_000 },
+        );
+        const acctHtml = await acctRes.response.text();
+        opacValid = isAuthenticatedOpacAccountPage(acctHtml);
+        dirty = true;
+      } catch {
+        opacValid = false;
+      }
+    }
+
+    if (
+      !opacValid &&
+      eportalValid &&
+      sessionLinks.opac &&
+      !/maintain\.html/i.test(sessionLinks.opac)
+    ) {
+      try {
+        const captured = await captureOpacCookiesViaPlaywright(sessionLinks.opac);
+        opacValid = Boolean(captured?.ok);
+        dirty = true;
+      } catch {
+        opacValid = false;
+      }
+    }
+
+    if (dirty) {
+      await persistLibrarySessionToDisk().catch(() => {});
+    }
+    return { refreshed: dirty, libraryValid, opacValid };
+  })().finally(() => {
+    libraryKeepaliveInFlight = null;
+  });
+  return libraryKeepaliveInFlight;
 }
 
 async function fetchSanminEnrichment(isbn) {
@@ -2003,6 +2097,7 @@ export async function getLibraryCatalogMarc(rawId = "") {
   const symwsUrl = `${SYMWS_LOOKUP_BASE}?clientID=DS_CLIENT&titleID=${encodeURIComponent(cleanId)}&includeOPACInfo=false&marcEntryFilter=all&json=true`;
   try {
     const { response } = await httpRequestWithCookies(symwsUrl, {
+      useCookies: false,
       headers: { Accept: "application/json" },
       timeoutMs: 4_500,
     });
@@ -2030,6 +2125,7 @@ export async function getLibraryCatalogMarc(rawId = "") {
   if (entries.length === 0) {
     const detailUrl = buildOpacDetailUrl(cleanId);
     const { response } = await httpRequestWithCookies(detailUrl, {
+      useCookies: false,
       timeoutMs: 12_000,
     });
     if (!response.ok) {

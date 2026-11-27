@@ -1273,6 +1273,7 @@ export function startPortalKeepalive({
   retryDelayMs = 60_000,
   initialDelayMs = 15_000,
   checkStatus = checkServerPortalStatus,
+  onTick = null,
 } = {}) {
   const parsed = Number(intervalMinutes);
   const minutes = Number.isFinite(parsed) ? Math.max(0, parsed) : 5;
@@ -1316,6 +1317,9 @@ export function startPortalKeepalive({
         console.log(
           `[portal-session] keepalive status: ${previousStatus} -> ${keepaliveState.lastStatus}${status.code ? ` (${status.code})` : ""}`,
         );
+      }
+      if (typeof onTick === "function") {
+        await Promise.resolve(onTick(status)).catch(() => {});
       }
     } catch (error) {
       keepaliveState.lastStatus = "error";
