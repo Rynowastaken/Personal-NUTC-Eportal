@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  addOpacMyListItem,
   clearLibrarySession,
   fetchBookEnrichment,
   fetchLibraryCover,
@@ -1633,4 +1634,89 @@ test("handleLibraryRequest routes MARC, hold preview, and hold submission endpoi
     ["preview", "865580"],
     ["hold", { titleId: "865580", path: "", pickupLibrary: "SM", volume: "v.1" }],
   ]);
+});
+
+test("addOpacMyListItem verifies OPAC authentication before calling :addtolist", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+  let addToListCalled = false;
+  let authed = false;
+
+  globalThis.fetch = async (input) => {
+    const u = String(input);
+    if (u.includes("/search/detailnonmodal/")) {
+      return new Response("<html></html>", {
+        status: 200,
+        headers: {
+          "content-type": "text/html",
+          "set-cookie": "JSESSIONID=ANON_OPAC; Path=/; HttpOnly",
+        },
+      });
+    }
+    if (u.includes("mylists.template.patronloginform.loginpageform")) {
+      authed = true;
+      return new Response(JSON.stringify({ zones: {} }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "set-cookie": "JSESSIONID=AUTH_OPAC; Path=/; HttpOnly",
+        },
+      });
+    }
+    if (u.includes("/search/mylists")) {
+      if (!authed) {
+        return new Response(
+          `<a id="listLoginLink" href="#">登入</a>
+           <form id="loginPageForm" method="post" action="/client/zh_TW/NUTC/search/mylists.template.patronloginform.loginpageform/true?">
+             <input type="hidden" name="t:formdata" value="FD_LOGIN" />
+             <input id="j_username" name="j_username" /><input id="j_password" name="j_password" />
+           </form>`,
+          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+        );
+      }
+      return new Response(
+        `<ul id="myLists_lists"><li id="lists_li:0" class="selected"><a href="#">臨時清單 (1)</a></li></ul>`,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    }
+    if (u.includes(":addtolist")) {
+      addToListCalled = true;
+      return new Response(JSON.stringify({ added: ["865580"] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("", { status: 404 });
+  };
+
+  try {
+    // 1. Unauthenticated caller without Server ePortal or OPAC session is rejected before :addtolist
+    await assert.rejects(
+      () => addOpacMyListItem({ titleId: "865580", listId: "0" }),
+      (err) =>
+        err?.code === "EPORTAL_LOGIN_REQUIRED" ||
+        (err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" && err?.statusCode === 401),
+    );
+    assert.equal(addToListCalled, false);
+
+    // 2. Logged-in OPAC caller passes pre-check and calls :addtolist cleanly
+    await loginOpacPatron({ username: "S1411501046", password: "good" });
+    const res = await addOpacMyListItem({ titleId: "865580", listId: "0" });
+    assert.equal(addToListCalled, true);
+    assert.deepEqual(res.added, ["865580"]);
+
+    // 3. Stale/anonymous OPAC cookie still triggers /search/mylists check -> 401 before :addtolist
+    authed = false;
+    addToListCalled = false;
+    await assert.rejects(
+      () => addOpacMyListItem({ titleId: "865580", listId: "0" }),
+      (err) =>
+        err?.code === "EPORTAL_LOGIN_REQUIRED" ||
+        (err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" && err?.statusCode === 401),
+    );
+    assert.equal(addToListCalled, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
 });

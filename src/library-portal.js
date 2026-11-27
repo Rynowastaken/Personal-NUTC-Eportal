@@ -3522,7 +3522,10 @@ export async function addOpacMyListItem({
   const cleanId = normalizeOpacTitleId(titleId);
   const cleanListId = normalizeOpacListId(listId || "0") || "0";
 
-  await ensureLibrarySession({ needOpac: true, opacOnly: true });
+  // Verify authenticated OPAC session before calling `:addtolist` — OPAC permits
+  // anonymous session inserts into temporary list `0` without returning `login: true`.
+  await fetchAuthenticatedOpacMyLists(cleanListId);
+
   const encodedEnt = `ent:$002f$002fSD_ILS$002f0$002fSD_ILS:${cleanId}`;
   const dParam = encodeURIComponent(`ent://SD_ILS/0/SD_ILS:${cleanId}~~0`).replace(
     /~/g,

@@ -701,9 +701,11 @@
         applyMyListsResponse(res);
       }
     } catch (error) {
-      if (error?.status === 401 || error?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" || error?.code === "EPORTAL_LOGIN_REQUIRED") {
+      if (isLibraryAuthError(error)) {
         clientMyListsCache.clear();
         clearLibrarySnapshot();
+        state.favorites = [];
+        state.favoriteIds = new Set();
         state.favoritesLoaded = false;
       }
       if (!silent || !state.favoritesLoaded) {
@@ -715,33 +717,50 @@
     }
   }
 
+  function isLibraryAuthError(error) {
+    return (
+      error?.status === 401 ||
+      error?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" ||
+      error?.code === "EPORTAL_LOGIN_REQUIRED"
+    );
+  }
+
   async function toggleFavorite(item, fallback = {}, listIdOverride = "") {
     const payload = buildFavoritePayload(item, fallback);
     if (!payload.id || !payload.title || state.favoritePendingIds.has(payload.id)) return;
 
     const targetListId = String(listIdOverride || state.activeListId || "0");
-    const wasFav =
-      targetListId === String(state.activeListId || "0") &&
-      state.favoriteIds.has(payload.id);
-    const prevFavorites = [...state.favorites];
+    if (
+      isLibraryAuthError(state.favoritesErrorObj) ||
+      (!state.favoritesLoaded &&
+        state.overview?.sectionErrors?.opacCode === "LIBRARY_OPAC_LOGIN_REQUIRED")
+    ) {
+      closeModal();
+      navigate(routeUrl("favorites"));
+      return;
+    }
+
     state.favoritePendingIds.add(payload.id);
     state.favoritesError = "";
     state.favoritesErrorObj = null;
-
-    if (wasFav) {
-      syncFavoritesState(state.favorites.filter((fav) => String(fav.id) !== payload.id));
-    } else if (targetListId === String(state.activeListId || "0")) {
-      syncFavoritesState([
-        payload,
-        ...state.favorites.filter((fav) => String(fav.id) !== payload.id),
-      ]);
-    }
     syncFavoriteButtonsInDom(payload.id);
 
-    const route = matchRoute(new URL(location.href)) || { name: "home" };
-    if (route.name === "favorites" || route.name === "home") render();
-
     try {
+      if (!state.favoritesLoaded) {
+        await loadFavorites({ listId: targetListId, force: true });
+        if (!state.favoritesLoaded) {
+          if (isLibraryAuthError(state.favoritesErrorObj)) {
+            closeModal();
+            navigate(routeUrl("favorites"));
+          }
+          return;
+        }
+      }
+
+      const wasFav =
+        targetListId === String(state.activeListId || "0") &&
+        state.favoriteIds.has(payload.id);
+
       const res = wasFav
         ? await apiJson(
             `/api/library/opac/mylists/items/${encodeURIComponent(payload.id)}?listId=${encodeURIComponent(targetListId)}`,
@@ -757,10 +776,12 @@
       clientMyListsCache.clear();
       applyMyListsResponse(res);
     } catch (error) {
-      syncFavoritesState(prevFavorites);
       state.favoritesErrorObj = error;
       state.favoritesError = error?.message || "更新 OPAC 清單失敗。";
-      if (error?.status === 401 || error?.code === "EPORTAL_LOGIN_REQUIRED") {
+      if (isLibraryAuthError(error)) {
+        clientMyListsCache.clear();
+        clearLibrarySnapshot();
+        state.favoritesLoaded = false;
         closeModal();
         navigate(routeUrl("favorites"));
         return;
