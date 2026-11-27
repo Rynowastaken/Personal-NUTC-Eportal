@@ -7,10 +7,13 @@ import {
   fetchLibraryCover,
   getLibraryCatalogAvailability,
   getLibraryCatalogItem,
+  getLibraryCatalogMarc,
+  getOpacHoldPreview,
   getOpacMyLists,
   handleLibraryRequest,
   isAllowedCoverUrl,
   loginOpacPatron,
+  placeOpacHold,
   prefetchCatalogCovers,
   searchLibraryCatalog,
   warmLibraryWorkspace,
@@ -1372,4 +1375,262 @@ test("fetchLibraryCover resolves Japanese ISBNs via Kinokuniya/NDL and title-mat
     globalThis.fetch = realFetch;
     await clearLibrarySession();
   }
+});
+
+test("getLibraryCatalogMarc prefers SYMWS JSON and falls back to detailnonmodal HTML", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+
+  try {
+    // 1. Official SYMWS JSON path
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.includes("symws201604400947/rest/standard/lookupTitleInfo") && u.includes("titleID=865580")) {
+        return new Response(
+          JSON.stringify({
+            TitleInfo: [
+              {
+                BibliographicInfo: {
+                  MarcEntryInfo: [
+                    { entryID: "001", indicators: "  ", text: "865580" },
+                    { entryID: "245", indicators: "10", text: "偵探的五個季節" },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("", { status: 404 });
+    };
+    const symwsMarc = await getLibraryCatalogMarc("SD_ILS:865580");
+    assert.equal(symwsMarc.titleId, "865580");
+    assert.equal(symwsMarc.source, "symws");
+    assert.equal(symwsMarc.entries[1].tag, "245");
+    assert.equal(symwsMarc.entries[1].text, "偵探的五個季節");
+
+    // 2. Fallback when SYMWS TLS/host fails
+    await clearLibrarySession();
+    globalThis.fetch = async (input) => {
+      const u = String(input);
+      if (u.includes("symws201604400947")) {
+        throw new Error("CERT_HAS_EXPIRED");
+      }
+      if (u.includes("/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:910001/one")) {
+        return new Response(
+          `<div class="displayElementText INITIAL_TITLE_SRCH">深入淺出系統設計</div>
+           <div class="displayElementText PERSONAL_AUTHOR">Alex Xu</div>
+           <div class="displayElementText ISBN">9789860000001</div>`,
+          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+        );
+      }
+      return new Response("", { status: 404 });
+    };
+    const fallbackMarc = await getLibraryCatalogMarc("910001");
+    assert.equal(fallbackMarc.source, "detail");
+    assert.equal(fallbackMarc.entries.find((e) => e.tag === "245")?.text, "深入淺出系統設計");
+    assert.equal(fallbackMarc.entries.find((e) => e.tag === "020")?.text, "9789860000001");
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("getOpacHoldPreview and placeOpacHold require OPAC auth and submit Tapestry hold requests", async () => {
+  await clearLibrarySession();
+  const realFetch = globalThis.fetch;
+  const submittedUrls = [];
+  let authed = false;
+
+  globalThis.fetch = async (input, init = {}) => {
+    const u = String(input);
+    if (u.includes("mylists.template.patronloginform.loginpageform")) {
+      authed = true;
+      return new Response(JSON.stringify({ zones: {} }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "set-cookie": "JSESSIONID=HOLD_SESSION_OK; Path=/; HttpOnly",
+        },
+      });
+    }
+    if (u.includes("/search/mylists")) {
+      if (authed) {
+        return new Response(
+          `<ul id="myLists_lists"><li id="lists_li:0" class="selected"><a href="#">臨時清單 (0)</a></li></ul>`,
+          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+        );
+      }
+      return new Response(
+        `<a id="listLoginLink" href="#">登入</a>
+         <form id="loginPageForm" method="post" action="/client/zh_TW/NUTC/search/mylists.template.patronloginform.loginpageform/true?">
+           <input type="hidden" name="t:formdata" value="FD_LOGIN" />
+           <input id="j_username" name="j_username" /><input id="j_password" name="j_password" />
+         </form>`,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    }
+    if (u.includes("/search/account")) {
+      if (!authed) {
+        return new Response(
+          `<form id="loginPageForm"><input id="j_username" name="j_username" /></form>`,
+          {
+            status: 200,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          },
+        );
+      }
+      return new Response(`<div id="checkoutsTab">已登入</div>`, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+    if (u.includes("/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:865580/one")) {
+      return new Response(
+        `<a href="#" onclick="open('/client/zh_TW/NUTC/search/detailnonmodal.detail.resultactions:placehold/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:865580/false?d=ent:1')">現在預約</a>`,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    }
+    if (u.includes("detailnonmodal.detail.resultactions:placehold")) {
+      return new Response(
+        JSON.stringify({
+          inits: [
+            "PlaceHoldDialog.setup('現在預約','/client/zh_TW/NUTC/search/detailnonmodal.placeholdnonmobile:holditems?d=ent:1','',false);",
+          ],
+          content: `
+            <table id="holdTable">
+              <tr>
+                <td><div class="holdTitle" id="SD_ILS:865580">偵探的五個季節</div></td>
+                <td>
+                  <select id="pickupSelectSD_ILS:865580">
+                    <option value="SM" selected>臺中科技大學 - 三民總館</option>
+                    <option value="MS">臺中科技大學 - 民生分館</option>
+                  </select>
+                </td>
+                <td><input type="hidden" id="itemIdSD_ILS:865580" value="" /></td>
+              </tr>
+            </table>
+            <button onclick="submitHolds('1')">確定</button>
+          `,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (u.includes("detailnonmodal.placeholdnonmobile:holditems") && init.method === "POST") {
+      submittedUrls.push(u);
+      return new Response(
+        JSON.stringify({
+          messages: { ok: "成功：偵探的五個季節（三民總館）" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response("", { status: 404 });
+  };
+
+  try {
+    // 1. Login into OPAC first, then preview + submit hold
+    await loginOpacPatron({ username: "S1411501046", password: "good" });
+    const preview = await getOpacHoldPreview("865580");
+    assert.equal(preview.holdable, true);
+    assert.equal(preview.items[0].pickupOptions.length, 2);
+
+    const holdRes = await placeOpacHold({
+      titleId: "865580",
+      pickupLibrary: "MS",
+    });
+    assert.equal(holdRes.ok, true);
+    assert.equal(holdRes.pickupLibrary, "MS");
+    assert.equal(holdRes.message, "成功：偵探的五個季節（三民總館）");
+    assert.equal(
+      submittedUrls[0],
+      "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/detailnonmodal.placeholdnonmobile:holditems/1/SD_ILS:865580$007c$007c$007c/MS$007c$007c$007c/$N/false$007c$007c$007c/$N?d=ent:1",
+    );
+
+    // 2. Logged-in session whose OPAC account page requires login returns 401 LIBRARY_OPAC_LOGIN_REQUIRED
+    authed = false;
+    await assert.rejects(
+      () => getOpacHoldPreview("865580"),
+      (err) => err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED" && err?.statusCode === 401,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    await clearLibrarySession();
+  }
+});
+
+test("handleLibraryRequest routes MARC, hold preview, and hold submission endpoints", async () => {
+  const sendJson = (res, status, data) => {
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify(data));
+  };
+  const sendError = (res, status, code, error) =>
+    sendJson(res, status, { code, error });
+
+  const calls = [];
+  const deps = {
+    marcFn: async (id) => {
+      calls.push(["marc", id]);
+      return { titleId: id, source: "symws", entries: [{ tag: "245", indicators: "10", text: "測試書" }] };
+    },
+    holdPreviewFn: async (id) => {
+      calls.push(["preview", id]);
+      return { titleId: id, holdable: true, items: [] };
+    },
+    holdFn: async (payload) => {
+      calls.push(["hold", payload]);
+      return { ok: true, message: "ok" };
+    },
+  };
+
+  {
+    const res = makeMockRes();
+    const handled = await handleLibraryRequest(
+      { method: "GET" },
+      res,
+      new URL("http://localhost/api/library/catalog/marc?id=865580"),
+      { sendJson, sendError, readJsonBody: async () => ({}) },
+      deps,
+    );
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 200);
+    assert.equal(JSON.parse(res.body).entries[0].text, "測試書");
+  }
+  {
+    const res = makeMockRes();
+    const handled = await handleLibraryRequest(
+      { method: "GET" },
+      res,
+      new URL("http://localhost/api/library/opac/hold/preview?id=865580"),
+      { sendJson, sendError, readJsonBody: async () => ({}) },
+      deps,
+    );
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 200);
+    assert.equal(JSON.parse(res.body).holdable, true);
+  }
+  {
+    const res = makeMockRes();
+    const handled = await handleLibraryRequest(
+      { method: "POST" },
+      res,
+      new URL("http://localhost/api/library/opac/hold"),
+      {
+        sendJson,
+        sendError,
+        readJsonBody: async () => ({ titleId: "865580", pickupLibrary: "SM", volume: "v.1" }),
+      },
+      deps,
+    );
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 200);
+    assert.equal(JSON.parse(res.body).ok, true);
+  }
+
+  assert.deepEqual(calls, [
+    ["marc", "865580"],
+    ["preview", "865580"],
+    ["hold", { titleId: "865580", path: "", pickupLibrary: "SM", volume: "v.1" }],
+  ]);
 });

@@ -1002,6 +1002,103 @@ export function createLibraryMockHandler() {
       };
     }
 
+    if (p === "/api/library/catalog/marc") {
+      const rawId = url.searchParams.get("id") || url.searchParams.get("path") || "";
+      const id = Number(rawId.match(/(\d+)/)?.[1]);
+      const hit = byId.get(id);
+      if (!hit) return { status: 404, body: { error: "找不到示範 MARC 紀錄。" } };
+      const entries = [
+        { tag: "001", indicators: "  ", text: String(hit.id) },
+        hit.isbn ? { tag: "020", indicators: "  ", text: hit.isbn } : null,
+        hit.callNumber ? { tag: "090", indicators: "  ", text: hit.callNumber } : null,
+        hit.author ? { tag: "100", indicators: "1 ", text: hit.author } : null,
+        { tag: "245", indicators: "10", text: hit.title },
+        hit.publisherYear ? { tag: "260", indicators: "  ", text: hit.publisherYear } : null,
+        hit.physicalDesc ? { tag: "300", indicators: "  ", text: hit.physicalDesc } : null,
+        hit.summary ? { tag: "520", indicators: "  ", text: hit.summary } : null,
+        ...(Array.isArray(hit.subjects)
+          ? hit.subjects.map((s) => ({ tag: "650", indicators: " 4", text: s }))
+          : []),
+        hit.electronicUrl ? { tag: "856", indicators: "40", text: hit.electronicUrl } : null,
+      ].filter(Boolean);
+      return {
+        status: 200,
+        body: {
+          titleId: String(hit.id),
+          source: "detail",
+          entries,
+        },
+      };
+    }
+
+    if (p === "/api/library/opac/hold/preview") {
+      const rawId = url.searchParams.get("id") || url.searchParams.get("path") || "";
+      const id = Number(rawId.match(/(\d+)/)?.[1]);
+      const hit = byId.get(id);
+      if (!hit) return { status: 404, body: { error: "找不到示範館藏條目。" } };
+      return {
+        status: 200,
+        body: {
+          titleId: String(hit.id),
+          holdUrl: "",
+          submitArg: "1",
+          errorMessage: "",
+          loginRequired: false,
+          holdable: true,
+          items: [
+            {
+              holdId: `SD_ILS:${hit.id}`,
+              title: hit.title,
+              pickupOptions: [
+                { value: "SM", label: "臺中科技大學 - 三民總館", selected: true },
+                { value: "MS", label: "臺中科技大學 - 民生分館", selected: false },
+              ],
+              volumeOptions: hit.callNumber
+                ? [{ value: hit.callNumber, label: hit.callNumber, selected: true }]
+                : [],
+              hasMessageCell: false,
+              itemId: "",
+            },
+          ],
+        },
+      };
+    }
+
+    if (p === "/api/library/opac/hold" && method === "POST") {
+      const rawId = String(body?.titleId || body?.path || "");
+      const id = Number(rawId.match(/(\d+)/)?.[1]);
+      const hit = byId.get(id);
+      if (!hit) return { status: 404, body: { error: "找不到示範館藏條目。" } };
+      const pickupLabel =
+        body?.pickupLibrary === "MS"
+          ? "臺中科技大學 - 民生分館"
+          : "臺中科技大學 - 三民總館";
+      const already = account.holds.some((h) => h.title === hit.title);
+      if (!already) {
+        account.holds.unshift({
+          id: `demo-hold-${hit.id}`,
+          title: hit.title,
+          author: hit.author,
+          pickupLibrary: pickupLabel,
+          status: "排隊中",
+          queuePosition: hit.holdsCount + 1,
+          expiresAt: `保留至 ${isoDay(30)}`,
+        });
+        hit.holdsCount += 1;
+      }
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          titleId: String(hit.id),
+          pickupLibrary: String(body?.pickupLibrary || "SM"),
+          volume: String(body?.volume || ""),
+          message: `示範模式：已送出「${hit.title}」預約申請（取書館：${pickupLabel}）。`,
+          messages: [`示範模式：已送出「${hit.title}」預約申請（取書館：${pickupLabel}）。`],
+        },
+      };
+    }
+
     if (p === "/api/library/opac/renew" && method === "POST") {
       const itemIds = new Set(Array.isArray(body?.itemIds) ? body.itemIds : []);
       let renewed = 0;

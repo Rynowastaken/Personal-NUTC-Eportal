@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  addTapestryPathParams,
   decodeHtmlEntities,
+  encodeTapestryParam,
   stripHtml,
   htmlToCleanParagraphs,
   stripBookstorePromo,
@@ -20,7 +22,9 @@ import {
   mergeOpacAvailability,
   mergeOpacItemLookup,
   parseOpacItemDetail,
+  parseOpacHoldDialog,
   parseOpacLookupTitleInfoUrl,
+  parseOpacMarcFromDetail,
   parseOpacAccount,
   parseOpacLoginForm,
   parseOpacMyLists,
@@ -664,4 +668,112 @@ test("parseLibraryPortalLinks ignores commented-out maintain.html and resolves d
     links.opac,
     "http://lib1.nutc.edu.tw:8080/ntit/decryptuid2.jsp?user_id=586159",
   );
+});
+
+test("encodeTapestryParam and addTapestryPathParams reproduce SirsiDynix Tapestry URL encoding", () => {
+  assert.equal(encodeTapestryParam(undefined), "$N");
+  assert.equal(encodeTapestryParam(""), "$N");
+  assert.equal(
+    encodeTapestryParam("SD_ILS:865580|||"),
+    "SD_ILS:865580$007c$007c$007c",
+  );
+  assert.equal(encodeTapestryParam("a$b"), "a$$b");
+  assert.equal(
+    addTapestryPathParams(
+      "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/detailnonmodal.placeholdnonmobile:holditems?d=ent:1",
+      encodeTapestryParam("1"),
+    ),
+    "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/detailnonmodal.placeholdnonmobile:holditems/1?d=ent:1",
+  );
+});
+
+test("parseOpacMarcFromDetail maps OPAC detail HTML fields into structured MARC tags", () => {
+  const html = `
+    <div class="displayElementText DOC_ID">865580</div>
+    <div class="displayElementText INITIAL_TITLE_SRCH">偵探的五個季節</div>
+    <div class="displayElementText PERSONAL_AUTHOR">逸木裕, 1980- 作</div>
+    <div class="displayElementText UNIFORM_TITLE">五つの季節に探偵は 中文</div>
+    <div class="displayElementText ISBN">9786267226995</div>
+    <div class="displayElementText EDITION">初版</div>
+    <div class="displayElementText PUBLICATION_INFO">臺北市 : 獨步文化出版, 2024</div>
+    <div class="displayElementText PHYSICAL_DESC">300面 ; 21公分</div>
+    <div class="displayElementText SERIES">Nil ; 44</div>
+    <div class="displayElementText GENERAL_NOTE">本書譯自 : 五つの季節に探偵は</div>
+    <div class="displayElementText SUBJECT_TERM">日本文學</div>
+    <div class="displayElementText ADDED_AUTHOR">詹慕如</div>
+    <table>
+      <tr class="detailItemsTableRow">
+        <td class="detailItemsTable_LIBRARY">臺中科技大學 - 三民總館</td>
+        <td class="detailItemsTable_CALLNUMBER">861.57 3438 113</td>
+        <td class="detailItemsTable_SD_ITEM_STATUS">在架上</td>
+      </tr>
+    </table>
+  `;
+  const entries = parseOpacMarcFromDetail(html, { titleId: "865580" });
+  const byTag = Object.fromEntries(entries.map((e) => [e.tag, e.text]));
+  assert.equal(byTag["001"], "865580");
+  assert.equal(byTag["020"], "9786267226995");
+  assert.equal(byTag["090"], "861.57 3438 113");
+  assert.equal(byTag["100"], "逸木裕, 1980- 作");
+  assert.equal(byTag["240"], "五つの季節に探偵は 中文");
+  assert.equal(byTag["245"], "偵探的五個季節");
+  assert.equal(byTag["250"], "初版");
+  assert.equal(byTag["260"], "臺北市 : 獨步文化出版, 2024");
+  assert.equal(byTag["300"], "300面 ; 21公分");
+  assert.equal(byTag["490"], "Nil ; 44");
+  assert.equal(byTag["500"], "本書譯自 : 五つの季節に探偵は");
+  assert.equal(byTag["650"], "日本文學");
+  assert.equal(byTag["700"], "詹慕如");
+});
+
+test("parseOpacHoldDialog extracts error notices and multi-select hold forms", () => {
+  const errParsed = parseOpacHoldDialog(
+    {
+      inits: [
+        "PlaceHoldDialog.setup('現在預約','/client/zh_TW/NUTC/search/detailnonmodal.placeholdnonmobile:holditems?d=1','',false);",
+      ],
+      content: "<div class='holdError'>所有被選擇的題名都不能被預約。</div>",
+    },
+    { fallbackTitleId: "865580" },
+  );
+  assert.equal(errParsed.holdable, false);
+  assert.equal(errParsed.errorMessage, "所有被選擇的題名都不能被預約。");
+
+  const okParsed = parseOpacHoldDialog(
+    {
+      inits: [
+        "PlaceHoldDialog.setup('現在預約','/client/zh_TW/NUTC/search/detailnonmodal.placeholdnonmobile:holditems?d=ent:865580','',false);",
+      ],
+      content: `
+        <table id="holdTable">
+          <tr>
+            <td><div class="holdTitle" id="SD_ILS:865580">偵探的五個季節</div></td>
+            <td>
+              <select id="pickupSelectSD_ILS:865580">
+                <option value="SM" selected>臺中科技大學 - 三民總館</option>
+                <option value="MS">臺中科技大學 - 民生分館</option>
+              </select>
+            </td>
+            <td>
+              <span id="callNumberValueSD_ILS:865580">v.1</span>
+              <input type="hidden" id="itemIdSD_ILS:865580" value="380816" />
+            </td>
+          </tr>
+        </table>
+        <button onclick="submitHolds('1')">送出</button>
+      `,
+    },
+    { fallbackTitleId: "865580" },
+  );
+  assert.equal(okParsed.holdable, true);
+  assert.equal(
+    okParsed.holdUrl,
+    "https://ntit.ent.sirsidynix.net/client/zh_TW/NUTC/search/detailnonmodal.placeholdnonmobile:holditems?d=ent:865580",
+  );
+  assert.equal(okParsed.submitArg, "1");
+  assert.equal(okParsed.items.length, 1);
+  assert.equal(okParsed.items[0].holdId, "SD_ILS:865580");
+  assert.equal(okParsed.items[0].pickupOptions.length, 2);
+  assert.equal(okParsed.items[0].volumeOptions[0].value, "v.1");
+  assert.equal(okParsed.items[0].itemId, "380816");
 });

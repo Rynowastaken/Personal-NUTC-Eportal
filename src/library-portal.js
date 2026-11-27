@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createModuleHandoff } from "./portal-session.js";
 import {
+  addTapestryPathParams,
   buildOpacAvailabilityUrl,
   cleanBookDescription,
   decodeHtmlEntities,
+  encodeTapestryParam,
   htmlToCleanParagraphs,
   mergeOpacItemLookup,
   normalizeIsbn,
@@ -18,9 +20,11 @@ import {
   parseEndnoteDownloads,
   parseLibraryPortalLinks,
   parseOpacAccount,
+  parseOpacHoldDialog,
   parseOpacItemDetail,
   parseOpacLoginForm,
   parseOpacLookupTitleInfoUrl,
+  parseOpacMarcFromDetail,
   parseOpacMyLists,
   parseOpacSearchResults,
   parseSanminProductDetail,
@@ -65,6 +69,7 @@ const COVER_DISK_ENABLED =
 export const ALLOWED_LIBRARY_HOSTS = new Set([
   "library.nutc.edu.tw",
   "lib1.nutc.edu.tw",
+  "libws.nutc.edu.tw",
   "ntit.ent.sirsidynix.net",
   "brs.nutc.edu.tw",
 ]);
@@ -250,6 +255,7 @@ let catalogDiskLoaded = false;
 let catalogDiskLoadPromise = null;
 let catalogPersistTimer = null;
 const itemDetailCache = new Map();
+const marcCache = new Map();
 const myListsCache = new Map();
 const databasesCache = new Map();
 const calendarCache = new Map();
@@ -514,6 +520,7 @@ export async function clearLibrarySession() {
   coverHostStates.clear();
   bookEnrichmentCache.clear();
   itemDetailCache.clear();
+  marcCache.clear();
   myListsCache.clear();
   databasesCache.clear();
   calendarCache.clear();
@@ -1948,6 +1955,317 @@ export async function getLibraryCatalogItem(detailPath) {
 
   setCachedMap(itemDetailCache, cleanPath, publicDetail, CATALOG_FRESH_TTL_MS, 60);
   return publicDetail;
+}
+
+const SYMWS_LOOKUP_BASE =
+  "https://libws.nutc.edu.tw:8443/symws201604400947/rest/standard/lookupTitleInfo";
+
+function normalizeCatalogTitleId(raw = "") {
+  const input = String(raw ?? "").trim();
+  const match =
+    input.match(/SD_ILS[:$a-zA-Z0-9]*?(\d{1,12})(?:\/|$)/i) ||
+    input.match(/^(\d{1,12})$/);
+  const id = match?.[1] || "";
+  if (!id || !/^\d{1,12}$/.test(id)) {
+    throw libraryError("無效的館藏題名識別碼。", "LIBRARY_INVALID_PARAM", 400);
+  }
+  return id;
+}
+
+function buildOpacDetailUrl(titleId) {
+  return `${OPAC_BASE}/search/detailnonmodal/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:${titleId}/one`;
+}
+
+function extractPlaceHoldUrlFromDetail(html = "", titleId = "") {
+  const source = String(html || "");
+  const m = source.match(
+    /(['"])(\/client\/[^'"]*detailnonmodal\.detail\.resultactions:placehold\/[^'"]*)\1/i,
+  );
+  if (m?.[2]) {
+    return `${OPAC_ORIGIN}${decodeHtmlEntities(m[2])}`;
+  }
+  return `${OPAC_BASE}/search/detailnonmodal.detail.resultactions:placehold/ent:$002f$002fSD_ILS$002f0$002fSD_ILS:${titleId}/false`;
+}
+
+/**
+ * Fetch structured MARC-21 entries for a catalog title (`MARC檢視`).
+ * Prefers official SYMWS `lookupTitleInfo?marcEntryFilter=all` over strict HTTPS
+ * and falls back cleanly to `detailnonmodal` field mapping when SYMWS is down.
+ */
+export async function getLibraryCatalogMarc(rawId = "") {
+  const cleanId = normalizeCatalogTitleId(rawId);
+  const cached = getCachedMap(marcCache, cleanId);
+  if (cached) return cached;
+
+  let entries = [];
+  let source = "detail";
+
+  const symwsUrl = `${SYMWS_LOOKUP_BASE}?clientID=DS_CLIENT&titleID=${encodeURIComponent(cleanId)}&includeOPACInfo=false&marcEntryFilter=all&json=true`;
+  try {
+    const { response } = await httpRequestWithCookies(symwsUrl, {
+      headers: { Accept: "application/json" },
+      timeoutMs: 4_500,
+    });
+    if (response.ok) {
+      const payload = JSON.parse(await response.text());
+      const marcList =
+        payload?.TitleInfo?.[0]?.BibliographicInfo?.MarcEntryInfo;
+      if (Array.isArray(marcList) && marcList.length > 0) {
+        entries = marcList
+          .map((item) => ({
+            tag: String(item?.entryID || "").padStart(3, "0"),
+            indicators: String(item?.indicators || "  "),
+            text: String(item?.text || "").trim(),
+          }))
+          .filter((item) => item.tag && item.text);
+        if (entries.length > 0) {
+          source = "symws";
+        }
+      }
+    }
+  } catch {
+    // SYMWS TLS/host unavailable — fall back to OPAC detail page below
+  }
+
+  if (entries.length === 0) {
+    const detailUrl = buildOpacDetailUrl(cleanId);
+    const { response } = await httpRequestWithCookies(detailUrl, {
+      timeoutMs: 12_000,
+    });
+    if (!response.ok) {
+      throw libraryError(
+        `Unable to load catalog MARC (${response.status}).`,
+        "LIBRARY_OPAC_UNAVAILABLE",
+        502,
+      );
+    }
+    const html = await response.text();
+    entries = parseOpacMarcFromDetail(html, { titleId: cleanId });
+    source = "detail";
+  }
+
+  const result = { titleId: cleanId, source, entries };
+  setCachedMap(marcCache, cleanId, result, CATALOG_FRESH_TTL_MS, 80);
+  return result;
+}
+
+async function fetchOpacHoldContext(cleanId) {
+  let { html: acctHtml } = await fetchAuthenticatedLibraryPage(
+    `${OPAC_BASE}/search/account?`,
+    { needOpac: true, opacOnly: true },
+  );
+  let parsedAccount = parseOpacAccount(acctHtml);
+  if (parsedAccount.loginRequired) {
+    try {
+      await ensureLibrarySession({ needOpac: true, forceRefresh: true });
+      const retry = await httpRequestWithCookies(`${OPAC_BASE}/search/account?`, {
+        maxRedirects: 8,
+        timeoutMs: 18_000,
+      });
+      acctHtml = await retry.response.text();
+      parsedAccount = parseOpacAccount(acctHtml);
+    } catch {
+      parsedAccount = { loginRequired: true };
+    }
+    if (parsedAccount.loginRequired) {
+      throw libraryError(
+        "請先登入館藏查詢系統 (OPAC) 以進行預約。",
+        "LIBRARY_OPAC_LOGIN_REQUIRED",
+        401,
+      );
+    }
+  }
+
+  const detailUrl = buildOpacDetailUrl(cleanId);
+  const { response: detailRes } = await httpRequestWithCookies(detailUrl, {
+    timeoutMs: 12_000,
+  });
+  const detailHtml = detailRes.ok ? await detailRes.text() : "";
+  const placeHoldUrl = extractPlaceHoldUrlFromDetail(detailHtml, cleanId);
+
+  const { response } = await httpRequestWithCookies(placeHoldUrl, {
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      "X-Prototype-Version": "1.7",
+      Accept: "application/json, text/javascript, */*; q=0.01",
+      Referer: detailUrl,
+    },
+    timeoutMs: 12_000,
+  });
+  if (!response.ok) {
+    throw libraryError(
+      `Unable to open OPAC hold dialog (${response.status}).`,
+      "LIBRARY_OPAC_UNAVAILABLE",
+      502,
+    );
+  }
+  const raw = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    payload = { content: raw };
+  }
+  const parsed = parseOpacHoldDialog(payload, { fallbackTitleId: cleanId });
+  if (parsed.loginRequired) {
+    throw libraryError(
+      "館藏系統登入狀態已逾時，請重新登入 OPAC。",
+      "LIBRARY_OPAC_LOGIN_REQUIRED",
+      401,
+    );
+  }
+  return { ...parsed, detailUrl };
+}
+
+/**
+ * Preview SirsiDynix OPAC hold options (`現在預約`) for a catalog title.
+ */
+export async function getOpacHoldPreview(rawId = "") {
+  const cleanId = normalizeCatalogTitleId(rawId);
+  const { detailUrl: _detailUrl, ...preview } = await fetchOpacHoldContext(cleanId);
+  return preview;
+}
+
+/**
+ * Submit a patron hold request (`現在預約`) to SirsiDynix Enterprise OPAC.
+ */
+export async function placeOpacHold({
+  titleId = "",
+  path = "",
+  pickupLibrary = "",
+  volume = "",
+} = {}) {
+  const cleanId = normalizeCatalogTitleId(titleId || path);
+  const preview = await fetchOpacHoldContext(cleanId);
+  if (!preview.holdable || !preview.items.length || !preview.holdUrl) {
+    throw libraryError(
+      preview.errorMessage || "此館藏目前無法線上預約。",
+      "LIBRARY_HOLD_UNAVAILABLE",
+      400,
+    );
+  }
+
+  const item = preview.items[0];
+  const requestedPickup = String(pickupLibrary || "").trim();
+  let chosenPickup = "";
+  if (item.pickupOptions.length > 0) {
+    if (requestedPickup) {
+      const hit = item.pickupOptions.find(
+        (opt) =>
+          opt.value === requestedPickup || opt.label === requestedPickup,
+      );
+      if (!hit) {
+        throw libraryError("指定的取書館別無效。", "LIBRARY_INVALID_PARAM", 400);
+      }
+      chosenPickup = hit.value;
+    } else {
+      const def =
+        item.pickupOptions.find((opt) => opt.selected) || item.pickupOptions[0];
+      chosenPickup = def?.value || "";
+    }
+  } else {
+    chosenPickup = requestedPickup;
+  }
+
+  const requestedVolume = String(volume || "").trim();
+  let chosenVolume = "";
+  if (item.volumeOptions.length > 0) {
+    if (requestedVolume) {
+      const hit = item.volumeOptions.find(
+        (opt) =>
+          opt.value === requestedVolume || opt.label === requestedVolume,
+      );
+      if (!hit) {
+        throw libraryError("指定的冊別／索書號無效。", "LIBRARY_INVALID_PARAM", 400);
+      }
+      chosenVolume = hit.value;
+    } else {
+      const def =
+        item.volumeOptions.find((opt) => opt.selected) || item.volumeOptions[0];
+      chosenVolume = def?.value || "";
+    }
+  } else {
+    chosenVolume = requestedVolume;
+  }
+
+  let submitUrl = addTapestryPathParams(
+    preview.holdUrl,
+    encodeTapestryParam(preview.submitArg || ""),
+  );
+  submitUrl = addTapestryPathParams(
+    submitUrl,
+    encodeTapestryParam(`${item.holdId}|||`),
+  );
+  submitUrl = addTapestryPathParams(
+    submitUrl,
+    encodeTapestryParam(chosenPickup ? `${chosenPickup}|||` : ""),
+  );
+  submitUrl = addTapestryPathParams(
+    submitUrl,
+    encodeTapestryParam(chosenVolume ? `${chosenVolume}|||` : ""),
+  );
+  submitUrl = addTapestryPathParams(
+    submitUrl,
+    encodeTapestryParam(`${item.hasMessageCell ? "true" : "false"}|||`),
+  );
+  submitUrl = addTapestryPathParams(
+    submitUrl,
+    encodeTapestryParam(item.itemId || undefined),
+  );
+
+  const { response } = await httpRequestWithCookies(submitUrl, {
+    method: "POST",
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      "X-Prototype-Version": "1.7",
+      Accept: "application/json, text/javascript, */*; q=0.01",
+      Referer: preview.detailUrl,
+    },
+    timeoutMs: 15_000,
+  });
+
+  const raw = await response.text();
+  invalidateLibraryDataCaches();
+
+  let json = null;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    json = null;
+  }
+
+  const content = String(json?.content || (json ? "" : raw) || "");
+  const messageValues = Object.values(json?.messages || {})
+    .map((v) => stripHtml(String(v || "")))
+    .filter(Boolean);
+  const errorText = stripHtml(
+    content.match(
+      /<div\b[^>]*class=(["'])[^"']*\bholdError\b[^"']*\1[^>]*>([\s\S]*?)<\/div>/i,
+    )?.[2] || "",
+  );
+  if (!response.ok || errorText) {
+    throw libraryError(
+      errorText || messageValues[0] || "預約請求未成功。",
+      "LIBRARY_HOLD_FAILED",
+      400,
+    );
+  }
+
+  const confirmText = stripHtml(
+    content.match(
+      /<div\b[^>]*class=(["'])[^"']*\b(?:holdConfirm|confirm|success)\b[^"']*\1[^>]*>([\s\S]*?)<\/div>/i,
+    )?.[2] || "",
+  );
+  const message = messageValues[0] || confirmText || "已送出預約申請。";
+
+  return {
+    ok: true,
+    titleId: cleanId,
+    pickupLibrary: chosenPickup,
+    volume: chosenVolume,
+    message,
+    messages: messageValues.length ? messageValues : [message],
+  };
 }
 
 /**
@@ -3829,6 +4147,9 @@ export async function handleLibraryRequest(
     searchCatalogFn = searchLibraryCatalog,
     catalogAvailabilityFn = getLibraryCatalogAvailability,
     catalogItemFn = getLibraryCatalogItem,
+    marcFn = getLibraryCatalogMarc,
+    holdPreviewFn = getOpacHoldPreview,
+    holdFn = placeOpacHold,
     renewFn = renewOpacCheckouts,
     databasesFn = searchLibraryDatabases,
     availabilityFn = getCarrelAvailability,
@@ -4171,6 +4492,76 @@ export async function handleLibraryRequest(
         error,
         "Unable to load catalog item holdings.",
         "LIBRARY_OPAC_UNAVAILABLE",
+      );
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/library/catalog/marc") {
+    try {
+      sendJson(
+        res,
+        200,
+        await marcFn(
+          url.searchParams.get("id") || url.searchParams.get("path") || "",
+        ),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to load MARC bibliographic record.",
+        "LIBRARY_OPAC_UNAVAILABLE",
+      );
+    }
+    return true;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/library/opac/hold/preview"
+  ) {
+    try {
+      sendJson(
+        res,
+        200,
+        await holdPreviewFn(
+          url.searchParams.get("id") || url.searchParams.get("path") || "",
+        ),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to preview hold options.",
+        "LIBRARY_HOLD_UNAVAILABLE",
+      );
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/library/opac/hold") {
+    try {
+      const body = await readJsonBody(req);
+      sendJson(
+        res,
+        200,
+        await holdFn({
+          titleId: body?.titleId || "",
+          path: body?.path || "",
+          pickupLibrary: body?.pickupLibrary || "",
+          volume: body?.volume || "",
+        }),
+      );
+    } catch (error) {
+      sendLibraryFailure(
+        sendError,
+        res,
+        error,
+        "Unable to place hold for selected library item.",
+        "LIBRARY_HOLD_FAILED",
       );
     }
     return true;

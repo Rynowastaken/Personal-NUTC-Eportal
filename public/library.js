@@ -1752,6 +1752,471 @@
     return el;
   }
 
+  const clientMarcCache = new Map();
+
+  function extractCatalogTitleId(detail, item) {
+    const candidates = [
+      detail?.titleId,
+      item?.id,
+      detail?.detailPath,
+      item?.detailPath,
+      detail?.officialUrl,
+      item?.officialUrl,
+    ];
+    for (const raw of candidates) {
+      const s = String(raw || "").trim();
+      if (!s) continue;
+      const m =
+        s.match(/SD_ILS[:$a-zA-Z0-9]*?(\d{1,12})(?:\/|$)/i) ||
+        s.match(/^(\d{1,12})$/);
+      if (m?.[1]) return m[1];
+    }
+    return "";
+  }
+
+  async function fetchCatalogMarc(titleId) {
+    const cleanId = String(titleId || "").trim();
+    if (!cleanId) throw new Error("無效的館藏題名識別碼。");
+    if (clientMarcCache.has(cleanId)) return clientMarcCache.get(cleanId);
+    const data = await apiJson(
+      `/api/library/catalog/marc?id=${encodeURIComponent(cleanId)}`,
+    );
+    clientMarcCache.set(cleanId, data);
+    while (clientMarcCache.size > 40) {
+      clientMarcCache.delete(clientMarcCache.keys().next().value);
+    }
+    return data;
+  }
+
+  function renderBookHoldPanelState(holdPanel, holdBtn, titleId, detail, item) {
+    const closeHoldPanel = () => {
+      holdPanel.hidden = true;
+      holdBtn.setAttribute("aria-expanded", "false");
+    };
+
+    const loadHoldPreview = async () => {
+      holdPanel.hidden = false;
+      holdBtn.setAttribute("aria-expanded", "true");
+      replaceNodes(
+        holdPanel,
+        h(
+          "div",
+          { class: "book-modal-panel-head" },
+          h("h3", null, "現在預約"),
+        ),
+        h("div", { class: "skel" }),
+        h("div", { class: "skel short" }),
+      );
+      try {
+        const preview = await apiJson(
+          `/api/library/opac/hold/preview?id=${encodeURIComponent(titleId)}`,
+        );
+        if (holdPanel.hidden) return;
+        if (!preview.holdable || !Array.isArray(preview.items) || !preview.items.length) {
+          replaceNodes(
+            holdPanel,
+            h(
+              "div",
+              { class: "book-modal-panel-head" },
+              h("h3", null, "現在預約"),
+              h(
+                "button",
+                { class: "btn small ghost", type: "button", onclick: closeHoldPanel },
+                "收合",
+              ),
+            ),
+            h(
+              "div",
+              { class: "notice danger" },
+              icon("alert"),
+              h("span", null, preview.errorMessage || "此館藏目前無法線上預約。"),
+            ),
+          );
+          return;
+        }
+
+        const holdItem = preview.items[0];
+        const pickupOpts = Array.isArray(holdItem.pickupOptions)
+          ? holdItem.pickupOptions
+          : [];
+        const volumeOpts = Array.isArray(holdItem.volumeOptions)
+          ? holdItem.volumeOptions
+          : [];
+        let selectedPickup =
+          (pickupOpts.find((o) => o.selected) || pickupOpts[0])?.value || "";
+        let selectedVolume =
+          (volumeOpts.find((o) => o.selected) || volumeOpts[0])?.value || "";
+        let submitting = false;
+
+        const feedbackSlot = h("div", null);
+        const submitBtn = h(
+          "button",
+          { class: "btn primary", type: "submit" },
+          icon("check"),
+          "送出預約",
+        );
+
+        const pickupSelect =
+          pickupOpts.length > 0
+            ? createSelect({
+                id: "holdPickupSelect",
+                ariaLabel: "取書館別",
+                small: true,
+                options: pickupOpts.map((o) => ({
+                  value: o.value,
+                  label: o.label || o.value,
+                })),
+                value: selectedPickup,
+                onChange: (val) => {
+                  selectedPickup = val;
+                },
+              })
+            : null;
+
+        const volumeSelect =
+          volumeOpts.length > 0
+            ? createSelect({
+                id: "holdVolumeSelect",
+                ariaLabel: "冊別／索書號",
+                small: true,
+                options: volumeOpts.map((o) => ({
+                  value: o.value,
+                  label: o.label || o.value,
+                })),
+                value: selectedVolume,
+                onChange: (val) => {
+                  selectedVolume = val;
+                },
+              })
+            : null;
+
+        const form = h(
+          "form",
+          {
+            class: "book-modal-hold-form",
+            onsubmit: async (e) => {
+              e.preventDefault();
+              if (submitting) return;
+              submitting = true;
+              submitBtn.disabled = true;
+              replaceNodes(submitBtn, icon("refresh"), "送出中...");
+              replaceNodes(feedbackSlot);
+              try {
+                const res = await apiJson("/api/library/opac/hold", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    titleId,
+                    pickupLibrary: selectedPickup,
+                    volume: selectedVolume,
+                  }),
+                });
+                replaceNodes(
+                  holdPanel,
+                  h(
+                    "div",
+                    { class: "book-modal-panel-head" },
+                    h("h3", null, "現在預約"),
+                    h(
+                      "button",
+                      { class: "btn small ghost", type: "button", onclick: closeHoldPanel },
+                      "收合",
+                    ),
+                  ),
+                  h(
+                    "div",
+                    { class: "notice success" },
+                    icon("check"),
+                    h("span", null, res?.message || "已送出預約申請。"),
+                  ),
+                );
+                void loadOverview({ force: true }).catch(() => {});
+              } catch (err) {
+                if (err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED") {
+                  renderOpacAuthRequiredNotice();
+                  return;
+                }
+                replaceNodes(
+                  feedbackSlot,
+                  h(
+                    "div",
+                    { class: "notice danger" },
+                    icon("alert"),
+                    h("span", null, err?.message || "送出預約失敗，請稍後再試。"),
+                  ),
+                );
+              } finally {
+                submitting = false;
+                submitBtn.disabled = false;
+                replaceNodes(submitBtn, icon("check"), "送出預約");
+              }
+            },
+          },
+          h(
+            "div",
+            { class: "book-modal-hold-fields" },
+            pickupSelect
+              ? h(
+                  "div",
+                  { class: "book-modal-field" },
+                  h("span", { class: "book-modal-field-label" }, "取書館別"),
+                  pickupSelect,
+                )
+              : null,
+            volumeSelect
+              ? h(
+                  "div",
+                  { class: "book-modal-field" },
+                  h("span", { class: "book-modal-field-label" }, "冊別 / 索書號"),
+                  volumeSelect,
+                )
+              : null,
+          ),
+          feedbackSlot,
+          h(
+            "div",
+            { class: "book-modal-hold-actions" },
+            h(
+              "button",
+              { class: "btn small", type: "button", onclick: closeHoldPanel },
+              "取消",
+            ),
+            submitBtn,
+          ),
+        );
+
+        replaceNodes(
+          holdPanel,
+          h(
+            "div",
+            { class: "book-modal-panel-head" },
+            h("h3", null, "現在預約"),
+          ),
+          form,
+        );
+      } catch (err) {
+        if (err?.code === "LIBRARY_OPAC_LOGIN_REQUIRED") {
+          renderOpacAuthRequiredNotice();
+          return;
+        }
+        replaceNodes(
+          holdPanel,
+          h(
+            "div",
+            { class: "book-modal-panel-head" },
+            h("h3", null, "現在預約"),
+            h(
+              "button",
+              { class: "btn small ghost", type: "button", onclick: closeHoldPanel },
+              "收合",
+            ),
+          ),
+          h(
+            "div",
+            { class: "notice danger" },
+            icon("alert"),
+            h("span", null, err?.message || "無法取得預約選項。"),
+          ),
+        );
+      }
+    };
+
+    function renderOpacAuthRequiredNotice() {
+      replaceNodes(
+        holdPanel,
+        h(
+          "div",
+          { class: "book-modal-panel-head" },
+          h("h3", null, "現在預約"),
+          h(
+            "button",
+            { class: "btn small ghost", type: "button", onclick: closeHoldPanel },
+            "收合",
+          ),
+        ),
+        h(
+          "div",
+          { class: "notice" },
+          icon("lock"),
+          h("span", null, "需先登入館藏查詢系統 (OPAC) 才能進行預約。"),
+        ),
+        h(
+          "div",
+          { class: "book-modal-hold-actions" },
+          h(
+            "a",
+            {
+              class: "btn small",
+              href: detail.officialUrl || item.officialUrl,
+              target: "_blank",
+              rel: "noopener",
+            },
+            icon("external"),
+            "在官方館藏預約",
+          ),
+          h(
+            "button",
+            {
+              class: "btn small primary",
+              type: "button",
+              onclick: () => {
+                closeModal();
+                navigate("/library/lists");
+              },
+            },
+            "前往登入 OPAC",
+          ),
+        ),
+      );
+    }
+
+    holdBtn.addEventListener("click", () => {
+      if (!holdPanel.hidden) {
+        closeHoldPanel();
+        return;
+      }
+      void loadHoldPreview();
+      holdPanel.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    });
+  }
+
+  function renderBookMarcPanelState(marcPanel, marcBtn, titleId) {
+    let loaded = false;
+
+    const closeMarcPanel = () => {
+      marcPanel.hidden = true;
+      marcBtn.setAttribute("aria-expanded", "false");
+    };
+
+    const loadMarc = async () => {
+      marcPanel.hidden = false;
+      marcBtn.setAttribute("aria-expanded", "true");
+      if (loaded) return;
+
+      replaceNodes(
+        marcPanel,
+        h("div", { class: "book-modal-panel-head" }, h("h3", null, "MARC 21")),
+        h("div", { class: "skel" }),
+        h("div", { class: "skel" }),
+        h("div", { class: "skel short" }),
+      );
+
+      try {
+        const data = await fetchCatalogMarc(titleId);
+        if (marcPanel.hidden) return;
+        const entries = Array.isArray(data?.entries) ? data.entries : [];
+        const sourceLabel =
+          data?.source === "symws" ? "SYMWS" : "館藏欄位";
+        const copyBtn = h(
+          "button",
+          {
+            class: "btn small ghost",
+            type: "button",
+            onclick: async () => {
+              const text = entries
+                .map((e) => `${e.tag} ${e.indicators || "  "} ${e.text}`)
+                .join("\n");
+              try {
+                await navigator.clipboard?.writeText(text);
+                replaceNodes(copyBtn, icon("check"), "已複製");
+                setTimeout(() => {
+                  if (copyBtn.isConnected) {
+                    replaceNodes(copyBtn, "複製");
+                  }
+                }, 1500);
+              } catch {}
+            },
+          },
+          "複製",
+        );
+
+        if (!entries.length) {
+          replaceNodes(
+            marcPanel,
+            h(
+              "div",
+              { class: "book-modal-panel-head" },
+              h("h3", null, "MARC 21"),
+              h(
+                "button",
+                { class: "btn small ghost", type: "button", onclick: closeMarcPanel },
+                "收合",
+              ),
+            ),
+            h("div", { class: "notice" }, icon("alert"), h("span", null, "目前無可顯示的 MARC 欄位。")),
+          );
+          return;
+        }
+
+        loaded = true;
+        replaceNodes(
+          marcPanel,
+          h(
+            "div",
+            { class: "book-modal-panel-head" },
+            h(
+              "div",
+              { class: "book-modal-section-meta" },
+              h("h3", null, "MARC 21"),
+              h("span", { class: "book-modal-source" }, sourceLabel),
+            ),
+            h(
+              "div",
+              { class: "book-modal-section-meta" },
+              copyBtn,
+              h(
+                "button",
+                { class: "btn small ghost", type: "button", onclick: closeMarcPanel },
+                "收合",
+              ),
+            ),
+          ),
+          h(
+            "dl",
+            { class: "marc-list" },
+            entries.map((entry) =>
+              h(
+                "div",
+                { class: "marc-row" },
+                h("dt", { class: "marc-tag" }, entry.tag),
+                h("dd", { class: "marc-ind" }, entry.indicators || "  "),
+                h("dd", { class: "marc-text" }, entry.text),
+              ),
+            ),
+          ),
+        );
+      } catch (err) {
+        replaceNodes(
+          marcPanel,
+          h(
+            "div",
+            { class: "book-modal-panel-head" },
+            h("h3", null, "MARC 21"),
+            h(
+              "button",
+              { class: "btn small ghost", type: "button", onclick: closeMarcPanel },
+              "收合",
+            ),
+          ),
+          h(
+            "div",
+            { class: "notice danger" },
+            icon("alert"),
+            h("span", null, err?.message || "無法載入 MARC 書目資料。"),
+          ),
+        );
+      }
+    };
+
+    marcBtn.addEventListener("click", () => {
+      if (!marcPanel.hidden) {
+        closeMarcPanel();
+        return;
+      }
+      void loadMarc();
+      marcPanel.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    });
+  }
+
   function renderBookModalSuccess(dialog, detail, item, onPickSubject) {
     const heroEl = dialog.querySelector(".book-modal-hero");
     if (heroEl) {
@@ -1767,6 +2232,53 @@
       .split(/\n{2,}/)
       .map((p) => p.trim())
       .filter(Boolean);
+    const titleId = extractCatalogTitleId(detail, item);
+
+    const holdPanel = h("div", {
+      id: "bookModalHoldPanel",
+      class: "book-modal-inline-panel",
+      hidden: true,
+    });
+    const marcPanel = h("div", {
+      id: "bookModalMarcPanel",
+      class: "book-modal-inline-panel",
+      hidden: true,
+    });
+    const holdBtn = titleId
+      ? h(
+          "button",
+          {
+            id: "bookModalHoldBtn",
+            class: "btn primary",
+            type: "button",
+            "aria-expanded": "false",
+            "aria-controls": "bookModalHoldPanel",
+          },
+          icon("bookmark"),
+          "現在預約",
+        )
+      : null;
+    const marcBtn = titleId
+      ? h(
+          "button",
+          {
+            id: "bookModalMarcBtn",
+            class: "btn",
+            type: "button",
+            "aria-expanded": "false",
+            "aria-controls": "bookModalMarcPanel",
+          },
+          icon("list"),
+          "MARC檢視",
+        )
+      : null;
+
+    if (titleId && holdBtn) {
+      renderBookHoldPanelState(holdPanel, holdBtn, titleId, detail, item);
+    }
+    if (titleId && marcBtn) {
+      renderBookMarcPanelState(marcPanel, marcBtn, titleId);
+    }
 
     replaceNodes(
       body,
@@ -1796,37 +2308,49 @@
           )
         : null,
       buildBookHoldingsSection(holdings, detail.availability),
+      holdPanel,
+      marcPanel,
       h(
         "div",
-        { class: "actions" },
-        detail.electronicUrl
-          ? h(
-              "a",
-              {
-                class: "btn primary",
-                href: detail.electronicUrl,
-                target: "_blank",
-                rel: "noopener",
-              },
-              icon("external"),
-              "開啟電子資源",
-            )
-          : null,
+        { class: "book-modal-actions" },
         h(
-          "a",
-          {
-            class: `btn${detail.electronicUrl ? "" : " primary"}`,
-            href: detail.officialUrl || item.officialUrl,
-            target: "_blank",
-            rel: "noopener",
-          },
-          icon("external"),
-          "在館藏系統開啟",
+          "div",
+          { class: "book-modal-actions-group" },
+          holdBtn,
+          marcBtn,
         ),
         h(
-          "button",
-          { class: "btn", type: "button", onclick: closeModal },
-          "關閉",
+          "div",
+          { class: "book-modal-actions-group" },
+          detail.electronicUrl
+            ? h(
+                "a",
+                {
+                  class: `btn${holdBtn ? "" : " primary"}`,
+                  href: detail.electronicUrl,
+                  target: "_blank",
+                  rel: "noopener",
+                },
+                icon("external"),
+                "開啟電子資源",
+              )
+            : null,
+          h(
+            "a",
+            {
+              class: `btn${!holdBtn && !detail.electronicUrl ? " primary" : ""}`,
+              href: detail.officialUrl || item.officialUrl,
+              target: "_blank",
+              rel: "noopener",
+            },
+            icon("external"),
+            "在館藏系統開啟",
+          ),
+          h(
+            "button",
+            { class: "btn", type: "button", onclick: closeModal },
+            "關閉",
+          ),
         ),
       ),
     );

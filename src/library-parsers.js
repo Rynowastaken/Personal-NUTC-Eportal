@@ -425,15 +425,16 @@ export function parseDatabasesList(
   return items;
 }
 
-function extractBalancedTagBlocks(html, startPattern) {
+function extractBalancedTagBlocks(html, startPattern, tagName = "div") {
   const blocks = [];
   const regex = new RegExp(startPattern, "gi");
+  const safeTag = String(tagName || "div").replace(/[^a-z0-9]/gi, "");
   let match;
   while ((match = regex.exec(html)) !== null) {
     const start = match.index;
     let cursor = start;
     let depth = 0;
-    const tagRegex = /<\/?div\b[^>]*>/gi;
+    const tagRegex = new RegExp(`<\\/?${safeTag}\\b[^>]*>`, "gi");
     tagRegex.lastIndex = start;
     let tagMatch;
     while ((tagMatch = tagRegex.exec(html)) !== null) {
@@ -1773,5 +1774,337 @@ export function parseOpacLoginForm(html = "") {
     openTabField,
     hiddenVal,
     zoneId,
+  };
+}
+
+const TAPESTRY_PASSTHROUGH_CHARS =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.: ";
+
+/**
+ * Reproduce SirsiDynix Enterprise Tapestry URL segment encoding (`encodeAsTapestry`).
+ */
+export function encodeTapestryParam(input) {
+  if (input === undefined || input === null || input === "") {
+    return "$N";
+  }
+  const str = String(input);
+  let out = "";
+  for (let i = 0; i < str.length; i += 1) {
+    const ch = str[i];
+    if (TAPESTRY_PASSTHROUGH_CHARS.includes(ch)) {
+      out += ch;
+    } else if (ch === "$") {
+      out += "$$";
+    } else {
+      out += "$" + ch.charCodeAt(0).toString(16).padStart(4, "0");
+    }
+  }
+  return out;
+}
+
+/**
+ * Append a Tapestry path segment before `?` / `;` query parameters (`addPathParams`).
+ */
+export function addTapestryPathParams(url = "", param = "") {
+  const source = String(url || "");
+  if (!source) return "";
+  const match = source.match(/\/[^\?;]*(\?|;|$)/);
+  if (!match || match.index === undefined) {
+    return `${source}/${param}`;
+  }
+  const full = match[0];
+  const sep = match[1] || "";
+  const head = sep ? full.slice(0, -1) : full;
+  const suffix = source.slice(match.index + full.length);
+  return `${source.slice(0, match.index)}${head}/${param}${sep}${suffix}`;
+}
+
+/**
+ * Map OPAC detail HTML fields (`detailnonmodal`) to structured MARC-21 entries
+ * when SYMWS `lookupTitleInfo` is unreachable or omits records.
+ */
+export function parseOpacMarcFromDetail(html = "", { titleId = "" } = {}) {
+  const source = String(html || "");
+  const extractRawBlocks = (cls) =>
+    extractBalancedTagBlocks(
+      source,
+      `<div\\s+class="[^"]*\\bdisplayElementText\\b[^"]*\\b${cls}\\b[^"]*"[^>]*>`,
+    );
+  const extractAll = (cls) => {
+    const out = [];
+    const seen = new Set();
+    for (const block of extractRawBlocks(cls)) {
+      const text = stripHtml(block);
+      if (text && !seen.has(text)) {
+        seen.add(text);
+        out.push(text);
+      }
+    }
+    return out;
+  };
+
+  const detail = parseOpacItemDetail(source);
+  const docId =
+    extractAll("DOC_ID")[0] ||
+    String(titleId || "")
+      .replace(/^SD_ILS:/i, "")
+      .trim();
+  const entries = [];
+  const pushEntry = (tag, indicators, text) => {
+    const cleanText = String(text || "").trim();
+    if (!cleanText) return;
+    entries.push({
+      tag: String(tag).padStart(3, "0"),
+      indicators: indicators || "  ",
+      text: cleanText,
+    });
+  };
+
+  if (docId) pushEntry("001", "  ", docId);
+  for (const isbn of extractAll("ISBN")) {
+    pushEntry("020", "  ", isbn);
+  }
+  for (const callNum of [
+    ...new Set(detail.holdings.map((h) => h.callNumber).filter(Boolean)),
+  ]) {
+    pushEntry("090", "  ", callNum);
+  }
+  for (const author of extractAll("PERSONAL_AUTHOR")) {
+    pushEntry("100", "1 ", author);
+  }
+  if (!extractAll("PERSONAL_AUTHOR").length && detail.author) {
+    pushEntry("100", "1 ", detail.author);
+  }
+  for (const uniform of extractAll("UNIFORM_TITLE")) {
+    pushEntry("240", "10", uniform);
+  }
+  for (const titleText of extractAll("INITIAL_TITLE_SRCH")) {
+    pushEntry("245", "10", titleText);
+  }
+  if (!extractAll("INITIAL_TITLE_SRCH").length && detail.title) {
+    pushEntry("245", "10", detail.title);
+  }
+  for (const edition of extractAll("EDITION")) {
+    pushEntry("250", "  ", edition);
+  }
+  for (const pub of extractAll("PUBLICATION_INFO")) {
+    pushEntry("260", "  ", pub);
+  }
+  for (const phys of extractAll("PHYSICAL_DESC")) {
+    pushEntry("300", "  ", phys);
+  }
+  for (const series of extractAll("SERIES")) {
+    pushEntry("490", "0 ", series);
+  }
+  for (const note of [
+    ...extractAll("GENERAL_NOTE"),
+    ...extractAll("NOTE"),
+  ]) {
+    pushEntry("500", "  ", note);
+  }
+  for (const summary of [
+    ...extractAll("SUMMARY"),
+    ...extractAll("BOOKSUMMARY"),
+  ]) {
+    pushEntry("520", "  ", summary);
+  }
+  for (const subj of [
+    ...extractAll("SUBJECT_TERM"),
+    ...extractAll("SUBJECT"),
+  ]) {
+    pushEntry("650", " 4", subj);
+  }
+  for (const added of extractAll("ADDED_AUTHOR")) {
+    pushEntry("700", "1 ", added);
+  }
+  if (detail.electronicUrl) {
+    pushEntry("856", "40", detail.electronicUrl);
+  }
+
+  return entries;
+}
+
+function parseSelectOptions(selectHtml = "") {
+  const options = [];
+  const matches = [
+    ...String(selectHtml || "").matchAll(
+      /<option\b([^>]*)>([\s\S]*?)<\/option>/gi,
+    ),
+  ];
+  for (const [, attrs, rawLabel] of matches) {
+    const valMatch = attrs.match(/\bvalue=(["'])([\s\S]*?)\1/i);
+    const label = stripHtml(rawLabel);
+    const value = valMatch ? decodeHtmlEntities(valMatch[2]).trim() : label;
+    const selected = /\bselected\b/i.test(attrs);
+    if (value || label) {
+      options.push({
+        value: value || label,
+        label: label || value,
+        selected,
+      });
+    }
+  }
+  return options;
+}
+
+/**
+ * Parse SirsiDynix OPAC `:placehold` JSON/HTML response (`PlaceHoldNonMobile`).
+ */
+export function parseOpacHoldDialog(payload = null, { fallbackTitleId = "" } = {}) {
+  const inits = Array.isArray(payload?.inits) ? payload.inits.join("\n") : "";
+  const content =
+    typeof payload === "string" ? payload : String(payload?.content || "");
+  const combined = `${inits}\n${content}`;
+
+  const rawHoldUrl = decodeHtmlEntities(
+    firstMatch(
+      combined,
+      /PlaceHoldDialog\.setup\(\s*(['"])[\s\S]*?\1\s*,\s*(['"])([^'"]+)\2/,
+      3,
+    ),
+  );
+  const holdUrl = rawHoldUrl
+    ? resolveLibraryHref(rawHoldUrl, OPAC_ORIGIN)
+    : "";
+
+  const submitArg = decodeHtmlEntities(
+    firstMatch(content, /submitHolds\(\s*(['"])([^'"]*)\1\s*\)/, 2),
+  );
+
+  const errorMessage = stripHtml(
+    firstMatch(
+      content,
+      /<div\b[^>]*class=(["'])[^"']*\bholdError\b[^"']*\1[^>]*>([\s\S]*?)<\/div>/i,
+      2,
+    ),
+  );
+
+  const loginRequired =
+    /#?listLoginLink\b|必須先登入|請先登入|Session\s+has\s+timed\s+out/i.test(
+      content,
+    ) || /\/patronlogin\b/i.test(content);
+
+  const items = [];
+  const holdBlocks = extractBalancedTagBlocks(
+    content,
+    /<div\b[^>]*class=(["'])[^"']*\bholdTitle\b[^"']*\1[^>]*>/i,
+  );
+  const trHoldBlocks = extractBalancedTagBlocks(
+    content,
+    /<tr\b[^>]*class=(["'])[^"']*\bholdTitle\b[^"']*\1[^>]*>/i,
+    "tr",
+  );
+  const blocks = [...holdBlocks, ...trHoldBlocks];
+
+  const extractFieldByIdPrefix = (scope, prefix, id) => {
+    const escapedId = String(id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const selectBlock = extractBalancedTagBlocks(
+      scope,
+      `<select\\b[^>]*id=(["'])${prefix}${escapedId}\\1[^>]*>`,
+      "select",
+    )[0];
+    if (selectBlock) {
+      return {
+        options: parseSelectOptions(selectBlock),
+      };
+    }
+    const spanText = stripHtml(
+      firstMatch(
+        scope,
+        new RegExp(
+          `<[^>]+\\bid=(["'])${prefix}${escapedId}\\1[^>]*>([\\s\\S]*?)<\\/[a-z0-9]+>`,
+          "i",
+        ),
+        2,
+      ),
+    );
+    const inputVal = decodeHtmlEntities(
+      firstMatch(
+        scope,
+        new RegExp(
+          `<input\\b[^>]*id=(["'])${prefix}${escapedId}\\1[^>]*value=(["'])([\\s\\S]*?)\\2`,
+          "i",
+        ),
+        3,
+      ),
+    );
+    const val = inputVal || spanText;
+    return {
+      options: val ? [{ value: val, label: spanText || val, selected: true }] : [],
+    };
+  };
+
+  for (const block of blocks) {
+    const holdId = decodeHtmlEntities(
+      firstMatch(block, /\bid=(["'])([^"']+)\1/i, 2),
+    );
+    if (!holdId) continue;
+    const escapedId = holdId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const scope = content;
+
+    const pickupSelect = extractFieldByIdPrefix(scope, "pickupSelect", holdId);
+    const pickupStatic = extractFieldByIdPrefix(
+      scope,
+      "itemLibraryValue",
+      holdId,
+    );
+    const pickupOptions =
+      pickupSelect.options.length > 0
+        ? pickupSelect.options
+        : pickupStatic.options;
+
+    const volumeSelect = extractFieldByIdPrefix(scope, "volumeSelect", holdId);
+    const volumeStatic = extractFieldByIdPrefix(
+      scope,
+      "callNumberValue",
+      holdId,
+    );
+    const volumeOptions =
+      volumeSelect.options.length > 0
+        ? volumeSelect.options
+        : volumeStatic.options;
+
+    const hasMessageCell = new RegExp(
+      `id=(["'])message${escapedId}\\1`,
+      "i",
+    ).test(scope);
+    const itemId = decodeHtmlEntities(
+      firstMatch(
+        scope,
+        new RegExp(
+          `<input\\b[^>]*id=(["'])itemId${escapedId}\\1[^>]*value=(["'])([\\s\\S]*?)\\2`,
+          "i",
+        ),
+        3,
+      ) ||
+        firstMatch(
+          scope,
+          new RegExp(
+            `<input\\b[^>]*value=(["'])([\\s\\S]*?)\\1[^>]*id=(["'])itemId${escapedId}\\3`,
+            "i",
+          ),
+          2,
+        ),
+    );
+    const title = stripHtml(block);
+
+    items.push({
+      holdId,
+      title,
+      pickupOptions,
+      volumeOptions,
+      hasMessageCell,
+      itemId,
+    });
+  }
+
+  return {
+    titleId: String(fallbackTitleId || "").trim(),
+    holdUrl,
+    submitArg,
+    errorMessage,
+    loginRequired,
+    holdable: items.length > 0 && Boolean(holdUrl) && !errorMessage,
+    items,
   };
 }

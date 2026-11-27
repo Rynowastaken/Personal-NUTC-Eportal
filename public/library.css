@@ -629,6 +629,107 @@ button.row:first-child { border-top: 0; }
   .book-modal-title-row .dialog-title { font-size: 16.5px; }
 }
 
+.book-modal-inline-panel {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: grid;
+  gap: 12px;
+}
+.book-modal-inline-panel[hidden] { display: none; }
+.book-modal-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.book-modal-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.book-modal-hold-form {
+  display: grid;
+  gap: 12px;
+}
+.book-modal-hold-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 14px;
+}
+.book-modal-field {
+  display: grid;
+  gap: 6px;
+}
+.book-modal-field-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.book-modal-hold-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.marc-list {
+  margin: 0;
+  display: grid;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  max-height: 280px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+.marc-row {
+  display: grid;
+  grid-template-columns: 3.2em 2.4em minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--edge);
+  align-items: baseline;
+}
+.marc-row:first-child { border-top: 0; }
+.marc-row:hover { background: rgba(255, 255, 255, .025); }
+.marc-tag {
+  color: var(--primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.marc-ind {
+  color: var(--faint);
+  white-space: pre;
+}
+.marc-text {
+  margin: 0;
+  color: var(--soft);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.book-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 18px;
+}
+.book-modal-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Segmented Tabs + Pagination */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 20px; }
 .toolbar .spacer { flex: 1; }
