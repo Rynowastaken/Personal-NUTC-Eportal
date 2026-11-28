@@ -2163,15 +2163,33 @@
               const text = entries
                 .map((e) => `${e.tag} ${e.indicators || "  "} ${e.text}`)
                 .join("\n");
+              let copied = false;
               try {
-                await navigator.clipboard?.writeText(text);
+                if (navigator.clipboard?.writeText) {
+                  await navigator.clipboard.writeText(text);
+                  copied = true;
+                }
+              } catch {}
+              if (!copied) {
+                try {
+                  const ta = document.createElement("textarea");
+                  ta.value = text;
+                  ta.setAttribute("readonly", "");
+                  ta.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+                  document.body.appendChild(ta);
+                  ta.select();
+                  copied = document.execCommand("copy");
+                  ta.remove();
+                } catch {}
+              }
+              if (copied) {
                 replaceNodes(copyBtn, icon("check"), "已複製");
                 setTimeout(() => {
                   if (copyBtn.isConnected) {
                     replaceNodes(copyBtn, "複製");
                   }
                 }, 1500);
-              } catch {}
+              }
             },
           },
           "複製",
